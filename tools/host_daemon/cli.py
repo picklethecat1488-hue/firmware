@@ -318,6 +318,12 @@ def _add_root_daemon_arguments(parser: argparse.ArgumentParser) -> None:
         help="Enable the probe-rs dual-core GDB debug server (host_debug) and :50000 RTT bridge.",
     )
     parser.add_argument(
+        "--no-debug-server",
+        dest="enable_debug_server",
+        action="store_false",
+        help="Explicitly disable the target GDB debug server and use direct probe-rs RTT streaming.",
+    )
+    parser.add_argument(
         "--halt-on-reset",
         dest="halt_on_reset",
         action="store_true",
@@ -376,9 +382,35 @@ def _add_debug_subparser(subparsers: Any) -> None:
     debug_parser.add_argument(
         "debug_action",
         nargs="?",
-        choices=["status", "start", "stop"],
+        choices=["status", "start", "stop", "target-info", "sync-symbols"],
         default="status",
-        help="Debug server lifecycle action (default: status).",
+        help="Debug server lifecycle or target symbol inspection action (default: status).",
+    )
+    debug_parser.add_argument(
+        "--field",
+        dest="dbg_field",
+        choices=[
+            "executable",
+            "active_elf_link",
+            "device",
+            "chip",
+            "profile",
+            "bin",
+            "package",
+            "target",
+            "gdb_core0_port",
+            "gdb_core1_port",
+            "rtt_bridge_port",
+        ],
+        default=None,
+        help="Print only a single resolved field value as plain text.",
+    )
+    debug_parser.add_argument(
+        "--repo-root",
+        dest="dbg_repo_root",
+        type=str,
+        default=None,
+        help="Optional workspace repository root override for offline symbol resolution.",
     )
     debug_parser.add_argument(
         "--gdb-core0-port",
@@ -693,6 +725,44 @@ def _add_test_subparser(subparsers: Any) -> None:
         default=DEFAULT_DEBUGPY_PORT,
         help="TCP loopback port for debugpy symbolic debugger attachment when --debug is enabled.",
     )
+    test_parser.add_argument(
+        "--debug-server",
+        dest="test_debug_server",
+        action="store_true",
+        default=None,
+        help="Enable symbolic target GDB server (host_debug + :50000 RTT bridge) throughout the test run.",
+    )
+    test_parser.add_argument(
+        "--no-debug-server",
+        dest="test_debug_server",
+        action="store_false",
+        help="Disable symbolic target GDB server and stream RTT directly over USB probe throughout the test run.",
+    )
+
+
+def _resolve_offline_debug_target_info(
+    effective_root: Path,
+    *,
+    sync_symbols: bool,
+) -> Dict[str, Any]:
+    """Resolve active target ELF (`debug` or `release`) and device from `host_session.json` when no daemon is active."""
+    sess = load_last_session(effective_root) or {}
+    offline_runner = DaemonRunner(
+        repo_root=effective_root,
+        target=sess.get("target"),
+        package=sess.get("package"),
+        bin_name=sess.get("bin"),
+        release=bool(sess.get("release", False)),
+        speed=int(sess.get("speed", 1000)),
+        chip=sess.get("chip"),
+        enable_debug_server=bool(sess.get("enable_debug_server", False)),
+        halt_on_reset=bool(sess.get("halt_on_reset", False)),
+        gdb_core0_port=int(sess.get("gdb_core0_port", 3333)),
+        gdb_core1_port=int(sess.get("gdb_core1_port", 3334)),
+    )
+    if sync_symbols:
+        return offline_runner.sync_active_symbols()
+    return offline_runner.get_debug_status()
 
 
 def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
@@ -723,7 +793,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     last_session = load_last_session(repo_root)
     has_cli_debug_flag = any(
-        a in ("--debug-server", "--halt-on-reset", "--gdb-core0-port", "--gdb-port", "--gdb-core1-port")
+        a
+        in (
+            "--debug-server",
+            "--no-debug-server",
+            "--halt-on-reset",
+            "--gdb-core0-port",
+            "--gdb-port",
+            "--gdb-core1-port",
+        )
         or a.startswith("--gdb-core0-port=")
         or a.startswith("--gdb-port=")
         or a.startswith("--gdb-core1-port=")
@@ -804,8 +882,36 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.subcommand == "debug":
         action = str(getattr(args, "debug_action", "status") or "status").lower()
+        effective_dbg_root = Path(args.dbg_repo_root).resolve() if getattr(args, "dbg_repo_root", None) else repo_root
         try:
-            if action == "status":
+            if action in ("target-info", "sync-symbols"):
+                sync_flag = action == "sync-symbols"
+                dbg = None
+                if getattr(args, "dbg_repo_root", None) is None or args.host_port is not None:
+                    try:
+                        if sync_flag:
+                            res_sync = send_daemon_request(
+                                "/api/debug/sync_symbols",
+                                {},
+                                port=args.host_port,
+                                host=args.host,
+                            )
+                            if "error" in res_sync:
+                                print(f"Error: {res_sync['error']}", file=sys.stderr)
+                                return 1
+                            dbg = res_sync.get("debug") or res_sync
+                        else:
+                            dbg = send_daemon_request(
+                                "/api/debug/status",
+                                None,
+                                port=args.host_port,
+                                host=args.host,
+                            )
+                    except RuntimeError:
+                        dbg = None
+                if dbg is None:
+                    dbg = _resolve_offline_debug_target_info(effective_dbg_root, sync_symbols=sync_flag)
+            elif action == "status":
                 dbg = send_daemon_request("/api/debug/status", None, port=args.host_port, host=args.host)
             elif action == "start":
                 req_body: Dict[str, Any] = {"reset": bool(getattr(args, "dbg_reset", False))}
@@ -831,7 +937,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                     return 1
                 dbg = res_dbg.get("debug") or res_dbg
 
-            if args.json:
+            field_key = getattr(args, "dbg_field", None)
+            if field_key:
+                val = dbg.get(field_key)
+                if val is None:
+                    return 1
+                print(val)
+            elif args.json:
                 print(json.dumps(dbg, indent=2))
             else:
                 state_label = (
@@ -839,6 +951,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 )
                 print(
                     f"Target Debug Server: {state_label}\n"
+                    f"  Device     : {dbg.get('device')} ({dbg.get('chip')})\n"
+                    f"  Target     : {dbg.get('package')} / {dbg.get('bin')} [{dbg.get('profile')}] ({dbg.get('target')})\n"
+                    f"  Executable : {dbg.get('executable')}\n"
+                    f"  Active Link: {dbg.get('active_elf_link')}\n"
                     f"  Core 0 GDB : 127.0.0.1:{dbg.get('gdb_core0_port')}\n"
                     f"  Core 1 GDB : 127.0.0.1:{dbg.get('gdb_core1_port')}\n"
                     f"  RTT Bridge : 127.0.0.1:{dbg.get('rtt_bridge_port')}\n"
@@ -1156,8 +1272,19 @@ def main(argv: Optional[List[str]] = None) -> int:
             pytest_cmd.extend(["-m", marker_expr])
         if keyword_expr:
             pytest_cmd.extend(["-k", keyword_expr])
+        test_dbg_override: Optional[bool] = getattr(args, "test_debug_server", None)
+        if test_dbg_override is None:
+            if "--debug-server" in raw_args:
+                test_dbg_override = True
+            elif "--no-debug-server" in raw_args:
+                test_dbg_override = False
+
         if args.host_port is not None:
             pytest_cmd.extend(["--host-port", str(args.host_port)])
+        if test_dbg_override is True:
+            pytest_cmd.append("--debug-server")
+        elif test_dbg_override is False:
+            pytest_cmd.append("--no-debug-server")
         if args.manual:
             pytest_cmd.append("--manual")
         if args.report_md:

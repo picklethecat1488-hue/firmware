@@ -348,13 +348,13 @@ Open any `tools/tests/js/*.test.mjs` test file or `tools/js/` ES module, set a b
 Target symbolic debugging runs natively on `probe-rs` across both Segger J-Link and CMSIS-DAP probes:
 *   **Primary Interface — `tools/host.py` (`tools/host_debug` Dual-Core GDB + Live RTT)**:
     - Enable **Target GDB debug server (`host_debug`)** inside the **🎯 Target Config** modal in `host.py` (optionally enabling **Halt Core 0 at `Reset_Handler` after Sync / Reset** and custom **Core 0 / Core 1 GDB Ports** for multi-target benches), or start from the CLI via `python tools/host.py --debug-server` / `python tools/host.py debug start`.
-    - In VS Code **Run and Debug**, attach directly while `host.py` continues streaming `defmt` logs and `shell>` commands over the `:50000` RTT bridge:
-      - **Host Daemon: Attach Shell Core 0 (GDB)** / **Host Daemon: Attach Shell Core 1 (GDB)** / **Host Daemon: Attach Shell Dual-Core (GDB)**
-      - **Host Daemon: Attach App Core 0 (GDB)** / **Host Daemon: Attach App Core 1 (GDB)** / **Host Daemon: Attach App Dual-Core (GDB)**
-      - **Host Daemon: Attach Carrier Board Shell (GDB)**
-    - Supports breaking at **`Reset_Handler`** (Core 0) and **`Core1_Reset_Handler`** (Core 1) and stepping to any Rust LOC in Flash or SRAM on either core.
+    - In VS Code **Run and Debug**, attach directly while `host.py` continues streaming `defmt` logs and `shell>` commands over the `:50000` RTT bridge — `host.py` automatically synchronizes `target/active_target.elf` (`python tools/host.py debug sync-symbols` / `python tools/host.py debug target-info --json`) for both **`debug`** and **`release`** executables across all targets:
+      - **Host Daemon: Attach Core 0 (GDB)**
+      - **Host Daemon: Attach Core 1 (GDB)**
+      - **Host Daemon: Attach Dual-Core (GDB)**
+    - Supports breaking at **`Reset_Handler`** (Core 0) and **`Core1_Reset_Handler`** (Core 1) and stepping to any Rust LOC in Flash or SRAM on either core in both `debug` and `release` profiles.
 *   **Secondary Interface — Standalone `probe-rs-debug` (`probe-rs.probe-rs-debug`)**:
-    - Stop any background `host.py` daemon first (`python tools/host.py stop` or task **`host: stop host.py daemon (release USB probe)`**) and launch **probe-rs (Secondary): Debug Shell (RP2040)**, **probe-rs (Secondary): Debug Firmware (RP2040)**, or **probe-rs (Secondary): Debug Carrier Board Shell (MCXN947)**.
+    - Stop any background `host.py` daemon first (`python tools/host.py stop` or task **`host: stop host.py daemon (release USB probe)`**) and launch **probe-rs (Secondary): Debug Shell (RP2040)**, **probe-rs (Secondary): Debug Firmware (RP2040)**, or **probe-rs (Secondary): Debug Carrier Board Shell (MCXN947)** (selecting `debug` or `release` profile).
 
 #### 5. Log Output Streaming and Interactive Console (`host_cli` / `cargo host-cli`)
 We provide a host command-line utility, `host_cli` (aliased as `cargo host-cli`), to stream and decode plaintext `defmt` logs, emit structured NDJSON events (`--json-events`), and run an interactive diagnostic command console via RTT.

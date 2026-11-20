@@ -13,7 +13,13 @@ import time
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
 from host_daemon.model.manual_prompt import ManualPromptState
-from host_daemon.model.metadata import get_cargo_target_directory, probe_attached_target_metadata
+from host_daemon.model.metadata import (
+    ACTIVE_TARGET_ELF_FILENAME,
+    format_debugger_device_name,
+    get_cargo_target_directory,
+    probe_attached_target_metadata,
+    sync_active_target_elf_link,
+)
 from host_daemon.provider.daemon.config import discover_target_packages, save_last_session
 from host_daemon.provider.daemon.test_manager import DeviceTestRunnerManager
 
@@ -129,7 +135,9 @@ class DaemonRunner:
         self.rtt_bridge_port: int = int(rtt_bridge_port)
         self.probe_selector: Optional[str] = probe_selector
 
-        self.elf_path: Optional[Path] = None
+        self.elf_path: Optional[Path] = self.resolve_current_elf_path()
+        if self.elf_path is not None:
+            sync_active_target_elf_link(self.repo_root, self.elf_path)
         self.host_cli_path: Optional[Path] = None
         self.host_fs_path: Optional[Path] = None
         self.host_debug_path: Optional[Path] = None
@@ -368,9 +376,14 @@ class DaemonRunner:
             if probe_selector is not None:
                 self.probe_selector = probe_selector or None
 
+            binary_identity_changed = any(val is not None for val in (target, package, bin_name, release))
             resolved_elf = self.resolve_current_elf_path()
             if resolved_elf is not None:
                 self.elf_path = resolved_elf
+            elif binary_identity_changed:
+                self.elf_path = None
+            if self.elf_path is not None:
+                sync_active_target_elf_link(self.repo_root, self.elf_path)
             self._cached_metadata = None
             self._cached_metadata_elf = None
 
@@ -645,6 +658,7 @@ class DaemonRunner:
             raise FileNotFoundError(f"Target ELF not found at {elf}")
 
         self.elf_path = elf
+        sync_active_target_elf_link(self.repo_root, elf)
         self.log(f"Target binary built successfully: {elf}")
         return elf
 
@@ -1050,22 +1064,51 @@ class DaemonRunner:
         return ["cargo", "host-debug"]
 
     def get_debug_status(self) -> Dict[str, Any]:
-        """Return a thread-safe snapshot of the `host_debug` GDB server and RTT bridge state."""
+        """Return a thread-safe snapshot of the `host_debug` GDB server, active ELF (`debug` or `release`), and device."""
         with self._lock:
             info = dict(self.debug_server_info)
-            return {
-                "enabled": self.enable_debug_server,
-                "active": self.debug_server_active,
-                "halt_on_reset": self.halt_on_reset,
-                "gdb_core0_port": int(info.get("gdb_core0_port") or self.gdb_core0_port),
-                "gdb_core1_port": info.get("gdb_core1_port", self.gdb_core1_port),
-                "rtt_bridge_port": int(info.get("rtt_bridge_port") or self.rtt_bridge_port),
-                "probe": self.probe_selector,
-                "cores": int(info.get("cores") or 0),
-                "halted_on_reset": bool(info.get("halted_on_reset", False)),
-                "gdb_core0_connected": bool(info.get("gdb_core0_connected", False)),
-                "gdb_core1_connected": bool(info.get("gdb_core1_connected", False)),
-            }
+            effective_elf = self.elf_path or self.resolve_current_elf_path()
+            effective_chip = str(info.get("chip") or self.chip or "").strip() or None
+            profile_name = "release" if self.release else "debug"
+            pkg_name = self.package
+            bin_name = self.bin_name
+            target_triple = self.target
+        try:
+            target_dir = get_cargo_target_directory(self.repo_root)
+        except (OSError, RuntimeError, ValueError):
+            target_dir = self.repo_root / "target"
+        active_link = target_dir / ACTIVE_TARGET_ELF_FILENAME
+        return {
+            "enabled": self.enable_debug_server,
+            "active": self.debug_server_active,
+            "halt_on_reset": self.halt_on_reset,
+            "gdb_core0_port": int(info.get("gdb_core0_port") or self.gdb_core0_port),
+            "gdb_core1_port": info.get("gdb_core1_port", self.gdb_core1_port),
+            "rtt_bridge_port": int(info.get("rtt_bridge_port") or self.rtt_bridge_port),
+            "probe": self.probe_selector,
+            "cores": int(info.get("cores") or 0),
+            "halted_on_reset": bool(info.get("halted_on_reset", False)),
+            "gdb_core0_connected": bool(info.get("gdb_core0_connected", False)),
+            "gdb_core1_connected": bool(info.get("gdb_core1_connected", False)),
+            "executable": str(effective_elf) if effective_elf else None,
+            "active_elf_link": str(active_link),
+            "device": format_debugger_device_name(effective_chip),
+            "chip": effective_chip,
+            "package": pkg_name,
+            "bin": bin_name,
+            "target": target_triple,
+            "profile": profile_name,
+        }
+
+    def sync_active_symbols(self) -> Dict[str, Any]:
+        """Ensure the active `debug` or `release` target ELF exists and refresh `target/active_target.elf`."""
+        resolved = self.elf_path or self.resolve_current_elf_path()
+        if resolved is None or not resolved.is_file():
+            resolved = self.build_target()
+        else:
+            self.elf_path = resolved
+            sync_active_target_elf_link(self.repo_root, resolved)
+        return self.get_debug_status()
 
     def stop_debug_server(self) -> None:
         """Gracefully stop `host_debug` and release the USB debug probe session."""
@@ -1109,6 +1152,7 @@ class DaemonRunner:
             self.elf_path = self.resolve_current_elf_path()
         if not self.elf_path or not self.elf_path.exists():
             raise RuntimeError("Target ELF is not built yet; run sync before starting debug server.")
+        sync_active_target_elf_link(self.repo_root, self.elf_path)
 
         self.stop_debug_server()
         effective_halt = self.halt_on_reset if halt_on_reset is None else bool(halt_on_reset)

@@ -1666,8 +1666,8 @@ def test_symbolic_test_debugging_dap_breakpoint_and_vscode_config(
     defined_tasks = {t["label"] for t in tasks_cfg.get("tasks", [])}
     config_names = {c["name"] for c in launch_cfg.get("configurations", [])}
     assert not (vscode_dir / "openocd_custom.cfg").exists()
-    assert "Host Daemon: Attach Shell Core 0 (GDB)" in config_names
-    assert "Host Daemon: Attach Shell Core 1 (GDB)" in config_names
+    assert "Host Daemon: Attach Core 0 (GDB)" in config_names
+    assert "Host Daemon: Attach Core 1 (GDB)" in config_names
     assert "probe-rs (Secondary): Debug Shell (RP2040)" in config_names
     for cfg in launch_cfg.get("configurations", []):
         assert cfg.get("servertype") != "openocd", f"Legacy OpenOCD config must be removed: {cfg['name']}"
@@ -2162,3 +2162,228 @@ def test_host_py_debug_server_cli_and_single_reset_sync(
         runner.stop()
         server.shutdown()
         server.server_close()
+
+
+def test_worm_segmented_chrysalis_575_debug_release_symbols_and_active_target_elf(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify debug & release ELF symbol sync, `.program_metadata` profile validation, `host.py debug target-info/sync-symbols`, and `.vscode/launch.json`."""
+    import json
+
+    from host_daemon import cli as host_cli_mod
+    from host_daemon.model import metadata as host_meta
+    from host_daemon.provider.daemon.config import save_last_session
+    from host_daemon.provider.daemon.runner import DaemonRunner
+
+    # 1. `validate_metadata_matches_target` must reject `debug` vs `release` or `shell` vs `app` mismatches
+    base_meta = {
+        "checksum": "0x1234",
+        "chip": "rp2040",
+        "board_type": "rp2040_flash_2mb",
+        "program_metadata_board_type": "rp2040_flash_2mb",
+        "bin_name": "cat_detector_shell",
+        "build_profile": "release",
+    }
+    assert host_meta.validate_metadata_matches_target(base_meta, dict(base_meta)) is True
+    debug_meta = {**base_meta, "build_profile": "debug"}
+    assert host_meta.validate_metadata_matches_target(base_meta, debug_meta) is False
+    app_meta = {**base_meta, "bin_name": "cat_detector_app"}
+    assert host_meta.validate_metadata_matches_target(base_meta, app_meta) is False
+
+    # 2. Fake workspace with both `debug` and `release` ELFs to verify `target/active_target.elf` & `host.py debug`
+    fake_repo = tmp_path / "repo"
+    (fake_repo / "app").mkdir(parents=True)
+    (fake_repo / "Cargo.toml").write_text('[workspace]\nmembers = ["app"]\n', encoding="utf-8")
+    (fake_repo / "app" / "Cargo.toml").write_text(
+        '[package]\nname = "cat_detector"\nversion = "0.1.0"\ndefault-run = "cat_detector_shell"\n\n'
+        '[[bin]]\nname = "cat_detector_shell"\npath = "src/main.rs"\n\n'
+        '[[bin]]\nname = "carrier_board_shell"\npath = "src/cb.rs"\n\n'
+        "[package.metadata.binaries.cat_detector_shell]\n"
+        'target = "thumbv6m-none-eabi"\nchip = "rp2040"\nboard = "cat_detector"\n\n'
+        "[package.metadata.binaries.carrier_board_shell]\n"
+        'target = "thumbv8m.main-none-eabihf"\nchip = "MCXN947"\nboard = "carrier_board"\n',
+        encoding="utf-8",
+    )
+    target_dir = fake_repo / "target"
+    dbg_elf = target_dir / "thumbv6m-none-eabi" / "debug" / "cat_detector_shell"
+    rel_elf = target_dir / "thumbv6m-none-eabi" / "release" / "cat_detector_shell"
+    cb_rel_elf = target_dir / "thumbv8m.main-none-eabihf" / "release" / "carrier_board_shell"
+    for p, tag in ((dbg_elf, b"DBG_ELF"), (rel_elf, b"REL_ELF"), (cb_rel_elf, b"CB_REL_ELF")):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"\x7fELF" + tag)
+
+    monkeypatch.setattr(host_meta, "get_cargo_target_directory", lambda _r: target_dir)
+
+    runner = DaemonRunner(
+        repo_root=fake_repo,
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+        target="thumbv6m-none-eabi",
+        chip="rp2040",
+        release=False,
+    )
+    runner.update_config(release=False)
+    active_link = target_dir / "active_target.elf"
+    assert active_link.is_symlink() or active_link.is_file()
+    assert active_link.resolve() == dbg_elf.resolve()
+    dbg_status_0 = runner.get_debug_status()
+    assert dbg_status_0["profile"] == "debug"
+    assert dbg_status_0["device"] == "RP2040"
+    assert Path(dbg_status_0["executable"]).resolve() == dbg_elf.resolve()
+
+    # Switch to `release` mode (exact scenario of WORM-SEGMENTED-CHRYSALIS-575!)
+    runner.update_config(release=True)
+    assert active_link.resolve() == rel_elf.resolve()
+    dbg_status_rel = runner.get_debug_status()
+    assert dbg_status_rel["profile"] == "release"
+    assert dbg_status_rel["device"] == "RP2040"
+    assert Path(dbg_status_rel["executable"]).resolve() == rel_elf.resolve()
+
+    # Switch to `carrier_board_shell` (`MCXN947` in `release` mode) via live daemon + `host.py debug` CLI
+    server, port = _start_ephemeral_daemon(runner)
+    try:
+        runner.update_config(
+            package="cat_detector",
+            bin_name="carrier_board_shell",
+            target="thumbv8m.main-none-eabihf",
+            chip="MCXN947",
+            release=True,
+        )
+        assert (
+            host_cli_mod.main(
+                [
+                    "debug",
+                    "target-info",
+                    "--host-port",
+                    str(port),
+                    "--json",
+                ]
+            )
+            == 0
+        )
+        ti = json.loads(capsys.readouterr().out)
+        assert ti["device"] == "MCXN947"
+        assert ti["chip"] == "MCXN947"
+        assert ti["profile"] == "release"
+        assert ti["bin"] == "carrier_board_shell"
+        assert Path(ti["executable"]).resolve() == cb_rel_elf.resolve()
+
+        # Break the symlink and confirm `host.py debug sync-symbols` restores it from `host.py`!
+        active_link.unlink()
+        assert (
+            host_cli_mod.main(
+                [
+                    "debug",
+                    "sync-symbols",
+                    "--host-port",
+                    str(port),
+                    "--json",
+                ]
+            )
+            == 0
+        )
+        sync_out = json.loads(capsys.readouterr().out)
+        assert Path(sync_out["active_elf_link"]).resolve() == cb_rel_elf.resolve()
+        assert active_link.resolve() == cb_rel_elf.resolve()
+    finally:
+        runner.stop()
+        server.shutdown()
+        server.server_close()
+
+    # Offline fallback when `host.py` is stopped: `host.py debug sync-symbols --repo-root <fake_repo>` reads `host_session.json`
+    save_last_session(
+        fake_repo,
+        {
+            "package": "cat_detector",
+            "bin": "cat_detector_shell",
+            "release": True,
+            "target": "thumbv6m-none-eabi",
+            "chip": "rp2040",
+        },
+    )
+    active_link.unlink()
+    assert (
+        host_cli_mod.main(
+            [
+                "debug",
+                "sync-symbols",
+                "--repo-root",
+                str(fake_repo),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    off_sync = json.loads(capsys.readouterr().out)
+    assert off_sync["profile"] == "release"
+    assert off_sync["device"] == "RP2040"
+    assert active_link.resolve() == rel_elf.resolve()
+
+    # 3. Verify `.vscode/launch.json` & `.vscode/tasks.json` never hardcode `debug/<bin>` on Host Daemon GDB configs
+    vscode_dir = WORKSPACE_ROOT / ".vscode"
+    launch_cfg = json.loads((vscode_dir / "launch.json").read_text(encoding="utf-8"))
+    tasks_cfg = json.loads((vscode_dir / "tasks.json").read_text(encoding="utf-8"))
+    cortex_cfgs = [c for c in launch_cfg.get("configurations", []) if c.get("type") == "cortex-debug"]
+    assert len(cortex_cfgs) >= 2
+    for c in cortex_cfgs:
+        assert c.get("executable") == "${workspaceFolder}/target/active_target.elf", (
+            f"cortex-debug config {c['name']!r} must read target/active_target.elf synced by host.py"
+        )
+        assert c.get("preLaunchTask") == "host: sync active target symbols"
+    for c in launch_cfg.get("configurations", []):
+        raw_c = json.dumps(c)
+        if "carrier_board_shell" in raw_c:
+            assert "thumbv8m.main-none-eabihf" in raw_c and "thumbv6m-none-eabi" not in raw_c
+    for t in tasks_cfg.get("tasks", []):
+        raw_t = json.dumps(t)
+        if "carrier_board_shell" in raw_t:
+            assert "thumbv8m.main-none-eabihf" in raw_t and "thumbv6m-none-eabi" not in raw_t
+
+
+def test_host_py_test_explicit_debug_server_and_no_debug_server_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify `host.py test --debug-server` and `host.py test --no-debug-server` propagate explicit GDB server mode."""
+    from device_tests.model import DetectedBoard
+    from host_daemon import cli as host_cli_mod
+
+    parsed_on = host_cli_mod.parse_arguments(["test", "--debug-server", "--stress-runs", "10"])
+    assert parsed_on.test_debug_server is True
+    assert parsed_on.test_stress_runs == 10
+
+    parsed_off = host_cli_mod.parse_arguments(["test", "--no-debug-server", "--stress-runs", "10"])
+    assert parsed_off.test_debug_server is False
+    assert parsed_off.test_stress_runs == 10
+
+    captured_cmds: List[List[str]] = []
+
+    class _FakeCompleted:
+        returncode = 0
+
+    monkeypatch.setattr(
+        host_cli_mod,
+        "send_daemon_request",
+        lambda *_a, **_kw: (_ for _ in ()).throw(RuntimeError("offline")),
+    )
+    import device_tests.client as client_mod
+
+    monkeypatch.setattr(
+        client_mod,
+        "query_metadata_standalone",
+        lambda _root: DetectedBoard(board_type="rp2040_flash_2mb", chip="rp2040"),
+    )
+    monkeypatch.setattr(
+        host_cli_mod.subprocess,
+        "run",
+        lambda cmd, **_kw: (captured_cmds.append(list(cmd)), _FakeCompleted())[1],
+    )
+
+    assert host_cli_mod.main(["test", "--debug-server"]) == 0
+    assert "--debug-server" in captured_cmds[-1]
+    assert "--no-debug-server" not in captured_cmds[-1]
+
+    assert host_cli_mod.main(["test", "--no-debug-server"]) == 0
+    assert "--no-debug-server" in captured_cmds[-1]
+    assert "--debug-server" not in captured_cmds[-1]

@@ -432,6 +432,8 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
     let rp_writer = platform::types::ProjectMetadata::serialize(
         "rp2040",
         "rp2040_flash_2mb",
+        "cat_detector_shell",
+        "release",
         1,
         4096,
         2048,
@@ -507,6 +509,8 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
     let stdout = String::from_utf8(out.stdout).unwrap();
     assert!(stdout.contains("\"board_type\":\"rp2040_flash_2mb\""));
     assert!(stdout.contains("\"chip\":\"rp2040\""));
+    assert!(stdout.contains("\"bin_name\":\"cat_detector_shell\""));
+    assert!(stdout.contains("\"build_profile\":\"release\""));
     assert!(stdout.contains("\"source\":\"program_metadata\""));
     assert!(stdout.contains("\"stack_scan_limit\":2048"));
     assert!(stdout.contains(&format!("\"0x{:04X}\"", elf_info.checksum)));
@@ -555,6 +559,8 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
     let cb_writer = platform::types::ProjectMetadata::serialize(
         "MCXN947",
         "carrier_board",
+        "carrier_board_shell",
+        "debug",
         128,
         8192,
         2048,
@@ -580,6 +586,8 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
     let stdout_cb = String::from_utf8(out_cb.stdout).unwrap();
     assert!(stdout_cb.contains("board_type: carrier_board"));
     assert!(stdout_cb.contains("chip: MCXN947"));
+    assert!(stdout_cb.contains("bin_name: carrier_board_shell"));
+    assert!(stdout_cb.contains("build_profile: debug"));
     assert!(stdout_cb.contains("partition[2] (metadata): address=0x001E0000 size=32768"));
 
     let _ = std::fs::remove_dir_all(&temp_dir);

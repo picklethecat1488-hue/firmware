@@ -4,17 +4,53 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import time
 from typing import Any, Dict, List, Optional
 
 ATTACHED_INVALID_META_RE = re.compile(r"AttachedTargetMetadataInvalid\s*\(([^)]+)\)")
+ACTIVE_TARGET_ELF_FILENAME: str = "active_target.elf"
 BUILD_PROFILES: tuple[str, ...] = ("debug", "release")
 DEFAULT_QUERY_METADATA_TIMEOUT_SEC: float = 30.0
 MAX_METADATA_PROBE_RETRIES: int = 2
 METADATA_PROBE_RETRY_BACKOFF_SEC: float = 0.6
 _CARGO_TARGET_DIR_CACHE: Dict[Path, Path] = {}
+
+
+def format_debugger_device_name(chip: Optional[str]) -> Optional[str]:
+    """Return the canonical debugger device identifier (e.g. `'RP2040'`, `'MCXN947'`) for a chip string."""
+    cleaned = str(chip or "").strip()
+    return cleaned.upper() if cleaned else None
+
+
+def sync_active_target_elf_link(repo_root: Path, elf_path: Optional[Path]) -> Optional[Path]:
+    """Atomically point `<cargo_target_dir>/active_target.elf` at `elf_path` so IDE debuggers track debug & release builds."""
+    if elf_path is None or not elf_path.is_file():
+        return None
+    try:
+        target_dir = get_cargo_target_directory(repo_root)
+    except (OSError, RuntimeError, ValueError):
+        target_dir = repo_root / "target"
+
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        link_path = target_dir / ACTIVE_TARGET_ELF_FILENAME
+        resolved_elf = elf_path.resolve()
+        tmp_link = target_dir / f".{ACTIVE_TARGET_ELF_FILENAME}.{os.getpid()}.tmp"
+        if tmp_link.exists() or tmp_link.is_symlink():
+            tmp_link.unlink()
+        try:
+            tmp_link.symlink_to(resolved_elf)
+            os.replace(tmp_link, link_path)
+        except OSError:
+            if tmp_link.exists() or tmp_link.is_symlink():
+                tmp_link.unlink()
+            shutil.copy2(resolved_elf, link_path)
+        return link_path
+    except OSError:
+        return None
 
 
 def _is_transient_metadata_probe_error(output: str) -> bool:
@@ -141,6 +177,8 @@ def parse_program_metadata_output(raw_output: str) -> Optional[Dict[str, Any]]:
             "board_type": kv["board_type"],
             "program_metadata_board_type": kv.get("program_metadata_board_type", kv["board_type"]),
             "provisioned_board_type": kv.get("provisioned_board_type"),
+            "bin_name": kv.get("bin_name"),
+            "build_profile": kv.get("build_profile"),
             "source": kv.get("source", "program_metadata"),
         }
     return None
@@ -165,6 +203,16 @@ def validate_metadata_matches_target(
     dev_prog_bt = str(device_meta.get("program_metadata_board_type") or device_meta.get("board_type") or "").strip()
     tgt_prog_bt = str(target_meta.get("program_metadata_board_type") or target_meta.get("board_type") or "").strip()
     if dev_prog_bt != tgt_prog_bt:
+        return False
+
+    dev_bin = str(device_meta.get("bin_name") or "").strip()
+    tgt_bin = str(target_meta.get("bin_name") or "").strip()
+    if dev_bin and tgt_bin and dev_bin != tgt_bin:
+        return False
+
+    dev_prof = str(device_meta.get("build_profile") or "").strip().lower()
+    tgt_prof = str(target_meta.get("build_profile") or "").strip().lower()
+    if dev_prof and tgt_prof and dev_prof != tgt_prof:
         return False
 
     for scalar_field in ("flash_start", "flash_write_size", "flash_erase_size", "stack_scan_limit"):
@@ -284,7 +332,7 @@ def probe_attached_target_metadata(
         if rc_elf == 0:
             expected_target_meta = parse_program_metadata_output(out_elf)
 
-    seen_geometry_keys: set[tuple[str, Any, Any]] = set()
+    seen_geometry_keys: set[tuple[str, Any]] = set()
     last_error = "No debug probes connected"
 
     for candidate_elf in elf_candidates:
@@ -303,7 +351,6 @@ def probe_attached_target_metadata(
         geom_key = (
             str(cand_spec.get("chip", "")).lower(),
             cand_spec.get("program_metadata_addr"),
-            cand_spec.get("program_metadata_size"),
         )
         if geom_key in seen_geometry_keys:
             continue
