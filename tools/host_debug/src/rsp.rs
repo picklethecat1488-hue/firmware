@@ -4,8 +4,45 @@
 use crate::arch::{TargetArchProfile, TargetRegisterLayout};
 use crate::server::DebugBackend;
 
+/// Cortex-M `EXC_RETURN` / System Control Space non-instruction address threshold (`0xF000_0000`).
+pub const CORTEX_M_NON_CODE_THRESHOLD: u64 = 0xF000_0000;
+
 /// Maximum single RSP memory read chunk size in bytes.
 pub const MAX_RSP_MEMORY_READ_BYTES: usize = 4096;
+
+fn select_vcont_action_for_core(vcont_body: &str) -> char {
+    let mut fallback_unthreaded: Option<char> = None;
+    for clause in vcont_body.split(';') {
+        let trimmed = clause.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let (act_part, tid_opt) = match trimmed.split_once(':') {
+            Some((a, t)) => (a, Some(t.trim())),
+            None => (trimmed, None),
+        };
+        let Some(action_char) = act_part.chars().next() else {
+            continue;
+        };
+        match tid_opt {
+            Some(tid) => {
+                let matches_thread_1 = matches!(tid, "1" | "01" | "-1")
+                    || tid.ends_with(".1")
+                    || tid.ends_with(".01")
+                    || tid.ends_with(".-1");
+                if matches_thread_1 {
+                    return action_char;
+                }
+            }
+            None => {
+                if fallback_unthreaded.is_none() {
+                    fallback_unthreaded = Some(action_char);
+                }
+            }
+        }
+    }
+    fallback_unthreaded.unwrap_or('c')
+}
 
 /// Strongly typed GDB Remote Serial Protocol status and error reply codes.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -350,8 +387,14 @@ impl RspCoreHandler {
             return RspAction::status(self.handle_write_mem_hex(mem_args, backend));
         }
         if cmd.starts_with("Z0,") || cmd.starts_with("Z1,") {
+            let is_sw_bp = cmd.starts_with("Z0,");
             let allow_sw_ram = true;
-            return RspAction::status(self.handle_insert_bp(&cmd[3..], allow_sw_ram, backend));
+            return RspAction::status(self.handle_insert_bp(
+                &cmd[3..],
+                is_sw_bp,
+                allow_sw_ram,
+                backend,
+            ));
         }
         if cmd.starts_with("z0,") || cmd.starts_with("z1,") {
             return RspAction::status(self.handle_remove_bp(&cmd[3..], backend));
@@ -372,8 +415,7 @@ impl RspCoreHandler {
             };
         }
         if let Some(vcont_body) = cmd.strip_prefix("vCont;") {
-            let first_action = vcont_body.split(';').next().unwrap_or("");
-            let action_char = first_action.chars().next().unwrap_or('c');
+            let action_char = select_vcont_action_for_core(vcont_body);
             match action_char {
                 's' | 'S' => {
                     return match backend.step_core(self.core_idx) {
@@ -633,6 +675,7 @@ impl RspCoreHandler {
     fn handle_insert_bp<B: DebugBackend + ?Sized>(
         &self,
         args: &str,
+        is_sw_bp: bool,
         allow_sw_ram: bool,
         backend: &mut B,
     ) -> RspReplyCode {
@@ -641,6 +684,9 @@ impl RspCoreHandler {
             Ok(a) => a,
             Err(_) => return RspReplyCode::ErrBadRequest,
         };
+        if is_sw_bp && addr >= CORTEX_M_NON_CODE_THRESHOLD {
+            return RspReplyCode::Empty;
+        }
         match backend.insert_breakpoint(self.core_idx, addr, allow_sw_ram) {
             Ok(true) => RspReplyCode::Ok,
             Ok(false) | Err(_) => RspReplyCode::ErrNoBreakpointSlot,

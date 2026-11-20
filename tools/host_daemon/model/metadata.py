@@ -261,15 +261,18 @@ def run_host_fs_query_metadata(
     elf_path: Path,
     *,
     elf_only: bool = False,
+    gdb_bridge: Optional[str] = None,
     host_fs_path: Optional[Path] = None,
     timeout: float = DEFAULT_QUERY_METADATA_TIMEOUT_SEC,
 ) -> tuple[int, str]:
-    """Invoke `host_fs --elf <elf_path> query_metadata [--elf-only] --json` and return `(rc, output)`."""
+    """Invoke `host_fs --elf <elf_path> [--gdb-bridge <addr>] query_metadata [--elf-only] --json` and return `(rc, output)`."""
     cmd = _resolve_host_fs_cmd_prefix(repo_root, host_fs_path) + [
         "--elf",
         str(elf_path),
-        "query_metadata",
     ]
+    if gdb_bridge and not elf_only:
+        cmd.extend(["--gdb-bridge", str(gdb_bridge)])
+    cmd.append("query_metadata")
     if elf_only:
         cmd.append("--elf-only")
     cmd.append("--json")
@@ -314,6 +317,7 @@ def probe_attached_target_metadata(
     *,
     preferred_elf: Optional[Path] = None,
     host_fs_path: Optional[Path] = None,
+    gdb_bridge: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Probe the attached target using compiled ELFs and validate metadata against `preferred_elf`."""
     try:
@@ -371,6 +375,7 @@ def probe_attached_target_metadata(
             repo_root,
             candidate_elf,
             elf_only=False,
+            gdb_bridge=gdb_bridge,
             host_fs_path=host_fs_path,
         )
         if rc_dev == 0:

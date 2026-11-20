@@ -27,6 +27,8 @@ struct MockCoreState {
     arch: ProcessorArch,
     has_fpu: bool,
     halted: bool,
+    interrupts_masked: bool,
+    pending_irq_pc: Option<u32>,
     regs: BTreeMap<u16, u32>,
     bp_ctrl_enabled: bool,
     hw_comparators: Vec<Option<u64>>,
@@ -61,6 +63,8 @@ impl MockCoreState {
             arch,
             has_fpu,
             halted,
+            interrupts_masked: false,
+            pending_irq_pc: None,
             regs,
             bp_ctrl_enabled: false,
             hw_comparators: vec![None; bp_units],
@@ -133,10 +137,32 @@ impl ArmHardwareOps for SharedHwAdapter<'_> {
     fn raw_step_core(&mut self, core_idx: usize) -> Result<u32, String> {
         let mut guard = self.state.lock().unwrap();
         let core = &mut guard.cores[core_idx];
-        let next_pc = core.regs.get(&15).copied().unwrap_or(0).wrapping_add(2);
+        let cur_pc = core.regs.get(&15).copied().unwrap_or(0) & !1;
+        // Hardware BPU v1/FPB re-traps at cur_pc if comparator at cur_pc was not disarmed!
+        if core.bp_ctrl_enabled && core.hw_comparators.contains(&Some(cur_pc as u64)) {
+            core.halted = true;
+            return Ok(cur_pc);
+        }
+        // Unmasked pending interrupt vectors into ISR instead of stepping the current instruction!
+        let next_pc = if !core.interrupts_masked {
+            if let Some(isr_pc) = core.pending_irq_pc.take() {
+                core.regs.insert(14, 0xFFFF_FFF9);
+                isr_pc
+            } else {
+                cur_pc.wrapping_add(2)
+            }
+        } else {
+            cur_pc.wrapping_add(2)
+        };
         core.regs.insert(15, next_pc);
         core.halted = true;
         Ok(next_pc)
+    }
+
+    fn set_interrupt_mask(&mut self, core_idx: usize, masked: bool) -> Result<(), String> {
+        let mut guard = self.state.lock().unwrap();
+        guard.cores[core_idx].interrupts_masked = masked;
+        Ok(())
     }
 
     fn raw_resume_core(&mut self, core_idx: usize) -> Result<(), String> {
@@ -276,10 +302,7 @@ impl DebugBackend for MockDualCoreBackend {
             let _ = self.halt_core(core_idx);
         }
         let mut hw = SharedHwAdapter { state: &self.state };
-        if let Some(pc) = self.bp_mgr.step_over_sw_bkpt_if_needed(&mut hw, core_idx)? {
-            return Ok(pc);
-        }
-        hw.raw_step_core(core_idx)
+        self.bp_mgr.step_core(&mut hw, core_idx)
     }
 
     fn reset_and_halt_core(&mut self, core_idx: usize) -> Result<u32, String> {
@@ -1133,4 +1156,95 @@ fn test_worm_bristly_roundworm_431_gdb_zero_warnings_on_exec_file_and_reg_cache_
         "Expected zero GDB warnings on attach + monitor reset halt + maintenance flush register-cache, got:\n{}",
         combined
     );
+}
+
+#[test]
+fn test_worm_lubricated_flatworm_512_masked_single_step_past_hw_bp_and_vcont_clause_selection() {
+    let (mut backend, shared) = MockDualCoreBackend::new();
+    let layout = backend.core_register_layout(0);
+    let mut rsp = RspCoreHandler::new(0, layout, None);
+
+    // Arm hardware breakpoint at CORE0_MAIN_LOC_ADDR and stop Core 0 there with a pending timer IRQ
+    assert_eq!(
+        rsp.handle_packet(
+            format!("Z1,{:x},2", CORE0_MAIN_LOC_ADDR).as_bytes(),
+            &mut backend
+        ),
+        RspAction::Reply("OK".to_string())
+    );
+    {
+        let mut guard = shared.lock().unwrap();
+        guard.cores[0].regs.insert(15, CORE0_MAIN_LOC_ADDR);
+        guard.cores[0].halted = true;
+        guard.cores[0].pending_irq_pc = Some(0x1000_0900);
+    }
+
+    // Send multi-clause `vCont;c:2;s:1` — thread 1 (this core) MUST single-step with interrupts masked
+    // AND temporarily disarm the active FPB slot at CORE0_MAIN_LOC_ADDR so PC advances to +2!
+    let step_act = rsp.handle_packet(b"vCont;c:2;s:1", &mut backend);
+    assert_eq!(step_act, RspAction::Reply("S05".to_string()));
+    {
+        let guard = shared.lock().unwrap();
+        assert_eq!(
+            guard.cores[0].regs.get(&15).copied().unwrap_or(0) & !1,
+            CORE0_MAIN_LOC_ADDR + 2,
+            "Single-step must advance past armed hardware breakpoint without vectoring into pending ISR"
+        );
+        assert!(
+            !guard.cores[0].interrupts_masked,
+            "Interrupt masking (DHCSR.C_MASKINTS) must be cleared after single-step completes"
+        );
+        assert!(
+            guard.cores[0]
+                .hw_comparators
+                .contains(&Some(CORE0_MAIN_LOC_ADDR as u64)),
+            "Hardware breakpoint comparator must be re-armed immediately after stepping past it"
+        );
+    }
+
+    // `Z0` at Cortex-M EXC_RETURN (`0xFFFF_FFF8`) must return Empty ("") rather than E0E error
+    assert_eq!(
+        rsp.handle_packet(b"Z0,fffffff8,2", &mut backend),
+        RspAction::Reply(String::new())
+    );
+
+    // Verify `.vscode/cortex_debug_init.gdb` silences `from ...` REPL injections in `arm-none-eabi-gdb`
+    if Command::new("arm-none-eabi-gdb")
+        .arg("--version")
+        .output()
+        .is_ok()
+    {
+        let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|p| p.parent())
+            .expect("workspace root")
+            .to_path_buf();
+        let init_gdb = repo_root.join(".vscode").join("cortex_debug_init.gdb");
+        assert!(init_gdb.is_file(), "Missing {}", init_gdb.display());
+        let gdb_from = Command::new("arm-none-eabi-gdb")
+            .current_dir(&repo_root)
+            .args([
+                "-q",
+                "-batch",
+                "-ex",
+                "set sysroot /",
+                "-ex",
+                "source .vscode/cortex_debug_init.gdb",
+                "-ex",
+                "from ocp_vscode import show",
+            ])
+            .output()
+            .expect("run arm-none-eabi-gdb with cortex_debug_init.gdb");
+        let combined = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&gdb_from.stdout),
+            String::from_utf8_lossy(&gdb_from.stderr)
+        );
+        assert!(gdb_from.status.success(), "{}", combined);
+        assert!(
+            !combined.contains("Undefined command: \"from\""),
+            "Expected no Undefined command 'from' error, got:\n{}",
+            combined
+        );
+    }
 }

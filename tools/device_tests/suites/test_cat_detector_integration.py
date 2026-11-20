@@ -183,21 +183,30 @@ async def test_dual_core_gdb_reset_handler_to_loc(host: AsyncHostSessionClient) 
             assert gdb0.command("QStartNoAckMode") == "OK"
             assert gdb1.command("QStartNoAckMode") == "OK"
             assert gdb0.command("?") == "S05"
+            assert gdb1.command("?") == "S05"
             assert gdb0.read_pc() == reset_handler_addr
 
             # Set Core 0 breakpoint at `cat_detector_shell.rs:102` and Core 1 at `Core1_Reset_Handler`.
+            # Leave Core 1 halted in Mask Boot ROM while Core 0 runs through `Board::init(p).await`
+            # (verifying RP2040 `TIMER.DBGPAUSE = DBG0` never freezes Core 0 `.await` timers when Core 1 is halted!).
             assert gdb0.command(f"Z1,{core0_loc_addr:x},2") == "OK"
             assert gdb1.command(f"Z1,{core1_reset_addr:x},2") == "OK"
 
-            gdb1.send_continue()
             gdb0.send_continue()
 
             # Core 0 hits `cat_detector_shell.rs:102` before `bootstrap_core1()`.
             assert gdb0.read_reply() == "S05"
             assert gdb0.read_pc() == core0_loc_addr
 
-            # Clear Core 0 breakpoint and continue Core 0 through `bootstrap_core1()` -> Core 1 hits `Core1_Reset_Handler`!
+            # Single-step past the armed hardware breakpoint (`WORM-LUBRICATED-FLATWORM-512`) with interrupts masked!
+            assert gdb0.command("vCont;c:2;s:1") == "S05"
+            stepped_pc = gdb0.read_pc()
+            assert stepped_pc != core0_loc_addr, f"Single-step remained trapped at 0x{stepped_pc:08x}"
+            assert stepped_pc < 0x2000_0000, f"Single-step jumped out of flash: 0x{stepped_pc:08x}"
+
+            # Clear Core 0 breakpoint and continue Core 0 through `bootstrap_core1()` -> Core 1 auto-resumes Boot ROM & hits `Core1_Reset_Handler`!
             assert gdb0.command(f"z1,{core0_loc_addr:x},2") == "OK"
+            gdb1.send_continue()
             gdb0.send_continue()
 
             assert gdb1.read_reply() == "S05"

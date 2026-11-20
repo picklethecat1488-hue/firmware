@@ -1064,6 +1064,21 @@ class DaemonRunner:
                     return dict(self._cached_metadata)
 
             self._record_lifecycle("mode_switch", "Probing target .program_metadata over SWD...")
+            if self.debug_server_active:
+                bridge_addr = f"127.0.0.1:{self.rtt_bridge_port}"
+                res_bridge = probe_attached_target_metadata(
+                    self.repo_root,
+                    preferred_elf=target_elf,
+                    host_fs_path=self.host_fs_path,
+                    gdb_bridge=bridge_addr,
+                )
+                if res_bridge.get("connected") and res_bridge.get("matches_target") and target_elf is not None:
+                    with self._lock:
+                        self._cached_metadata = dict(res_bridge)
+                        self._cached_metadata_elf = target_elf
+                self._record_lifecycle("idle", "Target metadata probe complete", mark_recent=False)
+                return res_bridge
+
             rtt_was_running = (
                 (self.rtt_process is not None and self.rtt_process.poll() is None)
                 or (self._streaming_thread is not None and self._streaming_thread.is_alive())

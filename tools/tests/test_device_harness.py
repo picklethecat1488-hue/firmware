@@ -136,6 +136,9 @@ class _SimulatedDualCoreGdbServer:
                             elif cmd == "D":
                                 _send("OK")
                                 detached = True
+                            elif cmd in ("s", "vCont;s", "vCont;s:1;c", "vCont;c:2;s:1"):
+                                pc = (pc + 2) & ~1
+                                _send("S05")
                             elif cmd == "c":
                                 if core_idx == 1:
                                     self._core1_spawned.wait(timeout=4.0)

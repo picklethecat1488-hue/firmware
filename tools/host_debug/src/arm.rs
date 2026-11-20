@@ -20,6 +20,27 @@ pub const CORTEX_M_DHCSR_ADDR: u64 = 0xE000_EDF0;
 /// `DHCSR` write value (`DBGKEY = 0xA05F << 16 | C_DEBUGEN = 1`) enabling halting debug.
 pub const CORTEX_M_DHCSR_DBGKEY_ENABLE: u32 = 0xA05F_0001;
 
+/// `DHCSR` write value (`DBGKEY | C_DEBUGEN | C_HALT`) keeping core halted with interrupts unmasked.
+pub const CORTEX_M_DHCSR_DBGKEY_HALT: u32 = 0xA05F_0003;
+
+/// `DHCSR` write value (`DBGKEY | C_DEBUGEN | C_HALT | C_MASKINTS`) masking PendSV/SysTick/IRQs during single-step.
+pub const CORTEX_M_DHCSR_DBGKEY_HALT_MASKINTS: u32 = 0xA05F_000B;
+
+/// Cortex-M Debug Exception and Monitor Control Register (`DEMCR`) address.
+pub const CORTEX_M_DEMCR_ADDR: u64 = 0xE000_EDFC;
+
+/// `DEMCR.VC_CORERESET` bitmask (`1 << 0`) catching reset vector fetches.
+pub const CORTEX_M_DEMCR_VC_CORERESET_MASK: u32 = 0x0000_0001;
+
+/// RP2040 1 MHz hardware `TIMER.DBGPAUSE` register address (`0x4005_4000 + 0x2C`).
+pub const RP2040_TIMER_DBGPAUSE_ADDR: u64 = 0x4005_402C;
+
+/// `TIMER.DBGPAUSE` value (`DBG0 = 1 << 1, DBG1 = 0`) pausing `embassy_time` when Core 0 halts without deadlocking Core 0 `.await` timers when Core 1 is halted.
+pub const RP2040_TIMER_DBGPAUSE_CORE0_ONLY: u32 = 0x0000_0002;
+
+/// Base XIP flash address on RP2040 (`0x1000_0000`) distinguishing Mask Boot ROM (`< 0x1000_0000`) from application code.
+pub const RP2040_FLASH_BASE_ADDR: u32 = 0x1000_0000;
+
 /// Cortex-M Flash Patch / Breakpoint Control Register (`FP_CTRL` / `BP_CTRL`) address.
 pub const CORTEX_M_BP_CTRL_ADDR: u64 = 0xE000_2000;
 
@@ -210,6 +231,9 @@ pub trait ArmHardwareOps {
 
     /// Single-step one hardware instruction on `core_idx` and return the resulting `PC`.
     fn raw_step_core(&mut self, core_idx: usize) -> Result<u32, String>;
+
+    /// Set or clear `DHCSR.C_MASKINTS` on halted `core_idx` so pending interrupts do not preempt single-stepping.
+    fn set_interrupt_mask(&mut self, core_idx: usize, masked: bool) -> Result<(), String>;
 
     /// Resume execution on `core_idx`.
     fn raw_resume_core(&mut self, core_idx: usize) -> Result<(), String>;
@@ -458,12 +482,63 @@ impl ArmBreakpointManager {
             .and_then(|t| t.sw_ram_patches.get(&pc).copied());
         if let Some(orig) = orig_opt {
             hw.raw_write_memory(core_idx, pc, &orig)?;
+            let _ = hw.set_interrupt_mask(core_idx, true);
             let step_res = hw.raw_step_core(core_idx);
+            let _ = hw.set_interrupt_mask(core_idx, false);
             let _ = hw.raw_write_memory(core_idx, pc, &THUMB_BKPT_0_LE);
             let next_pc = step_res?;
             return Ok(Some(next_pc & !1));
         }
         Ok(None)
+    }
+
+    /// Single-step one instruction on `core_idx` with `DHCSR.C_MASKINTS` enabled while temporarily
+    /// disarming any hardware FPB comparator or SRAM `BKPT #0` patch matching the current `PC`.
+    pub fn step_core<H: ArmHardwareOps + ?Sized>(
+        &self,
+        hw: &mut H,
+        core_idx: usize,
+    ) -> Result<u32, String> {
+        let pc = (hw.raw_read_pc(core_idx)? & !1) as u64;
+        let mut disarmed_slots: Vec<usize> = Vec::new();
+        if let Some(table) = self.cores.get(core_idx) {
+            for (slot_idx, entry) in table.hw_slots.iter().enumerate() {
+                if *entry == Some(pc) {
+                    let _ = hw.clear_hw_breakpoint_slot(core_idx, slot_idx, pc);
+                    disarmed_slots.push(slot_idx);
+                }
+            }
+        }
+        if core_idx == 0 && self.core1_post_reset_trap_addr == Some(pc) {
+            if let Some(trap_slot) = self.armed_core0_trap_slot {
+                if !disarmed_slots.contains(&trap_slot) {
+                    let _ = hw.clear_hw_breakpoint_slot(0, trap_slot, pc);
+                    disarmed_slots.push(trap_slot);
+                }
+            }
+        }
+
+        let orig_sw_patch = self
+            .cores
+            .get(core_idx)
+            .and_then(|t| t.sw_ram_patches.get(&pc).copied());
+        if let Some(orig) = orig_sw_patch {
+            hw.raw_write_memory(core_idx, pc, &orig)?;
+        }
+
+        let _ = hw.set_interrupt_mask(core_idx, true);
+        let step_res = hw.raw_step_core(core_idx);
+        let _ = hw.set_interrupt_mask(core_idx, false);
+
+        if orig_sw_patch.is_some() {
+            let _ = hw.raw_write_memory(core_idx, pc, &THUMB_BKPT_0_LE);
+        }
+        for slot_idx in disarmed_slots {
+            let _ = hw.set_hw_breakpoint_slot(core_idx, slot_idx, pc);
+        }
+
+        let next_pc = step_res?;
+        Ok(next_pc & !1)
     }
 
     /// Synchronize the optional Core 0 post-`PSM.frce_off` helper trap whenever Core 1 has breakpoints.
@@ -654,6 +729,19 @@ pub mod probe_backend {
             with_session_core(self.session, core_idx, |core| {
                 let info = core.step().map_err(|e| format!("{:?}", e))?;
                 Ok((info.pc as u32) & !1)
+            })
+        }
+
+        fn set_interrupt_mask(&mut self, core_idx: usize, masked: bool) -> Result<(), String> {
+            with_session_core(self.session, core_idx, |core| {
+                let dhcsr_val = if masked {
+                    CORTEX_M_DHCSR_DBGKEY_HALT_MASKINTS
+                } else {
+                    CORTEX_M_DHCSR_DBGKEY_HALT
+                };
+                core.write_word_32(CORTEX_M_DHCSR_ADDR, dhcsr_val)
+                    .map_err(|e| format!("{:?}", e))?;
+                core.flush().map_err(|e| format!("{:?}", e))
             })
         }
 
@@ -942,7 +1030,7 @@ pub mod probe_backend {
                 None
             };
 
-            Ok(Self {
+            let mut backend = Self {
                 session,
                 chip: chip.to_string(),
                 core_archs,
@@ -950,7 +1038,34 @@ pub mod probe_backend {
                 core0_reset_addr,
                 core1_reset_addr,
                 bp_mgr: ArmBreakpointManager::new(&bp_units, rp2040_psm_trap),
-            })
+            };
+            backend.configure_target_debug_peripherals();
+            Ok(backend)
+        }
+
+        /// Configure chip-specific debug-pause peripherals (e.g. RP2040 `TIMER.DBGPAUSE = DBG0`) and
+        /// clear lingering `DEMCR.VC_CORERESET` vector catches so Core 0 `.await` timers and `spawn_core1`
+        /// FIFO handshakes never deadlock or trigger stuck-task resets during dual-core GDB sessions.
+        fn configure_target_debug_peripherals(&mut self) {
+            let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
+            let _ = with_session_core(&mut self.session, 0, |core0| {
+                if is_rp2040 {
+                    let _ = core0.write_word_32(
+                        RP2040_TIMER_DBGPAUSE_ADDR,
+                        RP2040_TIMER_DBGPAUSE_CORE0_ONLY,
+                    );
+                }
+                if let Ok(demcr) = core0.read_word_32(CORTEX_M_DEMCR_ADDR) {
+                    if (demcr & CORTEX_M_DEMCR_VC_CORERESET_MASK) != 0 {
+                        let _ = core0.write_word_32(
+                            CORTEX_M_DEMCR_ADDR,
+                            demcr & !CORTEX_M_DEMCR_VC_CORERESET_MASK,
+                        );
+                    }
+                }
+                let _ = core0.flush();
+                Ok(())
+            });
         }
     }
 
@@ -979,15 +1094,47 @@ pub mod probe_backend {
         }
 
         fn halt_core(&mut self, core_idx: usize) -> Result<u32, String> {
-            with_session_core(&mut self.session, core_idx, |core| {
+            let pc = with_session_core(&mut self.session, core_idx, |core| {
                 let info = core
                     .halt(Duration::from_millis(250))
                     .map_err(|e| format!("{:?}", e))?;
                 Ok((info.pc as u32) & !1)
-            })
+            })?;
+            self.configure_target_debug_peripherals();
+            Ok(pc)
         }
 
         fn resume_core(&mut self, core_idx: usize) -> Result<(), String> {
+            self.configure_target_debug_peripherals();
+            if core_idx == 0
+                && self.chip.eq_ignore_ascii_case("rp2040")
+                && self.core_archs.len() > 1
+            {
+                // If Core 1 was halted in Mask Boot ROM (`PC < 0x1000_0000`) by a Dual-Core GDB attach
+                // before Core 0 calls `spawn_core1`, release Core 1's Boot ROM FIFO loop (and clear
+                // `DEMCR.VC_CORERESET`) so Core 0's `bootstrap_core1` handshake never deadlocks!
+                let _ = with_session_core(&mut self.session, 1, |core1| {
+                    if core1.core_halted().unwrap_or(false) {
+                        let c1_pc = core1
+                            .read_core_reg::<u32>(RegisterId(DCRSR_PC))
+                            .unwrap_or(0)
+                            & !1;
+                        if c1_pc < RP2040_FLASH_BASE_ADDR {
+                            if let Ok(demcr) = core1.read_word_32(CORTEX_M_DEMCR_ADDR) {
+                                if (demcr & CORTEX_M_DEMCR_VC_CORERESET_MASK) != 0 {
+                                    let _ = core1.write_word_32(
+                                        CORTEX_M_DEMCR_ADDR,
+                                        demcr & !CORTEX_M_DEMCR_VC_CORERESET_MASK,
+                                    );
+                                }
+                            }
+                            let _ = core1.run();
+                        }
+                    }
+                    Ok(())
+                });
+                let _ = self.session.core(0);
+            }
             let mut hw = SessionHwAccess {
                 session: &mut self.session,
                 core_archs: &self.core_archs,
@@ -1007,14 +1154,12 @@ pub mod probe_backend {
             if !self.core_halted(core_idx).unwrap_or(false) {
                 let _ = self.halt_core(core_idx);
             }
+            self.configure_target_debug_peripherals();
             let mut hw = SessionHwAccess {
                 session: &mut self.session,
                 core_archs: &self.core_archs,
             };
-            if let Some(stepped_pc) = self.bp_mgr.step_over_sw_bkpt_if_needed(&mut hw, core_idx)? {
-                return Ok(stepped_pc);
-            }
-            hw.raw_step_core(core_idx)
+            self.bp_mgr.step_core(&mut hw, core_idx)
         }
 
         fn reset_and_halt_core(&mut self, core_idx: usize) -> Result<u32, String> {
@@ -1024,6 +1169,7 @@ pub mod probe_backend {
                 self.core1_reset_addr
             };
             let pc = Self::halt_core_at_entry(&mut self.session, core_idx, entry)?;
+            self.configure_target_debug_peripherals();
             let mut hw = SessionHwAccess {
                 session: &mut self.session,
                 core_archs: &self.core_archs,
@@ -1041,6 +1187,7 @@ pub mod probe_backend {
                 core.reset().map_err(|e| format!("{:?}", e))?;
                 core.run().map_err(|e| format!("{:?}", e))?;
             }
+            self.configure_target_debug_peripherals();
             let mut hw = SessionHwAccess {
                 session: &mut self.session,
                 core_archs: &self.core_archs,
