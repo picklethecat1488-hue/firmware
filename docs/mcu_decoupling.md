@@ -24,3 +24,7 @@ To ensure firmware portability across multiple hardware platforms and target mic
 ### 4. Timing & Delay Invariants
 * **No Fixed CPU Cycle Delays**: Do NOT use fixed CPU cycle delays (e.g., `cortex_m::asm::delay`) in firmware code, as cycle counts vary unpredictably with clock frequency changes, cache hits, Flash wait states, and pipeline depths.
 * **Frequency-Independent Time Delays**: Use frequency-independent time-based delays (e.g., `embassy_time::Timer` or `embassy_time::Delay`) that yield execution back to the async executor or hardware timers.
+
+### 5. Zero Default Chip or Binary Fallbacks
+* **Explicit Target & Binary Metadata**: Do NOT fall back to a default chip (e.g., `rp2040`), ARM target triple, board type, or binary name anywhere in device code, `tools/code_gen`, `tools/host.py`, or `tools/device_tests`.
+* **Fail-Fast Discovery**: Every firmware binary in `app/Cargo.toml` must declare `[package.metadata.binaries.<bin>]` (`board`, `chip`, `target`), and on-device target discovery (`.program_metadata` / `host_fs query_metadata`) must fail explicitly if chip, board type, or target binary values cannot be inferred.

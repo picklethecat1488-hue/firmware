@@ -16,12 +16,6 @@ export const LAST_PACKAGE_STORAGE_KEY = "xerxes_last_target_package";
 export const LAST_BIN_STORAGE_KEY = "xerxes_last_target_bin";
 export const LAST_RELEASE_STORAGE_KEY = "xerxes_last_target_release";
 
-const DEFAULT_FALLBACK_BINARIES = Object.freeze([
-  "cat_detector_shell",
-  "cat_detector_app",
-  "carrier_board_shell",
-]);
-const DEFAULT_ARM_TARGET = "thumbv6m-none-eabi";
 const DEFAULT_PROBE_SPEED_KHZ = 1000;
 const SYNC_POLL_INTERVAL_MS = 500;
 const SYNC_AUTO_DISMISS_DELAY_MS = 1500;
@@ -63,9 +57,9 @@ export class TargetConfigController {
     const boot = options.bootConfig || {};
 
     this.currentConfig = {
-      package: boot.package || "cat_detector",
-      binName: boot.binName || boot.bin_name || boot.bin || "cat_detector_shell",
-      target: boot.target || DEFAULT_ARM_TARGET,
+      package: boot.package || "",
+      binName: boot.binName || boot.bin_name || boot.bin || "",
+      target: boot.target || "",
       release: Boolean(boot.release),
       speed: Number(boot.speed) || DEFAULT_PROBE_SPEED_KHZ,
       chip: boot.chip || null,
@@ -83,6 +77,7 @@ export class TargetConfigController {
     this.onWorkstationDisabledChange = options.onWorkstationDisabledChange || null;
     this.onShowSystemLogsChange = options.onShowSystemLogsChange || null;
     this.onSyncComplete = options.onSyncComplete || null;
+    this.shouldSuppressAutoSyncModal = options.shouldSuppressAutoSyncModal || null;
 
     this.syncPollTimer = null;
     this.syncAutoDismissTimer = null;
@@ -286,7 +281,9 @@ export class TargetConfigController {
     const binaries =
       Array.isArray(rawBinaries) && rawBinaries.length > 0
         ? rawBinaries
-        : DEFAULT_FALLBACK_BINARIES;
+        : preferredBinName
+          ? [preferredBinName]
+          : [];
 
     if (this.cfgBinSelect) {
       clearChildren(this.cfgBinSelect);
@@ -313,14 +310,22 @@ export class TargetConfigController {
   }
 
   /**
-   * Update inferred ARM target triple readout for `pkgName`.
+   * Update inferred ARM target triple readout for `pkgName` and active binary selection.
    *
    * @param {string} pkgName - Selected Cargo package name.
    */
   updateInferredArchDisplay(pkgName) {
     const pkgData = this.discoveredPackages.find((p) => p.package === pkgName) || null;
+    const selectedBin = (this.cfgBinSelect && this.cfgBinSelect.value) || "";
+    const binCfg =
+      pkgData && pkgData.binary_configs && selectedBin
+        ? pkgData.binary_configs[selectedBin]
+        : null;
     const target =
-      (pkgData && pkgData.inferred_target) || this.currentConfig.target || DEFAULT_ARM_TARGET;
+      (binCfg && binCfg.target) ||
+      (pkgData && pkgData.inferred_target) ||
+      this.currentConfig.target ||
+      "";
 
     if (this.cfgArchDisplay) {
       this.cfgArchDisplay.textContent = target;
@@ -736,7 +741,12 @@ export class TargetConfigController {
     try {
       const data = await this.ctx.fetchJson("/api/sync/status");
       if (data && (data.active || (data.progress > 0 && data.progress < 100))) {
-        this.openSyncModal();
+        const suppressModal =
+          typeof this.shouldSuppressAutoSyncModal === "function" &&
+          Boolean(this.shouldSuppressAutoSyncModal());
+        if (!suppressModal) {
+          this.openSyncModal();
+        }
         this.startSyncPolling();
       }
     } catch {
