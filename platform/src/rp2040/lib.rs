@@ -355,20 +355,20 @@ macro_rules! boot_multicore {
                     "movs r0, #0",
                     "mov lr, r0",
                     "ldr r0, ={entry}",
-                    "bx r0",
+                    "ldr r1, ={handler}",
+                    "bx r1",
                     entry = sym core1_entry_point,
+                    handler = sym ::platform::core_monitor::Core1_Reset_Handler,
                     options(noreturn)
                 );
             }
         }
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
-        fn core1_entry_point() -> ! {
-            unsafe {
-                ::platform::core_monitor::init_vector_table(::platform::types::CpuId::Core1);
+        unsafe extern "C" fn core1_entry_point() -> ! {
+            ::platform::core_monitor::init_vector_table(::platform::types::CpuId::Core1);
 
-                <$board>::run_executor(::platform::types::CpuId::Core1);
-            }
+            <$board>::run_executor(::platform::types::CpuId::Core1);
         }
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]

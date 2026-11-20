@@ -44,6 +44,31 @@ pub static HEARTBEAT_ACTIVE: AtomicBool = AtomicBool::new(true);
 /// Global atomic storing Core 0's vector table address during boot.
 pub static CORE0_VTOR: AtomicU32 = AtomicU32::new(0);
 
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+core::arch::global_asm!(
+    ".section .text.Core1_Reset_Handler,\"ax\",%progbits",
+    ".global Core1_Reset_Handler",
+    ".type Core1_Reset_Handler, %function",
+    ".thumb_func",
+    ".cfi_sections .debug_frame",
+    "Core1_Reset_Handler:",
+    ".cfi_startproc",
+    ".cfi_undefined lr",
+    "blx r0",
+    "udf #0",
+    ".cfi_endproc",
+    ".size Core1_Reset_Handler, .-Core1_Reset_Handler",
+);
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+extern "C" {
+    /// Canonical unmangled secondary-core reset entry trampoline for symbolic GDB / DWARF debugging.
+    ///
+    /// Marks `lr` as `.cfi_undefined` in `.debug_frame` so GDB backtraces on Core 1 terminate cleanly
+    /// at `Core1_Reset_Handler` in both `debug` and `release` builds without spurious frames.
+    pub fn Core1_Reset_Handler(entry: unsafe extern "C" fn() -> !) -> !;
+}
+
 /// The heartbeat task that periodically updates the executor progress timestamp.
 #[embassy_executor::task(pool_size = NUM_CORES)]
 pub async fn heartbeat_task(cpu_id: CpuId, interval_ms: u32) -> ! {

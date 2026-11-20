@@ -21,8 +21,15 @@ fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
     let toml_path = code_gen::find_board_toml();
     let content = std::fs::read_to_string(&toml_path).expect("Failed to read board.toml");
-    let generated = code_gen::generate_board_definitions(&content, "cat_detector");
 
-    let mut f = File::create(Path::new(&out_dir).join("generated_board.rs")).unwrap();
-    f.write_all(generated.as_bytes()).unwrap();
+    let generated_cat = code_gen::generate_board_definitions(&content, "cat_detector");
+    let mut f_cat = File::create(Path::new(&out_dir).join("generated_board.rs")).unwrap();
+    f_cat.write_all(generated_cat.as_bytes()).unwrap();
+
+    if content.contains("[boards.carrier_board]") {
+        let generated_cb = code_gen::generate_board_definitions(&content, "carrier_board");
+        let mut f_cb =
+            File::create(Path::new(&out_dir).join("generated_carrier_board.rs")).unwrap();
+        f_cb.write_all(generated_cb.as_bytes()).unwrap();
+    }
 }

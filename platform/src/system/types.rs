@@ -458,11 +458,12 @@ pub struct PartitionMetadata {
     pub size: u32,
 }
 
-/// Project metadata struct embedded in the ELF to allow autodetecting chip/partition layout.
+/// Project metadata struct embedded in the `.program_metadata` ELF/flash section
+/// to allow autodetecting chip, board type, and partition layout without scanning flash.
 #[derive(Clone, Encode, Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct ProjectMetadata<'a> {
-    /// Chip name (e.g. "rp2040")
+    /// Chip name (e.g. "rp2040", "MCXN947")
     #[n(0)]
     pub chip: &'a str,
     /// Flash write alignment/size in bytes
@@ -477,16 +478,28 @@ pub struct ProjectMetadata<'a> {
     /// Flash base address (e.g. 0x1000_0000)
     #[n(4)]
     pub flash_start: u32,
-    /// Array of partition metadata
+    /// Array of partition metadata (0 = fs, 1 = telemetry, 2 = metadata)
     #[n(5)]
-    pub partitions: [PartitionMetadata; 2],
+    pub partitions: [PartitionMetadata; 3],
+    /// Canonical board type identifier (e.g. "rp2040_flash_2mb", "carrier_board")
+    #[n(6)]
+    pub board_type: &'a str,
+    /// Compiled Cargo binary target name (e.g. "cat_detector_shell", "cat_detector_app")
+    #[n(7)]
+    pub bin_name: Option<&'a str>,
+    /// Compiled Cargo profile identifier ("debug" or "release")
+    #[n(8)]
+    pub build_profile: Option<&'a str>,
 }
 
 impl<'a> ProjectMetadata<'a> {
-    /// Statically serializes all fields into CBOR format.
+    /// Statically serializes CBOR metadata prefixed by its 16-bit CRC-16-CCITT checksum.
     #[allow(clippy::too_many_arguments)]
     pub const fn serialize(
         chip: &'a str,
+        board_type: &'a str,
+        bin_name: &'a str,
+        build_profile: &'a str,
         flash_write_size: u32,
         flash_erase_size: u32,
         stack_scan_limit: u32,
@@ -495,25 +508,36 @@ impl<'a> ProjectMetadata<'a> {
         fs_size: u32,
         telemetry_address: u32,
         telemetry_size: u32,
-    ) -> crate::cbor::ConstCborWriter<128> {
-        crate::cbor::ConstCborWriter::<128>::new()
-            .write_array_header(6)
+        metadata_address: u32,
+        metadata_size: u32,
+    ) -> crate::cbor::ConstCborWriter<256> {
+        crate::cbor::ConstCborWriter::<256>::new()
+            .write_array_header(9)
             .write_str(chip)
             .write_u32(flash_write_size)
             .write_u32(flash_erase_size)
             .write_u32(stack_scan_limit)
             .write_u32(flash_start)
-            .write_array_header(2)
-            // FS partition
+            .write_array_header(3)
+            // FS partition (kind = 0)
             .write_array_header(3)
             .write_u32(0)
             .write_u32(fs_address)
             .write_u32(fs_size)
-            // Telemetry partition
+            // Telemetry partition (kind = 1)
             .write_array_header(3)
             .write_u32(1)
             .write_u32(telemetry_address)
             .write_u32(telemetry_size)
+            // Non-volatile Metadata partition (kind = 2)
+            .write_array_header(3)
+            .write_u32(2)
+            .write_u32(metadata_address)
+            .write_u32(metadata_size)
+            .write_str(board_type)
+            .write_str(bin_name)
+            .write_str(build_profile)
+            .prepend_crc16()
     }
 }
 
@@ -765,82 +789,85 @@ macro_rules! assert_partitions {
     (
         storage_range: ($storage_start:expr, $storage_end:expr),
         partition_ranges: [
-            ($p1_start:expr, $p1_end:expr),
-            ($p2_start:expr, $p2_end:expr)
+            $( ($p_start:expr, $p_end:expr) ),+ $(,)?
         ]
     ) => {
         const _: () = {
-            // Check storage bounds sanity
             assert!(
                 $storage_start < $storage_end,
                 "Storage partition range is invalid"
             );
 
-            // Check partition 1 bounds
-            assert!(
-                $p1_start >= $storage_start,
-                "Partition 1 starts before storage partition"
-            );
-            assert!(
-                $p1_end <= $storage_end,
-                "Partition 1 ends after storage partition"
-            );
-            assert!($p1_start < $p1_end, "Partition 1 range is invalid");
+            let ranges: &[(u32, u32)] = &[ $( ($p_start, $p_end) ),+ ];
+            let mut i = 0;
+            while i < ranges.len() {
+                let (s_i, e_i) = ranges[i];
+                assert!(s_i >= $storage_start, "Partition starts before storage partition");
+                assert!(e_i <= $storage_end, "Partition ends after storage partition");
+                assert!(s_i < e_i, "Partition range is invalid");
 
-            // Check partition 2 bounds
-            assert!(
-                $p2_start >= $storage_start,
-                "Partition 2 starts before storage partition"
-            );
-            assert!(
-                $p2_end <= $storage_end,
-                "Partition 2 ends after storage partition"
-            );
-            assert!($p2_start < $p2_end, "Partition 2 range is invalid");
-
-            // Check non-overlapping partitions
-            assert!(
-                $p1_end <= $p2_start || $p2_end <= $p1_start,
-                "Partitions overlap!"
-            );
+                let mut j = i + 1;
+                while j < ranges.len() {
+                    let (s_j, e_j) = ranges[j];
+                    assert!(e_i <= s_j || e_j <= s_i, "Partitions overlap!");
+                    j += 1;
+                }
+                i += 1;
+            }
         };
     };
 }
 
-/// Macro to define the embedded project metadata block for autodetect.
+/// Macro to define the embedded `.program_metadata` descriptor block for O(1) host autodetect.
 #[macro_export]
 macro_rules! define_project_metadata {
     (
         chip: $chip:expr,
+        board_type: $board_type:expr,
         flash_base: $flash_base:expr,
         flash_write_size: $flash_write_size:expr,
         flash_erase_size: $flash_erase_size:expr,
         fs_start: $fs_start:expr,
         fs_end: $fs_end:expr,
         telemetry_start: $telemetry_start:expr,
-        telemetry_end: $telemetry_end:expr
+        telemetry_end: $telemetry_end:expr,
+        metadata_start: $metadata_start:expr,
+        metadata_end: $metadata_end:expr $(,)?
     ) => {
-        const METADATA_WRITER: $crate::cbor::ConstCborWriter<128> =
+        const METADATA_WRITER: $crate::cbor::ConstCborWriter<256> =
             $crate::types::ProjectMetadata::serialize(
                 $chip,
+                $board_type,
+                match option_env!("CARGO_BIN_NAME") {
+                    Some(bin) => bin,
+                    None => env!("CARGO_PKG_NAME"),
+                },
+                if cfg!(debug_assertions) {
+                    "debug"
+                } else {
+                    "release"
+                },
                 $flash_write_size as u32,
                 $flash_erase_size as u32,
                 $crate::types::STACK_SCAN_LIMIT,
                 $flash_base as u32,
-                // fs partition
+                // fs partition (kind = 0)
                 $flash_base + $fs_start,
                 $fs_end - $fs_start,
-                // telemetry partition
+                // telemetry partition (kind = 1)
                 $flash_base + $telemetry_start,
                 $telemetry_end - $telemetry_start,
+                // metadata partition (kind = 2)
+                $flash_base + $metadata_start,
+                $metadata_end - $metadata_start,
             );
 
-        /// Embedded project metadata for autodetect functionality.
+        /// Embedded project metadata placed in the dedicated `.program_metadata` flash section.
         #[used]
         #[no_mangle]
         #[cfg_attr(
             all(target_arch = "arm", target_os = "none"),
-            link_section = ".rodata.project_metadata"
+            link_section = ".program_metadata"
         )]
         pub static PROJECT_METADATA: [u8; METADATA_WRITER.len] =
             $crate::cbor::extract_bytes(METADATA_WRITER.buf);

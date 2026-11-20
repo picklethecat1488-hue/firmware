@@ -23,15 +23,7 @@ if str(_tools_dir) not in sys.path:
     sys.path.insert(0, str(_tools_dir))
 
 from host_daemon.cli import format_clickable_choice
-from host_daemon.model.bringup import (
-    BringupConfig,
-    BringupStep,
-    BringupStepStatus,
-    BringupStepType,
-    discover_bringup_scripts,
-    load_bringup_yaml,
-)
-from host_daemon.provider.bringup.bringup_manager import BringupManager
+from host_daemon.model.manual_prompt import ManualPromptState
 from host_daemon.provider.daemon.runner import DaemonRunner
 from host_daemon.provider.daemon.server import HostDaemonServer
 
@@ -40,11 +32,9 @@ def test_cr_a5bbb33b_host_daemon_library_structure():
     """Verify host_daemon follows the modular dashboard hierarchy (model/, provider/, templates/, cli.py)."""
     hd_dir = REPO_ROOT / "tools" / "host_daemon"
     assert (hd_dir / "model").is_dir(), "tools/host_daemon/model directory must exist"
-    assert (hd_dir / "model" / "bringup.py").is_file(), "tools/host_daemon/model/bringup.py must exist"
+    assert (hd_dir / "model" / "manual_prompt.py").is_file(), "tools/host_daemon/model/manual_prompt.py must exist"
     assert (hd_dir / "provider").is_dir(), "tools/host_daemon/provider directory must exist"
-    assert (hd_dir / "provider" / "bringup" / "bringup_manager.py").is_file(), (
-        "bringup_manager.py must exist in provider/bringup/"
-    )
+    assert not (hd_dir / "provider" / "bringup").exists(), "Legacy bringup_manager must be ported out to device_tests"
     assert (hd_dir / "provider" / "daemon" / "runner.py").is_file(), "runner.py must exist in provider/daemon/"
     assert (hd_dir / "provider" / "daemon" / "server.py").is_file(), "server.py must exist in provider/daemon/"
     assert (hd_dir / "templates" / "host_daemon.html.j2").is_file(), "templates/host_daemon.html.j2 must exist"
@@ -57,29 +47,23 @@ def test_cr_a5bbb33b_host_daemon_library_structure():
 
 
 def test_cr_a5bbb33b_model_and_provider_classes():
-    """Verify model and provider classes can be instantiated and operated."""
-    step = BringupStep(
-        id="1",
-        name="Check LED",
-        type=BringupStepType.HARDWARE_CHECK,
-        procedure="Observe green LED",
-        expected="LED lit",
+    """Verify ManualPromptState, DaemonRunner, and HostDaemonServer can be instantiated and operated."""
+    prompt_state = ManualPromptState()
+    assert prompt_state.active is False
+    activated = prompt_state.apply_update(
+        {
+            "active": True,
+            "test_name": "test_motor_calibration_routine",
+            "project": "cat_detector",
+            "procedure": "Fill reservoir",
+            "prompt": "Confirm steady flow",
+        }
     )
-    assert step.id == "1"
-    assert step.status == BringupStepStatus.PENDING
-
-    cfg = BringupConfig(
-        project_name="Test Project",
-        device_chip="RP2040",
-        flash_addr="0x101C0000",
-        flash_size=262144,
-        steps=[step],
-    )
-    assert cfg.project_name == "Test Project"
-    assert len(cfg.steps) == 1
+    assert activated is True
+    assert prompt_state.heartbeat_count == 1
 
     runner = DaemonRunner(repo_root=REPO_ROOT)
-    assert isinstance(runner.bringup_manager, BringupManager)
+    assert isinstance(runner.manual_prompt, ManualPromptState)
     server = HostDaemonServer("127.0.0.1", 0, runner)
     assert server is not None
     server.server_close()
@@ -150,7 +134,6 @@ def test_host_daemon_renders_boot_config_json_and_serves_es_modules():
             "daemon_app.js",
             "rtt_stream.js",
             "cli_console.js",
-            "bringup_runner.js",
             "target_config.js",
             "worm_reporter.js",
         ):

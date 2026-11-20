@@ -17,24 +17,28 @@ To provide deterministic, zero-allocation structured telemetry on embedded targe
 * **Instrument Skip Rules**: When annotating methods with `#[tracing::instrument]`, do NOT list `self` in the `skip(...)` attribute.
 
 ### 3. Host Diagnostic & Debugging Tooling
-* **Filesystem Inspection (`tools/host_fs`)**: Host-based Flash filesystem debugging, sequential storage inspection, directory tree walks, and raw partition read/write operations must be performed using `tools/host_fs`:
+* **Filesystem Inspection (`tools/host_fs` / `cargo host-fs`)**: Host-based Flash filesystem debugging, sequential storage inspection, directory tree walks, and raw partition read/write operations must be performed using `tools/host_fs`:
   ```bash
   # List files in sequential flash storage:
-  cargo run -p host_fs -- --elf target/thumbv6m-none-eabi/debug/cat_detector_app ls
+  cargo host-fs --elf target/thumbv6m-none-eabi/debug/cat_detector_app ls
 
   # Export telemetry to CSV:
-  cargo run -p host_fs -- --elf target/thumbv6m-none-eabi/release/cat_detector_app export-telemetry telemetry.csv
+  cargo host-fs --elf target/thumbv6m-none-eabi/release/cat_detector_app export-telemetry telemetry.csv
 
   # Decode crash logs:
-  cargo run -p host_fs -- --elf target/thumbv6m-none-eabi/release/cat_detector_app crash-log
+  cargo host-fs --elf target/thumbv6m-none-eabi/release/cat_detector_app crash-log
   ```
-* **Console Bridge & RTT Streaming (`tools/host_cli`)**: Host-based interactive CLI shell interaction, Real-Time Transfer (RTT) log streaming, defmt decoding, and live event tracing must be performed using `tools/host_cli`:
+* **Console Bridge & RTT Streaming (`tools/host_cli` / `cargo host-cli`)**: Host-based interactive CLI shell interaction, Real-Time Transfer (RTT) log streaming, defmt decoding, structured NDJSON event streaming (`--json-events`), and live event tracing must be performed using `tools/host_cli`:
   ```bash
   # Direct RTT shell console:
-  cargo run -p host_cli -- --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
+  cargo host-cli --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
 
-  # Attach to active GDB/OpenOCD session:
-  cargo run -p host_cli -- -o localhost:50000 --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
+  # Attach concurrently to active host_debug non-halting RTT memory bridge (:50000):
+  cargo host-cli --gdb-bridge 127.0.0.1:50000 --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
+  ```
+* **Target GDB Server & RTT Memory Bridge (`tools/host_debug` / `cargo host-debug`)**: Dual-core `probe-rs` GDB RSP server (`:3333` Core 0, `:3334` Core 1) and `:50000` non-halting RTT bridge managed automatically by `tools/host.py --debug-server` (or `python tools/host.py debug start`):
+  ```bash
+  cargo host-debug --elf target/thumbv6m-none-eabi/debug/cat_detector_shell --gdb-core0-port 3333 --gdb-core1-port 3334
   ```
 * **Host Daemon & Live Target Synchronization (`tools/host.py`)**:
   ```bash
@@ -55,7 +59,11 @@ To provide deterministic, zero-allocation structured telemetry on embedded targe
   # Flash production application:
   cargo run --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_app
 
-  # Execute automated target bringup suite:
-  conda run -n firmware-env python tools/host.py bringup --script projects/cat_detector_bringup.yaml --run
+  # Execute automated target device test & bringup suites (or --debug for VS Code debugpy attach):
+  conda run -n firmware-env python tools/host.py test
+  conda run -n firmware-env python tools/host.py test --stress-runs 10
+  conda run -n firmware-env python tools/host.py test -k tof_proximity --debug
+  conda run -n firmware-env python tools/host.py test --script tools/device_tests/suites/test_cat_detector_bringup.py --manual
   ```
+  See [CLI Tools, Flashing, Host Daemon & Verification Workflows](cli_and_workflows.md#6-interactive-symbolic-test--target-debugging-vs-code) for full VS Code `debugpy`, `CodeLLDB`, `node --test`, `probe-rs`, and `Cortex-Debug` symbolic debugging configurations.
 * **VCS Workstation & Issue Matrix (`tools/forge.py`)**: Smartlog DAG inspection, commit splitting/combining, code reviews, and worm tracking are conducted via `tools/forge.py` (System Shock 2 - Xerxes workstation). Launch via `python tools/forge.py` (native pywebview desktop window), `python tools/forge.py --eel` (Chromium app mode), or `python tools/forge.py --no-browser` (headless).

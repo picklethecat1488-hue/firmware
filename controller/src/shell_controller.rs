@@ -68,6 +68,8 @@ macro_rules! define_shell_resolver_and_controller {
             flash_partitions: &'a [$crate::NamedPartition<C::Flash>],
             fs_buffer: *mut [u8],
             fs_buffer_locked: core::cell::Cell<bool>,
+            completed_ok_count: core::cell::Cell<u32>,
+            completed_err_count: core::cell::Cell<u32>,
             /// Deferred pending async command
             pub pending_command: Option<$crate::PendingCommand>,
         }
@@ -84,8 +86,35 @@ macro_rules! define_shell_resolver_and_controller {
                     flash_partitions: pointers.flash_partitions,
                     fs_buffer: pointers.fs_buffer as *mut [u8],
                     fs_buffer_locked: core::cell::Cell::new(false),
+                    completed_ok_count: core::cell::Cell::new(0),
+                    completed_err_count: core::cell::Cell::new(0),
                     pending_command: None,
                 }
+            }
+
+            /// Record a completed command success and emit target defmt completion log.
+            pub fn record_command_success(&self) {
+                self.completed_ok_count
+                    .set(self.completed_ok_count.get().saturating_add(1));
+                $crate::shell_controller::log_success();
+            }
+
+            /// Record a completed command failure and emit target defmt failure log.
+            pub fn record_command_failure(&self, err: &str) {
+                self.completed_err_count
+                    .set(self.completed_err_count.get().saturating_add(1));
+                $crate::shell_controller::log_failure(err);
+            }
+
+            /// Return `(success_count, failure_count)` for completed shell commands on this controller.
+            pub fn completion_counts(&self) -> (u32, u32) {
+                (self.completed_ok_count.get(), self.completed_err_count.get())
+            }
+
+            /// Reset `(success_count, failure_count)` counters on this controller.
+            pub fn reset_completion_counts(&self) {
+                self.completed_ok_count.set(0);
+                self.completed_err_count.set(0);
             }
 
             /// Resolves a named device from a slice of NamedDevice entries.
@@ -302,10 +331,12 @@ macro_rules! emit_direct_commands {
 
                 match res {
                     Ok(()) => {
-                        $crate::shell_controller::log_success();
+                        if !$ctrl.has_pending_command() {
+                            $ctrl.record_command_success();
+                        }
                     }
                     Err(err) => {
-                        $crate::shell_controller::log_failure(err);
+                        $ctrl.record_command_failure(err);
                         let _ = core::writeln!($writer, "Command failed: {}", err);
                     }
                 }
@@ -387,10 +418,12 @@ macro_rules! emit_wrapper_commands {
 
                 match res {
                     Ok(()) => {
-                        $crate::shell_controller::log_success();
+                        if !$ctrl.has_pending_command() {
+                            $ctrl.record_command_success();
+                        }
                     }
                     Err(err) => {
-                        $crate::shell_controller::log_failure(err);
+                        $ctrl.record_command_failure(err);
                         let _ = core::writeln!($writer, "Command failed: {}", err);
                     }
                 }
