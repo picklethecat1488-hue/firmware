@@ -95,8 +95,6 @@ Undefined command: "from".  Try "help".
 [] [target] [INFO] 0.001593 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
 ```
 
-#### Attachments & References
+#### Review Tasks & Functional Checklist
 
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-LUBRICATED-FLATWORM-512.log](attachments/WORM-LUBRICATED-FLATWORM-512/target_system_logs_WORM-LUBRICATED-FLATWORM-512.log) | Target system and defmt logs from host daemon session |
+- [ ] Verify GDB attach, breakpoint at main / Board::init, single-step (stepi / next), and continue complete cleanly without ISR vectoring, reset, or Undefined command 'from' | `python tools/host.py debug start && arm-none-eabi-gdb -q -batch -ex 'set sysroot /' -ex 'source .vscode/cortex_debug_init.gdb' -ex 'target extended-remote | python3 -u tools/host.py debug gdb-proxy --core 0' -ex 'monitor reset halt' -ex 'maintenance flush register-cache' -ex 'b main' -ex 'continue' -ex 'stepi' -ex 'stepi' -ex 'detach' -ex 'disconnect'` <!-- id:fde800af -->
