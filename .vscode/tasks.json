@@ -69,6 +69,20 @@
       "problemMatcher": ["$rustc"]
     },
     {
+      "label": "host: start target debug server (host.py debug start)",
+      "type": "shell",
+      "command": "python",
+      "args": ["tools/host.py", "debug", "start"],
+      "problemMatcher": []
+    },
+    {
+      "label": "host: stop target debug server (host.py debug stop)",
+      "type": "shell",
+      "command": "python",
+      "args": ["tools/host.py", "debug", "stop"],
+      "problemMatcher": []
+    },
+    {
       "label": "host: stop host.py daemon (release USB probe)",
       "type": "shell",
       "command": "python",

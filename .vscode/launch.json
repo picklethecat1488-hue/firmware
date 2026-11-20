@@ -2,6 +2,71 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Host Daemon: Attach Shell Core 0 (GDB)",
+      "type": "cortex-debug",
+      "request": "attach",
+      "servertype": "external",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
+      "gdbTarget": "127.0.0.1:${input:gdbCore0Port}",
+      "device": "RP2040",
+      "sourceFileMap": {
+        "firmware": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "Host Daemon: Attach Shell Core 1 (GDB)",
+      "type": "cortex-debug",
+      "request": "attach",
+      "servertype": "external",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
+      "gdbTarget": "127.0.0.1:${input:gdbCore1Port}",
+      "device": "RP2040",
+      "sourceFileMap": {
+        "firmware": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "Host Daemon: Attach App Core 0 (GDB)",
+      "type": "cortex-debug",
+      "request": "attach",
+      "servertype": "external",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
+      "gdbTarget": "127.0.0.1:${input:gdbCore0Port}",
+      "device": "RP2040",
+      "sourceFileMap": {
+        "firmware": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "Host Daemon: Attach App Core 1 (GDB)",
+      "type": "cortex-debug",
+      "request": "attach",
+      "servertype": "external",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
+      "gdbTarget": "127.0.0.1:${input:gdbCore1Port}",
+      "device": "RP2040",
+      "sourceFileMap": {
+        "firmware": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "Host Daemon: Attach Carrier Board Shell (GDB)",
+      "type": "cortex-debug",
+      "request": "attach",
+      "servertype": "external",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/carrier_board_shell",
+      "gdbTarget": "127.0.0.1:${input:gdbCore0Port}",
+      "device": "MCXN947",
+      "sourceFileMap": {
+        "firmware": "${workspaceFolder}"
+      }
+    },
+    {
       "name": "Python: Debug Current Test File (Pytest)",
       "type": "debugpy",
       "request": "launch",
@@ -134,7 +199,7 @@
       }
     },
     {
-      "name": "Rust: Debug Host Tool (host_cli / host_fs)",
+      "name": "Rust: Debug Host Tool (host_cli / host_fs / host_debug)",
       "type": "lldb",
       "request": "launch",
       "cargo": {
@@ -170,7 +235,7 @@
     {
       "type": "probe-rs-debug",
       "request": "launch",
-      "name": "Debug Shell (probe-rs RP2040)",
+      "name": "probe-rs (Secondary): Debug Shell (RP2040)",
       "cwd": "${workspaceFolder}",
       "chip": "RP2040",
       "flashingConfig": {
@@ -200,7 +265,7 @@
     {
       "type": "probe-rs-debug",
       "request": "launch",
-      "name": "Debug Firmware (probe-rs RP2040)",
+      "name": "probe-rs (Secondary): Debug Firmware (RP2040)",
       "cwd": "${workspaceFolder}",
       "chip": "RP2040",
       "flashingConfig": {
@@ -226,7 +291,7 @@
     {
       "type": "probe-rs-debug",
       "request": "launch",
-      "name": "Debug Carrier Board Shell (probe-rs MCXN947)",
+      "name": "probe-rs (Secondary): Debug Carrier Board Shell (MCXN947)",
       "cwd": "${workspaceFolder}",
       "chip": "MCXN947",
       "flashingConfig": {
@@ -252,206 +317,37 @@
         }
       ],
       "preLaunchTask": "cargo: build carrier_board_shell (debug)"
-    },
-    {
-      "type": "cortex-debug",
-      "request": "launch",
-      "name": "Debug App Core 0 (J-Link)",
-      "servertype": "jlink",
-      "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
-      "device": "RP2040_M0_0",
-      "interface": "swd",
-      "runToEntryPoint": "main",
-      "sourceFileMap": {
-        "firmware": "${workspaceFolder}"
-      },
-      "preLaunchTask": "cargo: build cat_detector_app (debug)"
-    },
-    {
-      "type": "cortex-debug",
-      "request": "attach",
-      "name": "Attach App Core 1 (J-Link)",
-      "servertype": "jlink",
-      "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
-      "device": "RP2040_M0_1",
-      "interface": "swd",
-      "sourceFileMap": {
-        "firmware": "${workspaceFolder}"
-      }
-    },
-    {
-      "type": "cortex-debug",
-      "request": "launch",
-      "name": "Debug Shell Core 0 (J-Link)",
-      "servertype": "jlink",
-      "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
-      "device": "RP2040_M0_0",
-      "interface": "swd",
-      "runToEntryPoint": "main",
-      "sourceFileMap": {
-        "firmware": "${workspaceFolder}"
-      },
-      "preLaunchTask": "cargo: build cat_detector_shell (debug)"
-    },
-    {
-      "type": "cortex-debug",
-      "request": "attach",
-      "name": "Attach Shell Core 1 (J-Link)",
-      "servertype": "jlink",
-      "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
-      "device": "RP2040_M0_1",
-      "interface": "swd",
-      "sourceFileMap": {
-        "firmware": "${workspaceFolder}"
-      }
-    },
-    {
-      "type": "cortex-debug",
-      "request": "launch",
-      "name": "Debug Carrier Board Shell (J-Link MCXN947)",
-      "servertype": "jlink",
-      "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/carrier_board_shell",
-      "device": "MCXN947_M33_0",
-      "interface": "swd",
-      "runToEntryPoint": "main",
-      "sourceFileMap": {
-        "firmware": "${workspaceFolder}"
-      },
-      "preLaunchTask": "cargo: build carrier_board_shell (debug)"
-    },
-    {
-      "type": "cortex-debug",
-      "request": "launch",
-      "name": "Debug App (Cortex-Debug Pico Probe)",
-      "servertype": "openocd",
-      "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
-      "device": "RP2040",
-      "configFiles": [
-        "interface/cmsis-dap.cfg",
-        "target/rp2040.cfg",
-        ".vscode/openocd_custom.cfg"
-      ],
-      "openOCDLaunchCommands": [
-        "adapter speed 5000"
-      ],
-      "runToEntryPoint": "main",
-      "serverPort": 3333,
-      "sourceFileMap": {
-        "firmware": "${workspaceFolder}"
-      },
-      "preLaunchTask": "cargo: build cat_detector_app (debug)"
-    },
-    {
-      "type": "cortex-debug",
-      "request": "launch",
-      "name": "Debug Shell (Cortex-Debug Pico Probe)",
-      "servertype": "openocd",
-      "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
-      "device": "RP2040",
-      "configFiles": [
-        "interface/cmsis-dap.cfg",
-        "target/rp2040.cfg",
-        ".vscode/openocd_custom.cfg"
-      ],
-      "openOCDLaunchCommands": [
-        "adapter speed 5000"
-      ],
-      "runToEntryPoint": "main",
-      "serverPort": 3333,
-      "sourceFileMap": {
-        "firmware": "${workspaceFolder}"
-      },
-      "preLaunchTask": "cargo: build cat_detector_shell (debug)"
-    },
-    {
-      "type": "cortex-debug",
-      "request": "launch",
-      "name": "Debug Tracing Core 0 (J-Link)",
-      "servertype": "jlink",
-      "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/release/cat_detector_app",
-      "device": "RP2040_M0_0",
-      "interface": "swd",
-      "runToEntryPoint": "main",
-      "sourceFileMap": {
-        "firmware": "${workspaceFolder}"
-      },
-      "preLaunchTask": "cargo: build cat_detector_app (release + tracing)"
-    },
-    {
-      "type": "cortex-debug",
-      "request": "attach",
-      "name": "Attach Tracing Core 1 (J-Link)",
-      "servertype": "jlink",
-      "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/release/cat_detector_app",
-      "device": "RP2040_M0_1",
-      "interface": "swd",
-      "sourceFileMap": {
-        "firmware": "${workspaceFolder}"
-      }
-    },
-    {
-      "type": "cortex-debug",
-      "request": "launch",
-      "name": "Debug Tracing Core 0 (Pico Probe)",
-      "servertype": "openocd",
-      "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/release/cat_detector_app",
-      "device": "RP2040",
-      "configFiles": [
-        "interface/cmsis-dap.cfg",
-        "target/rp2040.cfg",
-        ".vscode/openocd_custom.cfg"
-      ],
-      "openOCDLaunchCommands": [
-        "adapter speed 5000"
-      ],
-      "runToEntryPoint": "main",
-      "serverPort": 3333,
-      "sourceFileMap": {
-        "firmware": "${workspaceFolder}"
-      },
-      "preLaunchTask": "cargo: build cat_detector_app (release + tracing)"
-    },
-    {
-      "type": "cortex-debug",
-      "request": "attach",
-      "name": "Attach Tracing Core 1 (Pico Probe)",
-      "servertype": "external",
-      "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/release/cat_detector_app",
-      "gdbTarget": "localhost:3334",
-      "device": "RP2040",
-      "sourceFileMap": {
-        "firmware": "${workspaceFolder}"
-      }
     }
   ],
   "compounds": [
     {
-      "name": "Debug Shell Dual-Core (J-Link)",
+      "name": "Host Daemon: Attach Shell Dual-Core (GDB)",
       "configurations": [
-        "Debug Shell Core 0 (J-Link)",
-        "Attach Shell Core 1 (J-Link)"
+        "Host Daemon: Attach Shell Core 0 (GDB)",
+        "Host Daemon: Attach Shell Core 1 (GDB)"
       ]
     },
     {
-      "name": "Debug App Dual-Core (J-Link)",
+      "name": "Host Daemon: Attach App Dual-Core (GDB)",
       "configurations": [
-        "Debug App Core 0 (J-Link)",
-        "Attach App Core 1 (J-Link)"
+        "Host Daemon: Attach App Core 0 (GDB)",
+        "Host Daemon: Attach App Core 1 (GDB)"
       ]
     }
   ],
   "inputs": [
+    {
+      "id": "gdbCore0Port",
+      "type": "promptString",
+      "description": "Core 0 GDB RSP TCP port exposed by host.py / host_debug",
+      "default": "3333"
+    },
+    {
+      "id": "gdbCore1Port",
+      "type": "promptString",
+      "description": "Core 1 GDB RSP TCP port exposed by host.py / host_debug",
+      "default": "3334"
+    },
     {
       "id": "deviceTestKeyword",
       "type": "promptString",
@@ -481,6 +377,7 @@
       "options": [
         "host_cli",
         "host_fs",
+        "host_debug",
         "code_gen"
       ],
       "default": "host_cli"

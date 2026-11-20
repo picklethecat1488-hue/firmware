@@ -196,3 +196,90 @@ fn should_filter_frame(name: &str) -> bool {
         || name_lower.contains("__udivmod")
         || name_lower.contains("__aeabi_")
 }
+
+const MAX_DWARF_LINE_SLIP: u32 = 25;
+
+/// Resolve a symbol name (e.g. `"Reset_Handler"`, `"Core1_Reset_Handler"`) or DWARF source
+/// `file:line` target (e.g. `"cat_detector_shell.rs:102"`) in `elf_path` to its instruction address.
+pub fn resolve_breakpoint_target(elf_path: &std::path::Path, spec: &str) -> Result<u64, String> {
+    use object::{Object, ObjectSymbol};
+
+    let data = std::fs::read(elf_path)
+        .map_err(|e| format!("Failed to read ELF '{}': {}", elf_path.display(), e))?;
+    let obj = object::File::parse(&*data)
+        .map_err(|e| format!("Failed to parse ELF '{}': {}", elf_path.display(), e))?;
+
+    if let Some((raw_file, raw_line)) = spec.rsplit_once(':') {
+        if !raw_file.is_empty() && raw_line.chars().all(|c| c.is_ascii_digit()) {
+            let target_line: u32 = raw_line
+                .parse()
+                .map_err(|e| format!("Invalid line number in '{}': {}", spec, e))?;
+            let normalized_suffix = raw_file.replace('\\', "/");
+            let ctx = addr2line::Context::new(&obj)
+                .map_err(|e| format!("Failed to load DWARF line table: {:?}", e))?;
+            let iter = ctx
+                .find_location_range(0, u64::MAX)
+                .map_err(|e| format!("Failed to scan DWARF locations: {:?}", e))?;
+
+            let mut best_match: Option<(u32, u64)> = None;
+            for (start_addr, len, loc) in iter {
+                if len == 0 {
+                    continue;
+                }
+                let Some(file_str) = loc.file else {
+                    continue;
+                };
+                let Some(line_num) = loc.line else {
+                    continue;
+                };
+                if line_num < target_line
+                    || line_num > target_line.saturating_add(MAX_DWARF_LINE_SLIP)
+                {
+                    continue;
+                }
+                let file_norm = file_str.replace('\\', "/");
+                if file_norm == normalized_suffix
+                    || file_norm.ends_with(&format!("/{}", normalized_suffix))
+                {
+                    let delta = line_num - target_line;
+                    let candidate = (delta, start_addr & !1);
+                    if best_match.is_none_or(|prev| candidate < prev) {
+                        best_match = Some(candidate);
+                    }
+                }
+            }
+
+            return best_match
+                .map(|(_, addr)| addr)
+                .ok_or_else(|| format!("No DWARF instruction found near '{}'", spec));
+        }
+    }
+
+    // Symbol lookup: exact raw name first, then exact demangled name, then unique demangled suffix.
+    let mut demangled_exact: Option<u64> = None;
+    let mut demangled_contains: Option<u64> = None;
+    for sym in obj.symbols() {
+        let Ok(name) = sym.name() else {
+            continue;
+        };
+        if name.is_empty() || sym.address() == 0 {
+            continue;
+        }
+        let addr = sym.address() & !1;
+        if name == spec {
+            return Ok(addr);
+        }
+        let demangled = format!("{:#}", rustc_demangle::demangle(name));
+        if demangled == spec {
+            demangled_exact = Some(addr);
+        } else if demangled.ends_with(&format!("::{}", spec)) || demangled.contains(spec) {
+            if demangled_contains.is_none_or(|prev| addr < prev) {
+                demangled_contains = Some(addr);
+            }
+        }
+    }
+
+    demangled_exact
+        .or(demangled_contains)
+        .ok_or_else(|| format!("Symbol '{}' not found in '{}'", spec, elf_path.display()))
+}

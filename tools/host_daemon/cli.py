@@ -315,6 +315,49 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         default=1,
         help="Number of sequential on-device test iterations to execute for `host.py test`.",
     )
+    parser.add_argument(
+        "--debug-server",
+        dest="enable_debug_server",
+        action="store_true",
+        default=False,
+        help="Enable the probe-rs dual-core GDB debug server (host_debug) and :50000 RTT bridge.",
+    )
+    parser.add_argument(
+        "--halt-on-reset",
+        dest="halt_on_reset",
+        action="store_true",
+        default=False,
+        help="Halt Core 0 at Reset_Handler upon target sync/reset when --debug-server is enabled.",
+    )
+    parser.add_argument(
+        "--gdb-core0-port",
+        "--gdb-port",
+        dest="gdb_core0_port",
+        type=int,
+        default=3333,
+        help="TCP port for Core 0 GDB RSP attachments when --debug-server is enabled.",
+    )
+    parser.add_argument(
+        "--gdb-core1-port",
+        dest="gdb_core1_port",
+        type=int,
+        default=3334,
+        help="TCP port for Core 1 GDB RSP attachments on dual-core targets.",
+    )
+    parser.add_argument(
+        "--rtt-bridge-port",
+        dest="rtt_bridge_port",
+        type=int,
+        default=50000,
+        help="TCP port for the non-halting RTT memory bridge consumed by host_cli.",
+    )
+    parser.add_argument(
+        "--probe",
+        dest="probe_selector",
+        type=str,
+        default=None,
+        help="Optional probe selector (VID:PID or VID:PID:SERIAL) for multi-target benches.",
+    )
 
     subparsers = parser.add_subparsers(dest="subcommand", help="Host daemon subcommands")
 
@@ -325,6 +368,78 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     # FS forwarding
     fs_parser = subparsers.add_parser("fs", help="Forward command to active host daemon FS tool")
     fs_parser.add_argument("command", nargs=argparse.REMAINDER, help="FS subcommand and arguments (e.g. ls, cat ...)")
+
+    # Target Debug Server control (`host.py debug {status,start,stop}`)
+    debug_parser = subparsers.add_parser(
+        "debug",
+        help="Start, stop, or inspect the probe-rs target GDB debug server on the active host daemon",
+    )
+    debug_parser.add_argument(
+        "debug_action",
+        nargs="?",
+        choices=["status", "start", "stop"],
+        default="status",
+        help="Debug server lifecycle action (default: status).",
+    )
+    debug_parser.add_argument(
+        "--gdb-core0-port",
+        "--gdb-port",
+        dest="dbg_core0_port",
+        type=int,
+        default=None,
+        help="Explicit Core 0 GDB RSP TCP port override.",
+    )
+    debug_parser.add_argument(
+        "--gdb-core1-port",
+        dest="dbg_core1_port",
+        type=int,
+        default=None,
+        help="Explicit Core 1 GDB RSP TCP port override.",
+    )
+    debug_parser.add_argument(
+        "--rtt-bridge-port",
+        dest="dbg_rtt_port",
+        type=int,
+        default=None,
+        help="Explicit RTT memory bridge TCP port override.",
+    )
+    debug_parser.add_argument(
+        "--probe",
+        dest="dbg_probe",
+        type=str,
+        default=None,
+        help="Optional probe selector (VID:PID[:SERIAL]).",
+    )
+    debug_parser.add_argument(
+        "--halt-on-reset",
+        dest="dbg_halt_on_reset",
+        action="store_true",
+        default=None,
+        help="Reset and halt Core 0 at Reset_Handler upon debug server start.",
+    )
+    debug_parser.add_argument(
+        "--no-halt-on-reset",
+        dest="dbg_halt_on_reset",
+        action="store_false",
+        help="Disable halting at Reset_Handler.",
+    )
+    debug_parser.add_argument(
+        "--reset",
+        dest="dbg_reset",
+        action="store_true",
+        help="Reset Core 0 when starting the debug server.",
+    )
+    debug_parser.add_argument(
+        "--host-port",
+        type=int,
+        default=None,
+        help="Optional explicit TCP port of a running host.py daemon.",
+    )
+    debug_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Format debug server status output as JSON.",
+    )
 
     # Status
     subparsers.add_parser("status", help="Show status of running host daemon")
@@ -593,6 +708,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     package_selection_mode = not is_explicit and args.subcommand is None
 
     last_session = load_last_session(repo_root)
+    has_cli_debug_flag = any(
+        a in ("--debug-server", "--halt-on-reset", "--gdb-core0-port", "--gdb-port", "--gdb-core1-port")
+        or a.startswith("--gdb-core0-port=")
+        or a.startswith("--gdb-port=")
+        or a.startswith("--gdb-core1-port=")
+        for a in raw_args
+    )
     if not is_explicit and last_session and args.subcommand is None:
         if "package" in last_session:
             args.package = last_session["package"]
@@ -606,6 +728,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             args.speed = last_session["speed"]
         if "chip" in last_session:
             args.chip = last_session["chip"]
+        if not has_cli_debug_flag:
+            if "enable_debug_server" in last_session:
+                args.enable_debug_server = bool(last_session["enable_debug_server"])
+            if "halt_on_reset" in last_session:
+                args.halt_on_reset = bool(last_session["halt_on_reset"])
+            if "gdb_core0_port" in last_session:
+                args.gdb_core0_port = int(last_session["gdb_core0_port"])
+            if "gdb_core1_port" in last_session:
+                args.gdb_core1_port = int(last_session["gdb_core1_port"])
     elif is_explicit and args.subcommand is None:
         discovered_pkgs = discover_target_packages(repo_root)
         if not args.package and discovered_pkgs:
@@ -624,6 +755,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "target": args.target,
                 "speed": args.speed,
                 "chip": args.chip,
+                "enable_debug_server": bool(getattr(args, "enable_debug_server", False)),
+                "halt_on_reset": bool(getattr(args, "halt_on_reset", False)),
+                "gdb_core0_port": int(getattr(args, "gdb_core0_port", 3333)),
+                "gdb_core1_port": int(getattr(args, "gdb_core1_port", 3334)),
             },
         )
 
@@ -651,6 +786,53 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
         except Exception as e:
             print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+    if args.subcommand == "debug":
+        action = str(getattr(args, "debug_action", "status") or "status").lower()
+        try:
+            if action == "status":
+                dbg = send_daemon_request("/api/debug/status", None, port=args.host_port, host=args.host)
+            elif action == "start":
+                req_body: Dict[str, Any] = {"reset": bool(getattr(args, "dbg_reset", False))}
+                if getattr(args, "dbg_core0_port", None) is not None:
+                    req_body["gdb_core0_port"] = int(args.dbg_core0_port)
+                if getattr(args, "dbg_core1_port", None) is not None:
+                    req_body["gdb_core1_port"] = int(args.dbg_core1_port)
+                if getattr(args, "dbg_rtt_port", None) is not None:
+                    req_body["rtt_bridge_port"] = int(args.dbg_rtt_port)
+                if getattr(args, "dbg_probe", None) is not None:
+                    req_body["probe"] = args.dbg_probe
+                if getattr(args, "dbg_halt_on_reset", None) is not None:
+                    req_body["halt_on_reset"] = bool(args.dbg_halt_on_reset)
+                res_dbg = send_daemon_request("/api/debug/start", req_body, port=args.host_port, host=args.host)
+                if "error" in res_dbg:
+                    print(f"Error: {res_dbg['error']}", file=sys.stderr)
+                    return 1
+                dbg = res_dbg.get("debug") or res_dbg
+            else:
+                res_dbg = send_daemon_request("/api/debug/stop", {}, port=args.host_port, host=args.host)
+                if "error" in res_dbg:
+                    print(f"Error: {res_dbg['error']}", file=sys.stderr)
+                    return 1
+                dbg = res_dbg.get("debug") or res_dbg
+
+            if args.json:
+                print(json.dumps(dbg, indent=2))
+            else:
+                state_label = (
+                    "ACTIVE" if dbg.get("active") else ("ENABLED (pending sync)" if dbg.get("enabled") else "STOPPED")
+                )
+                print(
+                    f"Target Debug Server: {state_label}\n"
+                    f"  Core 0 GDB : 127.0.0.1:{dbg.get('gdb_core0_port')}\n"
+                    f"  Core 1 GDB : 127.0.0.1:{dbg.get('gdb_core1_port')}\n"
+                    f"  RTT Bridge : 127.0.0.1:{dbg.get('rtt_bridge_port')}\n"
+                    f"  Halt Reset : {dbg.get('halt_on_reset')}"
+                )
+            return 0
+        except Exception as exc:
+            print(f"Error: {exc}", file=sys.stderr)
             return 1
 
     if args.subcommand == "status":
@@ -1136,6 +1318,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         chip=args.chip,
         package_selection_mode=package_selection_mode,
         show_system_logs=getattr(args, "show_system_logs", False),
+        enable_debug_server=bool(getattr(args, "enable_debug_server", False)),
+        halt_on_reset=bool(getattr(args, "halt_on_reset", False)),
+        gdb_core0_port=int(getattr(args, "gdb_core0_port", 3333)),
+        gdb_core1_port=int(getattr(args, "gdb_core1_port", 3334)),
+        rtt_bridge_port=int(getattr(args, "rtt_bridge_port", 50000)),
+        probe_selector=getattr(args, "probe_selector", None),
     )
     atexit.register(runner.stop)
     atexit.register(remove_lock_file)

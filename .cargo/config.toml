@@ -1,12 +1,13 @@
 
 [alias]
 check-host = "check --workspace --all-targets"
-check-mcu = "check --workspace --bins --lib --target=thumbv6m-none-eabi --exclude=host_cli --exclude=host_fs --exclude=tool_common --exclude=code_gen"
+check-mcu = "check --workspace --bins --lib --target=thumbv6m-none-eabi --exclude=host_cli --exclude=host_fs --exclude=host_debug --exclude=tool_common --exclude=code_gen"
 check-carrier = "check --package cat_detector --bin carrier_board_shell --target=thumbv8m.main-none-eabihf"
 host-cli = "run --quiet --package host_cli --"
 host-fs = "run --quiet --package host_fs --"
+host-debug = "run --quiet --package host_debug --"
 code-gen = "run --quiet --package code_gen --"
-build-host-tools = "build --package host_cli --package host_fs --package code_gen"
+build-host-tools = "build --package host_cli --package host_fs --package host_debug --package code_gen"
 
 [target.thumbv6m-none-eabi]
 runner = "tools/runner.sh"

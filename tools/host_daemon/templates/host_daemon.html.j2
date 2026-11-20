@@ -898,6 +898,7 @@
       <span class="badge" id="targetBadge">{{ runner.target }}</span>
       <span class="badge" id="binBadge">{{ runner.bin_name }}</span>
       <span class="badge badge-green" id="statusBadge">ONLINE</span>
+      <span class="badge badge-cyan" id="debugServerBadge" style="display: {% if runner.debug_server_active | default(false) %}inline-block{% else %}none{% endif %};" title="probe-rs Target GDB Debug Server">GDB :{{ runner.gdb_core0_port | default(3333) }}/:{{ runner.gdb_core1_port | default(3334) }}</span>
     </div>
 
     <div style="display: flex; align-items: center; gap: 8px;">
@@ -1160,6 +1161,29 @@
           </label>
         </div>
 
+        <!-- Target Debug Server (probe-rs GDB RSP + :50000 RTT Bridge) -->
+        <div style="background:#05141c; border:1px solid #0b5966; padding:8px 12px; border-radius:3px; display:flex; flex-direction:column; gap:6px;">
+          <span style="font-size:8.5px; color:var(--xerxes-text-muted); font-weight:bold;">TARGET DEBUG SERVER (probe-rs GDB)</span>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:10px; color:var(--xerxes-text-bright);">
+            <input type="checkbox" id="cfgDebugServerCheckbox" {% if runner.enable_debug_server | default(false) %}checked{% endif %} style="accent-color:var(--xerxes-cyan); cursor:pointer;">
+            <span>Enable target GDB debug server on Sync (host_debug)</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:10px; color:var(--xerxes-text-bright);">
+            <input type="checkbox" id="cfgHaltOnResetCheckbox" {% if runner.halt_on_reset | default(false) %}checked{% endif %} style="accent-color:var(--xerxes-cyan); cursor:pointer;">
+            <span>Halt Core 0 at Reset_Handler after Sync / Reset</span>
+          </label>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 2px;">
+            <div>
+              <label for="cfgGdbCore0Port" style="font-size:8px; color:var(--xerxes-text-muted); display:block; margin-bottom:2px; font-weight:bold;">CORE 0 GDB PORT</label>
+              <input type="number" id="cfgGdbCore0Port" class="quake-input" min="1" max="65535" value="{{ runner.gdb_core0_port | default(3333) }}" style="width:100%; box-sizing:border-box; padding:4px 6px; font-size:10.5px; background:#040d12; border:1px solid #0b5966; color:#00f0ff;">
+            </div>
+            <div>
+              <label for="cfgGdbCore1Port" style="font-size:8px; color:var(--xerxes-text-muted); display:block; margin-bottom:2px; font-weight:bold;">CORE 1 GDB PORT</label>
+              <input type="number" id="cfgGdbCore1Port" class="quake-input" min="1" max="65535" value="{{ runner.gdb_core1_port | default(3334) }}" style="width:100%; box-sizing:border-box; padding:4px 6px; font-size:10.5px; background:#040d12; border:1px solid #0b5966; color:#00f0ff;">
+            </div>
+          </div>
+        </div>
+
         <div id="cfgStatusMsg" style="display:none; font-size:9.5px; padding:6px 10px; border-radius:2px;"></div>
       </div>
       <div class="sync-modal-footer" style="padding:10px 14px; border-top:1px solid #0b5966; display:flex; justify-content:flex-end; gap:8px;">
@@ -1399,6 +1423,11 @@
       "speed": runner.speed | default(1000),
       "chip": runner.chip | default(none),
       "showSystemLogs": runner.show_system_logs | default(false),
+      "enableDebugServer": runner.enable_debug_server | default(false),
+      "haltOnReset": runner.halt_on_reset | default(false),
+      "gdbCore0Port": runner.gdb_core0_port | default(3333),
+      "gdbCore1Port": runner.gdb_core1_port | default(3334),
+      "debugServerActive": runner.debug_server_active | default(false),
       "packageSelectionMode": package_selection_mode | default(false),
       "targetPackages": target_packages | default([]),
       "lastSession": last_session | default(none)

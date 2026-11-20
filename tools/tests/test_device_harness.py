@@ -3,8 +3,10 @@
 import asyncio
 from collections import deque
 from datetime import datetime, timezone
+import json
 import os
 from pathlib import Path
+import socket
 import subprocess
 import sys
 import threading
@@ -38,6 +40,126 @@ from device_tests.model import (
 from host_daemon.model.manual_prompt import ManualPromptState
 from host_daemon.model.metadata import get_cargo_target_directory, validate_metadata_matches_target
 from host_daemon.provider.daemon.server import HostDaemonServer
+
+
+SIM_RESET_HANDLER_ADDR: int = 0x100001C0
+SIM_CORE1_RESET_HANDLER_ADDR: int = 0x10022C0A
+SIM_LOC_BASE_ADDR: int = 0x10004100
+
+
+class _SimulatedDualCoreGdbServer:
+    """In-process dual-core GDB RSP stub for exercising `@device_test` GDB flows without USB hardware."""
+
+    def __init__(self, core0_port: int, core1_port: int, *, halt_on_reset: bool) -> None:
+        self._stop_event = threading.Event()
+        self._core1_spawned = threading.Event()
+        if not halt_on_reset:
+            self._core1_spawned.set()
+        self._sock0 = self._bind_listener(core0_port)
+        self._sock1 = self._bind_listener(core1_port)
+        self.core0_port = int(self._sock0.getsockname()[1])
+        self.core1_port = int(self._sock1.getsockname()[1])
+        self._t0 = threading.Thread(target=self._serve_core, args=(self._sock0, 0, SIM_RESET_HANDLER_ADDR), daemon=True)
+        self._t1 = threading.Thread(target=self._serve_core, args=(self._sock1, 1, 0), daemon=True)
+        self._t0.start()
+        self._t1.start()
+
+    @staticmethod
+    def _bind_listener(port: int) -> socket.socket:
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.bind(("127.0.0.1", port))
+        srv.listen(2)
+        srv.settimeout(0.15)
+        return srv
+
+    def _serve_core(self, listener: socket.socket, core_idx: int, initial_pc: int) -> None:
+        while not self._stop_event.is_set():
+            try:
+                conn, _ = listener.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            with conn:
+                conn.settimeout(0.15)
+                no_ack = False
+                pc = initial_pc
+                breakpoints: set[int] = set()
+                rx = bytearray()
+
+                def _send(body: str) -> None:
+                    raw = body.encode("ascii")
+                    csum = sum(raw) & 0xFF
+                    prefix = b"" if no_ack else b"+"
+                    conn.sendall(prefix + b"$" + raw + f"#{csum:02x}".encode("ascii"))
+
+                detached = False
+                while not self._stop_event.is_set() and not detached:
+                    try:
+                        chunk = conn.recv(1024)
+                    except socket.timeout:
+                        continue
+                    except OSError:
+                        break
+                    if not chunk:
+                        break
+                    rx.extend(chunk)
+                    while rx and not detached:
+                        while rx[:1] in (b"+", b"-"):
+                            del rx[0]
+                        if not rx:
+                            break
+                        if rx[:1] == b"\x03":
+                            del rx[0]
+                            _send("S02")
+                            continue
+                        if rx.startswith(b"$"):
+                            hash_idx = rx.find(b"#", 1)
+                            if hash_idx == -1 or len(rx) < hash_idx + 3:
+                                break
+                            cmd = bytes(rx[1:hash_idx]).decode("ascii", errors="replace")
+                            del rx[: hash_idx + 3]
+                            if cmd == "QStartNoAckMode":
+                                _send("OK")
+                                no_ack = True
+                            elif cmd == "?":
+                                _send("S05")
+                            elif cmd == "p0f":
+                                _send(pc.to_bytes(4, "little").hex())
+                            elif cmd.startswith("Z1,"):
+                                breakpoints.add(int(cmd.split(",")[1], 16))
+                                _send("OK")
+                            elif cmd.startswith("z1,"):
+                                breakpoints.discard(int(cmd.split(",")[1], 16))
+                                _send("OK")
+                            elif cmd == "D":
+                                _send("OK")
+                                detached = True
+                            elif cmd == "c":
+                                if core_idx == 1:
+                                    self._core1_spawned.wait(timeout=4.0)
+                                candidates = sorted(bp for bp in breakpoints if bp != pc)
+                                if candidates:
+                                    pc = candidates[0]
+                                    _send("S05")
+                                elif core_idx == 0:
+                                    self._core1_spawned.set()
+                            else:
+                                _send("")
+                        else:
+                            del rx[0]
+            return
+
+    def close(self) -> None:
+        """Stop listener threads and close bound sockets."""
+        self._stop_event.set()
+        self._core1_spawned.set()
+        for srv in (self._sock0, self._sock1):
+            try:
+                srv.close()
+            except OSError:
+                pass
 
 
 class SimulatedTargetRunner:
@@ -85,6 +207,12 @@ class SimulatedTargetRunner:
         self.virtual_fs: Dict[str, str] = {}
         self.manual_prompt = ManualPromptState()
         self.peak_manual_heartbeats: int = 0
+        self.enable_debug_server = False
+        self.halt_on_reset = False
+        self.gdb_core0_port = 3333
+        self.gdb_core1_port = 3334
+        self.rtt_bridge_port = 50000
+        self._sim_gdb: Optional[_SimulatedDualCoreGdbServer] = None
 
         self.sync_status: Dict[str, Any] = {
             "active": False,
@@ -166,9 +294,15 @@ class SimulatedTargetRunner:
         speed: Optional[int] = None,
         chip: Optional[str] = None,
         show_system_logs: Optional[bool] = None,
+        enable_debug_server: Optional[bool] = None,
+        halt_on_reset: Optional[bool] = None,
+        gdb_core0_port: Optional[int] = None,
+        gdb_core1_port: Optional[int] = None,
+        rtt_bridge_port: Optional[int] = None,
+        probe_selector: Optional[str] = None,
     ) -> None:
         """Update target configuration fields prior to synchronization."""
-        del show_system_logs
+        del show_system_logs, probe_selector
         if target:
             self.target = target
         if package:
@@ -181,6 +315,16 @@ class SimulatedTargetRunner:
             self.speed = speed
         if chip:
             self.chip = chip
+        if enable_debug_server is not None:
+            self.enable_debug_server = bool(enable_debug_server)
+        if halt_on_reset is not None:
+            self.halt_on_reset = bool(halt_on_reset)
+        if gdb_core0_port is not None:
+            self.gdb_core0_port = int(gdb_core0_port)
+        if gdb_core1_port is not None:
+            self.gdb_core1_port = int(gdb_core1_port)
+        if rtt_bridge_port is not None:
+            self.rtt_bridge_port = int(rtt_bridge_port)
 
     def sync(self) -> Dict[str, Any]:
         """Simulate firmware build, probe-rs flash, RTT attach, and boot `defmt` log emission."""
@@ -232,6 +376,80 @@ class SimulatedTargetRunner:
     def stop(self) -> None:
         """Record daemon stop requests."""
         self.stop_called_count += 1
+        if self._sim_gdb is not None:
+            self._sim_gdb.close()
+            self._sim_gdb = None
+
+    def get_debug_status(self) -> Dict[str, Any]:
+        """Return simulated `host_debug` status payload."""
+        return {
+            "enabled": self.enable_debug_server,
+            "active": self._sim_gdb is not None,
+            "halt_on_reset": self.halt_on_reset,
+            "gdb_core0_port": self.gdb_core0_port,
+            "gdb_core1_port": self.gdb_core1_port,
+            "rtt_bridge_port": self.rtt_bridge_port,
+            "probe": None,
+            "cores": 2,
+            "halted_on_reset": self.halt_on_reset,
+            "gdb_core0_connected": False,
+            "gdb_core1_connected": False,
+        }
+
+    def enable_live_debug_server(
+        self,
+        *,
+        gdb_core0_port: Optional[int] = None,
+        gdb_core1_port: Optional[int] = None,
+        rtt_bridge_port: Optional[int] = None,
+        probe_selector: Optional[str] = None,
+        halt_on_reset: Optional[bool] = None,
+        reset: bool = False,
+        resolve: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Start an in-process `_SimulatedDualCoreGdbServer` and return resolved symbol addresses."""
+        del probe_selector, reset
+        if self._sim_gdb is not None:
+            self._sim_gdb.close()
+            self._sim_gdb = None
+        self.update_config(
+            enable_debug_server=True,
+            halt_on_reset=halt_on_reset,
+            gdb_core0_port=gdb_core0_port,
+            gdb_core1_port=gdb_core1_port,
+            rtt_bridge_port=rtt_bridge_port,
+        )
+        self._sim_gdb = _SimulatedDualCoreGdbServer(
+            self.gdb_core0_port,
+            self.gdb_core1_port,
+            halt_on_reset=self.halt_on_reset,
+        )
+        self.gdb_core0_port = self._sim_gdb.core0_port
+        self.gdb_core1_port = self._sim_gdb.core1_port
+        status = self.get_debug_status()
+        if resolve:
+            resolved_map: Dict[str, int] = {}
+            next_loc = SIM_LOC_BASE_ADDR
+            for spec in resolve:
+                if spec == "Reset_Handler":
+                    resolved_map[spec] = SIM_RESET_HANDLER_ADDR
+                elif spec == "Core1_Reset_Handler":
+                    resolved_map[spec] = SIM_CORE1_RESET_HANDLER_ADDR
+                else:
+                    resolved_map[spec] = next_loc
+                    next_loc += 0x100
+            status["resolved"] = resolved_map
+        return status
+
+    def disable_live_debug_server(self) -> Dict[str, Any]:
+        """Stop any active `_SimulatedDualCoreGdbServer` and restore connected state."""
+        if self._sim_gdb is not None:
+            self._sim_gdb.close()
+            self._sim_gdb = None
+        self.enable_debug_server = False
+        self.halt_on_reset = False
+        self.is_connected = True
+        return self.get_debug_status()
 
     def execute_cli(self, command: str, wait_for_output: bool = False, timeout: float = 5.0) -> str:
         """Simulate realistic RP2040 Cat Detector and MCXN947 Carrier Board CLI responses."""
@@ -494,7 +712,7 @@ def test_rp2040_smoke_integration_project_filter_and_binary_sync() -> None:
         runner.executed_cli_commands.clear()
         integ_res = _run_device_pytest(port, ["--project", "cat_detector", "-m", "integration"])
         assert integ_res.returncode == 0, f"Integration failed:\n{integ_res.stdout}\n{integ_res.stderr}"
-        assert "4 passed" in integ_res.stdout
+        assert "5 passed" in integ_res.stdout
         assert "battery status" not in runner.executed_cli_commands
         assert runner.sync_history == ["cat_detector_shell", "cat_detector_app", "cat_detector_shell"]
     finally:
@@ -1214,7 +1432,7 @@ def test_worm_loamy_clitellum_820_concurrent_probe_lock_and_timestamped_cli_test
         },
     )
     # Prevent start_rtt_streaming from spawning cargo/host_cli in this unit test
-    monkeypatch.setattr(runner, "start_rtt_streaming", lambda: None)
+    monkeypatch.setattr(runner, "start_rtt_streaming", lambda *_a, **_kw: None)
 
     concurrent_meta_results: List[Dict[str, Any]] = []
 
@@ -1442,7 +1660,12 @@ def test_symbolic_test_debugging_dap_breakpoint_and_vscode_config(
 
     defined_tasks = {t["label"] for t in tasks_cfg.get("tasks", [])}
     config_names = {c["name"] for c in launch_cfg.get("configurations", [])}
+    assert not (vscode_dir / "openocd_custom.cfg").exists()
+    assert "Host Daemon: Attach Shell Core 0 (GDB)" in config_names
+    assert "Host Daemon: Attach Shell Core 1 (GDB)" in config_names
+    assert "probe-rs (Secondary): Debug Shell (RP2040)" in config_names
     for cfg in launch_cfg.get("configurations", []):
+        assert cfg.get("servertype") != "openocd", f"Legacy OpenOCD config must be removed: {cfg['name']}"
         pre_task = cfg.get("preLaunchTask")
         if pre_task:
             assert pre_task in defined_tasks, f"Missing preLaunchTask {pre_task!r} in .vscode/tasks.json"
@@ -1792,3 +2015,140 @@ def test_host_py_bug_cli_online_and_offline_reporting(
         == 1
     )
     capsys.readouterr()
+
+
+def test_host_py_debug_server_cli_and_single_reset_sync(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify `DaemonRunner.sync()` with `enable_debug_server=True` performs a single probe reset and `host.py debug` controls it."""
+    import json
+
+    from host_daemon import cli as host_cli_mod
+    from host_daemon.provider.daemon.runner import DaemonRunner
+
+    fake_elf = tmp_path / "cat_detector_shell"
+    fake_elf.write_bytes(b"\x7fELF")
+
+    # Mock `host_debug` emitting structured `ready` event and recording argv to verify flags
+    dbg_argv_log = tmp_path / "host_debug_argv.json"
+    mock_dbg_py = tmp_path / "mock_host_debug.py"
+    mock_dbg_py.write_text(
+        "import json, os, sys\n"
+        f"open({str(dbg_argv_log)!r}, 'w').write(json.dumps(sys.argv[1:]))\n"
+        "c0 = int(sys.argv[sys.argv.index('--gdb-core0-port') + 1])\n"
+        "c1 = int(sys.argv[sys.argv.index('--gdb-core1-port') + 1])\n"
+        "rtt = int(sys.argv[sys.argv.index('--rtt-bridge-port') + 1])\n"
+        "halted = '--halt-on-reset' in sys.argv\n"
+        "print(json.dumps({'event': 'ready', 'chip': 'rp2040', 'cores': 2, "
+        "'gdb_core0_port': c0, 'gdb_core1_port': c1, 'rtt_bridge_port': rtt, 'halted_on_reset': halted}), flush=True)\n"
+        "sys.stdin.read()\n"
+        "print(json.dumps({'event': 'stopped'}), flush=True)\n",
+        encoding="utf-8",
+    )
+    fake_dbg = tmp_path / "host_debug_mock"
+    fake_dbg.write_text(f"#!/bin/sh\nexec '{sys.executable}' -u '{mock_dbg_py}' \"$@\"\n", encoding="utf-8")
+    fake_dbg.chmod(0o755)
+
+    cli_argv_log = tmp_path / "host_cli_argv.json"
+    mock_cli_py = tmp_path / "mock_host_cli.py"
+    mock_cli_py.write_text(
+        "import json, sys\n"
+        f"open({str(cli_argv_log)!r}, 'w').write(json.dumps(sys.argv[1:]))\n"
+        "print(json.dumps({'event': 'session_started', 'chip': 'rp2040', 'defmt': True, 'cli_up': True, 'cli_down': True}), flush=True)\n"
+        "print(json.dumps({'event': 'cli_prompt'}), flush=True)\n"
+        "sys.stdin.read()\n",
+        encoding="utf-8",
+    )
+    fake_cli = tmp_path / "host_cli_mock"
+    fake_cli.write_text(f"#!/bin/sh\nexec '{sys.executable}' -u '{mock_cli_py}' \"$@\"\n", encoding="utf-8")
+    fake_cli.chmod(0o755)
+
+    fake_fs = tmp_path / "host_fs_mock"
+    fake_fs.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    fake_fs.chmod(0o755)
+
+    runner = DaemonRunner(
+        repo_root=tmp_path,
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+        target="thumbv6m-none-eabi",
+        chip="rp2040",
+        enable_debug_server=True,
+        halt_on_reset=True,
+        gdb_core0_port=4333,
+        gdb_core1_port=4334,
+        rtt_bridge_port=51000,
+    )
+    runner.elf_path = fake_elf
+    runner.host_cli_path = fake_cli
+    runner.host_fs_path = fake_fs
+    runner.host_debug_path = fake_dbg
+
+    flash_cargo_flags: List[bool] = []
+    runner.build_target = lambda: fake_elf  # type: ignore[method-assign]
+    runner.build_host_tools = lambda: (fake_cli, fake_fs)  # type: ignore[method-assign]
+
+    def _fake_flash(use_cargo_run: bool = True) -> bool:
+        flash_cargo_flags.append(use_cargo_run)
+        runner.is_flashed = True
+        return True
+
+    runner.flash_target = _fake_flash  # type: ignore[method-assign]
+
+    server, port = _start_ephemeral_daemon(runner)
+    try:
+        sync_res = runner.sync()
+        assert sync_res["step"] == "complete"
+        assert flash_cargo_flags == [False], "Sync with debug server must use probe-rs download (zero extra reset)"
+
+        dbg_args = json.loads(dbg_argv_log.read_text(encoding="utf-8"))
+        assert "--halt-on-reset" in dbg_args
+        assert dbg_args[dbg_args.index("--gdb-core0-port") + 1] == "4333"
+        assert dbg_args[dbg_args.index("--gdb-core1-port") + 1] == "4334"
+
+        for _ in range(40):
+            if cli_argv_log.is_file() and cli_argv_log.stat().st_size > 0:
+                break
+            time.sleep(0.05)
+        cli_args = json.loads(cli_argv_log.read_text(encoding="utf-8"))
+        assert "--gdb-bridge" in cli_args
+        assert "127.0.0.1:51000" in cli_args
+        assert "--reset" not in cli_args, "host_cli must NOT issue a second reset when bridged to host_debug"
+
+        # Exercise `host.py debug status`, `stop`, and `start` CLI subcommands
+        assert host_cli_mod.main(["debug", "status", "--host-port", str(port), "--json"]) == 0
+        st_json = json.loads(capsys.readouterr().out)
+        assert st_json["active"] is True
+        assert st_json["gdb_core0_port"] == 4333
+        assert st_json["gdb_core1_port"] == 4334
+
+        assert host_cli_mod.main(["debug", "stop", "--host-port", str(port), "--json"]) == 0
+        stop_json = json.loads(capsys.readouterr().out)
+        assert stop_json["active"] is False
+
+        assert (
+            host_cli_mod.main(
+                [
+                    "debug",
+                    "start",
+                    "--gdb-core0-port",
+                    "4433",
+                    "--gdb-core1-port",
+                    "4434",
+                    "--no-halt-on-reset",
+                    "--host-port",
+                    str(port),
+                    "--json",
+                ]
+            )
+            == 0
+        )
+        start_json = json.loads(capsys.readouterr().out)
+        assert start_json["active"] is True
+        assert start_json["gdb_core0_port"] == 4433
+        assert start_json["gdb_core1_port"] == 4434
+    finally:
+        runner.stop()
+        server.shutdown()
+        server.server_close()

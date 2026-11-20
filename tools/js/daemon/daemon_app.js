@@ -390,6 +390,7 @@ export class DaemonApp {
       this.rttStream.pollLogs(),
       this.cliConsole.pollOutputs(),
       this.pollManualPrompt(),
+      this.targetConfig.pollDebugStatus(),
     ];
     if (
       this.cliConsole.getMode() === WORKSTATION_MODES.TEST ||

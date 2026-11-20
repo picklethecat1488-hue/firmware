@@ -344,39 +344,37 @@ For interactive symbolic debugging of Python `@device_test` & host suites, Rust 
 #### 3. JavaScript ES Module Test Debugging (`node --test`)
 Open any `tools/tests/js/*.test.mjs` test file or `tools/js/` ES module, set a breakpoint, and launch **`JS: Debug Current Test File (node --test)`**.
 
-#### 4. Target Device Symbolic Debugging (`probe-rs` & `Cortex-Debug`)
-Stop any background `host.py` daemon first (`python tools/host.py stop` or task **`host: stop host.py daemon (release USB probe)`**) so the USB SWD probe is free, then select one of the **Run and Debug** configurations:
-*   **Cortex-Debug (Segger J-Link & CMSIS-DAP Pico Probe)**: Automatically builds the target ELF via `preLaunchTask` and maps DWARF paths via `sourceFileMap` (`"firmware": "${workspaceFolder}"`).
-    - **Debug App Core 0 (J-Link)** / **Debug Shell Core 0 (J-Link)** (plus **Debug App Dual-Core (J-Link)** and **Debug Shell Dual-Core (J-Link)** compounds for simultaneous Core 0 + Core 1 inspection on RP2040).
-    - **Debug Carrier Board Shell (J-Link MCXN947)**: Debugs `carrier_board_shell` on NXP MCX N947.
-    - **Debug App (Cortex-Debug Pico Probe)** / **Debug Shell (Cortex-Debug Pico Probe)**: Debugs via CMSIS-DAP over OpenOCD.
-*   **probe-rs-debug (`probe-rs.probe-rs-debug`)**: Flashes, halts at `main`, decodes RTT Channel 0 (`Defmt`), and exposes RTT Channel 1 (`String` `shell>`) directly in VS Code.
-    - **Debug Shell (probe-rs RP2040)** / **Debug Firmware (probe-rs RP2040)** / **Debug Carrier Board Shell (probe-rs MCXN947)**.
-Code execution automatically halts at `main`, allowing you to step through hardware initialization and controller handlers.
+#### 4. Target Device Symbolic Debugging (Primary: `tools/host.py` · Secondary: `probe-rs`)
+Target symbolic debugging runs natively on `probe-rs` across both Segger J-Link and CMSIS-DAP probes:
+*   **Primary Interface — `tools/host.py` (`tools/host_debug` Dual-Core GDB + Live RTT)**:
+    - Enable **Target GDB debug server (`host_debug`)** inside the **🎯 Target Config** modal in `host.py` (optionally enabling **Halt Core 0 at `Reset_Handler` after Sync / Reset** and custom **Core 0 / Core 1 GDB Ports** for multi-target benches), or start from the CLI via `python tools/host.py --debug-server` / `python tools/host.py debug start`.
+    - In VS Code **Run and Debug**, attach directly while `host.py` continues streaming `defmt` logs and `shell>` commands over the `:50000` RTT bridge:
+      - **Host Daemon: Attach Shell Core 0 (GDB)** / **Host Daemon: Attach Shell Core 1 (GDB)** / **Host Daemon: Attach Shell Dual-Core (GDB)**
+      - **Host Daemon: Attach App Core 0 (GDB)** / **Host Daemon: Attach App Core 1 (GDB)** / **Host Daemon: Attach App Dual-Core (GDB)**
+      - **Host Daemon: Attach Carrier Board Shell (GDB)**
+    - Supports breaking at **`Reset_Handler`** (Core 0) and **`Core1_Reset_Handler`** (Core 1) and stepping to any Rust LOC in Flash or SRAM on either core.
+*   **Secondary Interface — Standalone `probe-rs-debug` (`probe-rs.probe-rs-debug`)**:
+    - Stop any background `host.py` daemon first (`python tools/host.py stop` or task **`host: stop host.py daemon (release USB probe)`**) and launch **probe-rs (Secondary): Debug Shell (RP2040)**, **probe-rs (Secondary): Debug Firmware (RP2040)**, or **probe-rs (Secondary): Debug Carrier Board Shell (MCXN947)**.
 
-#### 5. Log Output Streaming and Interactive Console (host_cli)
-We provide a host command-line utility, `host_cli`, to stream and decode plaintext `defmt` logs and run an interactive diagnostic command console via RTT.
-First, build the tool:
+#### 5. Log Output Streaming and Interactive Console (`host_cli` / `cargo host-cli`)
+We provide a host command-line utility, `host_cli` (aliased as `cargo host-cli`), to stream and decode plaintext `defmt` logs, emit structured NDJSON events (`--json-events`), and run an interactive diagnostic command console via RTT.
+Build all host tools with:
 ```bash
-cargo build -p host_cli --release
+cargo build-host-tools
 ```
 
 *   **Default Run (Auto-detecting chip/channels and running logs + console)**:
     ```bash
-    cargo run -p host_cli -- --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
+    cargo host-cli --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
     ```
 *   **Via RTT (Specifying chip directly)**:
     ```bash
-    cargo run -p host_cli -- --chip rp2040 --elf target/thumbv6m-none-eabi/debug/cat_detector_app
+    cargo host-cli --chip rp2040 --elf target/thumbv6m-none-eabi/debug/cat_detector_app
     ```
-*   **Via RTT using `pico-debug` (Bypassing multidrop scan)**:
+*   **Concurrent Connection to an Active `host_debug` GDB Session (`--gdb-bridge`)**:
+    When `host_debug` is active (via `python tools/host.py --debug-server` or `cargo host-debug`), attach `host_cli` to its non-halting `:50000` RTT memory bridge:
     ```bash
-    cargo run -p host_cli -- --chip Cortex-M0+ --elf target/thumbv6m-none-eabi/debug/cat_detector_app
-    ```
-*   **Concurrent Connection to an Active VS Code Debug Session (OpenOCD GDB)**:
-    Because active debug sessions lock the physical USB debug probe, standard USB attachment will fail due to hardware resource conflicts. However, our custom OpenOCD configurations allow multiple connections. You can attach `host_cli` directly to the active VS Code debug session's TCP GDB port (defaulting to port `50000`):
-    ```bash
-    cargo run -p host_cli -- -o localhost:50000 --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
+    cargo host-cli --gdb-bridge 127.0.0.1:50000 --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
     ```
     This lets you stream system logs and interact with the CLI console concurrently while debugging, setting breakpoints, and stepping through code in VS Code.
 
@@ -595,7 +593,11 @@ python tools/host.py test -k tof_proximity --debug
 python tools/host.py test tools/device_tests/suites/test_cat_detector_bringup.py --manual
 python tools/host.py test --script tools/device_tests/suites/test_carrier_board_bringup.py --manual
 
-# Flash & debug probe controls
+# Target GDB debug server, worm defect reporting, & daemon lifecycle controls
+python tools/host.py debug status
+python tools/host.py debug start --gdb-core0-port 3333 --gdb-core1-port 3334 --halt-on-reset
+python tools/host.py debug stop
+python tools/host.py bug "Motor stall under load" --severity HIGH --attach-crash-log
 python tools/host.py sync
 python tools/host.py flash
 python tools/host.py reset

@@ -16,6 +16,10 @@ function buildTargetConfigDom(ctx) {
   const doc = ctx.getDocument();
   const targetBadge = createEl(ctx, "span", { id: "targetBadge", text: "thumbv6m-none-eabi" });
   const binBadge = createEl(ctx, "span", { id: "binBadge", text: "cat_detector_shell" });
+  const debugServerBadge = createEl(ctx, "span", {
+    id: "debugServerBadge",
+    style: { display: "none" },
+  });
   const syncBtn = createEl(ctx, "button", { id: "btnSync", text: "⚡ Sync" });
   const resetBtn = createEl(ctx, "button", { id: "btnReset", text: "⚡ Reset" });
   const targetConfigBtn = createEl(ctx, "button", { id: "btnTargetConfig", text: "🎯 Target Config" });
@@ -29,6 +33,12 @@ function buildTargetConfigDom(ctx) {
   const cfgArchNote = createEl(ctx, "span", { id: "cfgInferredArchNote" });
   const cfgArchInput = createEl(ctx, "input", { id: "cfgTargetArchInput" });
   const cfgShowLogsCheckbox = createEl(ctx, "input", { id: "cfgShowLogsCheckbox" });
+  const cfgDebugServerCheckbox = createEl(ctx, "input", { id: "cfgDebugServerCheckbox" });
+  const cfgHaltOnResetCheckbox = createEl(ctx, "input", { id: "cfgHaltOnResetCheckbox" });
+  const cfgGdbCore0Port = createEl(ctx, "input", { id: "cfgGdbCore0Port" });
+  cfgGdbCore0Port.value = "3333";
+  const cfgGdbCore1Port = createEl(ctx, "input", { id: "cfgGdbCore1Port" });
+  cfgGdbCore1Port.value = "3334";
   const cfgStatusMsg = createEl(ctx, "div", { id: "cfgStatusMsg", style: { display: "none" } });
   const cfgCancelBtn = createEl(ctx, "button", { id: "btnCancelTargetConfig", text: "DISMISS" });
   const cfgCloseBtn = createEl(ctx, "button", { id: "btnCloseTargetConfigModal", text: "✕" });
@@ -46,6 +56,10 @@ function buildTargetConfigDom(ctx) {
       cfgArchNote,
       cfgArchInput,
       cfgShowLogsCheckbox,
+      cfgDebugServerCheckbox,
+      cfgHaltOnResetCheckbox,
+      cfgGdbCore0Port,
+      cfgGdbCore1Port,
       cfgStatusMsg,
       cfgCancelBtn,
       cfgCloseBtn,
@@ -87,6 +101,7 @@ function buildTargetConfigDom(ctx) {
 
   doc.body.appendChild(targetBadge);
   doc.body.appendChild(binBadge);
+  doc.body.appendChild(debugServerBadge);
   doc.body.appendChild(syncBtn);
   doc.body.appendChild(resetBtn);
   doc.body.appendChild(targetConfigBtn);
@@ -96,6 +111,7 @@ function buildTargetConfigDom(ctx) {
   return {
     targetBadge,
     binBadge,
+    debugServerBadge,
     syncBtn,
     resetBtn,
     targetConfigBtn,
@@ -108,6 +124,10 @@ function buildTargetConfigDom(ctx) {
     cfgArchNote,
     cfgArchInput,
     cfgShowLogsCheckbox,
+    cfgDebugServerCheckbox,
+    cfgHaltOnResetCheckbox,
+    cfgGdbCore0Port,
+    cfgGdbCore1Port,
     cfgConfirmBtn,
     syncModal,
     syncCancelBtn,
@@ -206,6 +226,10 @@ describe("Host Daemon Target Configuration, Sync Flash Matrix & Reset Controller
     assert.equal(dom.cfgArchDisplay.textContent, "thumbv8m.main-none-eabihf");
 
     dom.cfgShowLogsCheckbox.checked = true;
+    dom.cfgDebugServerCheckbox.checked = true;
+    dom.cfgHaltOnResetCheckbox.checked = true;
+    dom.cfgGdbCore0Port.value = "4333";
+    dom.cfgGdbCore1Port.value = "4334";
     await controller.submitConfig();
 
     assert.equal(configuredPayloads.length, 1);
@@ -214,6 +238,12 @@ describe("Host Daemon Target Configuration, Sync Flash Matrix & Reset Controller
     assert.equal(configuredPayloads[0].release, true);
     assert.equal(configuredPayloads[0].speed, 4000);
     assert.equal(configuredPayloads[0].show_system_logs, true);
+    assert.equal(configuredPayloads[0].enable_debug_server, true);
+    assert.equal(configuredPayloads[0].halt_on_reset, true);
+    assert.equal(configuredPayloads[0].gdb_core0_port, 4333);
+    assert.equal(configuredPayloads[0].gdb_core1_port, 4334);
+    assert.equal(dom.debugServerBadge.style.display, "inline-block");
+    assert.equal(dom.debugServerBadge.textContent, "GDB :4333/:4334 [HALTED]");
 
     assert.equal(ctx.getStorage().getItem(LAST_PACKAGE_STORAGE_KEY), "carrier_board");
     assert.equal(ctx.getStorage().getItem(LAST_BIN_STORAGE_KEY), "carrier_board_shell");

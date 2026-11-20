@@ -11,6 +11,7 @@ members = [
     "app",
     "tools/host_fs",
     "tools/host_cli",
+    "tools/host_debug",
     "platform/host",
     "tools/code_gen",
 ]
@@ -39,6 +40,10 @@ debug = 0
 strip = true
 
 [profile.release.package.host_fs]
+debug = 0
+strip = true
+
+[profile.release.package.host_debug]
 debug = 0
 strip = true
 

@@ -5,11 +5,66 @@ Covers dual-core executor monitoring, `host_fs` SWD file round-trips with 16-bit
 automatic `cat_detector_app` binary switching.
 """
 
+import asyncio
 from pathlib import Path
 import re
+import socket
 
-from device_tests.client import AsyncHostSessionClient
+from device_tests.client import AsyncHostSessionClient, _find_free_local_port
 from device_tests.model import ScenarioTier, device_test
+
+GDB_RSP_SOCKET_TIMEOUT_SEC: float = 5.0
+
+
+class _MinimalGdbRspClient:
+    """Minimal synchronous GDB RSP TCP client for exercising `host_debug` in `@device_test` cases."""
+
+    def __init__(self, port: int) -> None:
+        self._sock = socket.create_connection(("127.0.0.1", port), timeout=GDB_RSP_SOCKET_TIMEOUT_SEC)
+        self._sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self._rx = bytearray()
+
+    def close(self) -> None:
+        """Close the underlying TCP socket."""
+        try:
+            self._sock.close()
+        except OSError:
+            pass
+
+    def _frame(self, payload: str) -> bytes:
+        raw = payload.encode("ascii")
+        csum = sum(raw) & 0xFF
+        return b"$" + raw + f"#{csum:02x}".encode("ascii")
+
+    def read_reply(self) -> str:
+        """Read the next `$payload#XX` packet from `host_debug`."""
+        while True:
+            while self._rx[:1] in (b"+", b"-"):
+                del self._rx[0]
+            if self._rx.startswith(b"$"):
+                hash_idx = self._rx.find(b"#", 1)
+                if hash_idx != -1 and len(self._rx) >= hash_idx + 3:
+                    body = bytes(self._rx[1:hash_idx]).decode("utf-8", errors="replace")
+                    del self._rx[: hash_idx + 3]
+                    return body
+            chunk = self._sock.recv(2048)
+            if not chunk:
+                raise RuntimeError("GDB RSP socket closed unexpectedly")
+            self._rx.extend(chunk)
+
+    def command(self, cmd: str) -> str:
+        """Send an RSP command packet and return its reply payload."""
+        self._sock.sendall(self._frame(cmd))
+        return self.read_reply()
+
+    def send_continue(self) -> None:
+        """Send an asynchronous `c` continue packet without blocking immediately."""
+        self._sock.sendall(self._frame("c"))
+
+    def read_pc(self) -> int:
+        """Read 32-bit architectural `PC` (`regnum 0x0f`) in little-endian byte order."""
+        le_hex = self.command("p0f")
+        return int.from_bytes(bytes.fromhex(le_hex), byteorder="little")
 
 
 @device_test(
@@ -83,6 +138,97 @@ async def test_system_activity_async_log_watcher(host: AsyncHostSessionClient) -
         ), out
     matched = await watcher.matched()
     assert len(matched) >= 1
+
+
+@device_test(
+    project="cat_detector",
+    boards=("rp2040*",),
+    scenarios=(ScenarioTier.INTEGRATION, ScenarioTier.BRINGUP),
+    target_binary="cat_detector_shell",
+)
+async def test_dual_core_gdb_reset_handler_to_loc(host: AsyncHostSessionClient) -> None:
+    """Verify breaking at `Reset_Handler` -> Rust LOC on Core 0 and `Core1_Reset_Handler` -> Rust LOC on Core 1 via `host_debug`."""
+    core0_loc_spec = "app/src/cat_detector_shell.rs:102"
+    core1_loc_spec = "app/src/cat_detector.rs:181"
+
+    c0_port = _find_free_local_port()
+    c1_port = _find_free_local_port()
+    rtt_port = _find_free_local_port()
+
+    dbg = await host.start_debug_server(
+        gdb_core0_port=c0_port,
+        gdb_core1_port=c1_port,
+        rtt_bridge_port=rtt_port,
+        halt_on_reset=True,
+        reset=True,
+        resolve=["Reset_Handler", "Core1_Reset_Handler", core0_loc_spec, core1_loc_spec],
+    )
+    assert dbg.get("active") is True, dbg
+    resolved = dbg["resolved"]
+    reset_handler_addr = int(resolved["Reset_Handler"])
+    core1_reset_addr = int(resolved["Core1_Reset_Handler"])
+    core0_loc_addr = int(resolved[core0_loc_spec])
+    core1_loc_addr = int(resolved[core1_loc_spec])
+
+    def _exercise_dual_core_gdb() -> None:
+        gdb0 = _MinimalGdbRspClient(int(dbg["gdb_core0_port"]))
+        gdb1 = _MinimalGdbRspClient(int(dbg["gdb_core1_port"]))
+        try:
+            assert gdb0.command("QStartNoAckMode") == "OK"
+            assert gdb1.command("QStartNoAckMode") == "OK"
+            assert gdb0.command("?") == "S05"
+            assert gdb0.read_pc() == reset_handler_addr
+
+            # Set Core 0 breakpoint at `cat_detector_shell.rs:102` and Core 1 at `Core1_Reset_Handler`.
+            assert gdb0.command(f"Z1,{core0_loc_addr:x},2") == "OK"
+            assert gdb1.command(f"Z1,{core1_reset_addr:x},2") == "OK"
+
+            gdb1.send_continue()
+            gdb0.send_continue()
+
+            # Core 0 hits `cat_detector_shell.rs:102` before `bootstrap_core1()`.
+            assert gdb0.read_reply() == "S05"
+            assert gdb0.read_pc() == core0_loc_addr
+
+            # Clear Core 0 breakpoint and continue Core 0 through `bootstrap_core1()` -> Core 1 hits `Core1_Reset_Handler`!
+            assert gdb0.command(f"z1,{core0_loc_addr:x},2") == "OK"
+            gdb0.send_continue()
+
+            assert gdb1.read_reply() == "S05"
+            assert gdb1.read_pc() == core1_reset_addr
+
+            # Advance Core 1 from `Core1_Reset_Handler` to `app/src/cat_detector.rs:181` (`bootstrap_core1_task`).
+            assert gdb1.command(f"z1,{core1_reset_addr:x},2") == "OK"
+            assert gdb1.command(f"Z1,{core1_loc_addr:x},2") == "OK"
+            gdb1.send_continue()
+
+            assert gdb1.read_reply() == "S05"
+            assert gdb1.read_pc() == core1_loc_addr
+
+            # Clear Core 1 breakpoint and detach both GDB clients so both cores run freely.
+            assert gdb1.command(f"z1,{core1_loc_addr:x},2") == "OK"
+            assert gdb1.command("D") == "OK"
+            # Halt Core 0 briefly with Ctrl-C so `D` detach handshake completes cleanly on Core 0.
+            gdb0._sock.sendall(b"\x03")
+            assert gdb0.read_reply() in ("S02", "S05")
+            assert gdb0.command("D") == "OK"
+        finally:
+            gdb0.close()
+            gdb1.close()
+
+    try:
+        await asyncio.to_thread(_exercise_dual_core_gdb)
+        # Wait for `host_cli --gdb-bridge` to lock onto `_SEGGER_RTT` now that Core 0 & Core 1 are running!
+        for _ in range(30):
+            st = await host.get_status()
+            if st.get("connected"):
+                break
+            await asyncio.sleep(0.15)
+        await asyncio.sleep(0.25)
+        core_out = await host.cli("core status")
+        assert "Core Monitor Status:" in core_out, core_out
+    finally:
+        await host.stop_debug_server()
 
 
 @device_test(
