@@ -1,12 +1,13 @@
-# 🔴 `[WORM-LUBRICATED-FLATWORM-512]` Debug connection broken after single stepping
+# 🟢 `[WORM-LUBRICATED-FLATWORM-512]` Debug connection broken after single stepping
 
 - **UUID**: `00096b59-c515-43fe-93ce-5dc6c32910fa`
 - **ID**: `WORM-LUBRICATED-FLATWORM-512`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-20 20:14:54 UTC`
+- **Resolved**: `2026-11-20 23:19:19 UTC`
 
 #### Description
 
@@ -99,3 +100,7 @@ Undefined command: "from".  Try "help".
 
 - [ ] Verify GDB attach, breakpoint at main / Board::init, single-step (stepi / next), and continue complete cleanly without ISR vectoring, reset, or Undefined command 'from' | `python tools/host.py debug start && arm-none-eabi-gdb -q -batch -ex 'set sysroot /' -ex 'source .vscode/cortex_debug_init.gdb' -ex 'target extended-remote | python3 -u tools/host.py debug gdb-proxy --core 0' -ex 'monitor reset halt' -ex 'maintenance flush register-cache' -ex 'b main' -ex 'continue' -ex 'stepi' -ex 'stepi' -ex 'detach' -ex 'disconnect'` <!-- id:fde800af -->
 - [ ] Attach Dual-Core (GDB) in VS Code, step past cat_detector_shell.rs:60 (Board::init(p).await), and verify target continues without CoreMonitor stuck-task reset | `python tools/host.py cli core status` <!-- id:b97a7d10 -->
+
+#### Resolution Notes
+
+Masked PendSV/SysTick/IRQs via DHCSR.C_MASKINTS and temporarily disarmed matching hardware FPB comparators during single-step in host_debug, configured RP2040 TIMER.DBGPAUSE = DBG0 (0x02) + Boot ROM Core 1 auto-resume so Dual-Core GDB halts on Core 1 never freeze Core 0 .await timers or deadlock spawn_core1 into a CoreMonitor reset, parsed per-thread vCont clauses, routed /api/metadata over --gdb-bridge when debug_server_active, and added .vscode/cortex_debug_init.gdb to silence OcpCadViewer 'from' REPL injections.
