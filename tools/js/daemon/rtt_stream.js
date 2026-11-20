@@ -367,12 +367,13 @@ export class RttStreamController {
   }
 
   /**
-   * Show or hide the left `#logPanel` and `#vSplitter`, persisting preference to storage.
+   * Show or hide the left `#logPanel` and `#vSplitter`, optionally persisting preference to storage.
    *
    * @param {boolean} [forceShow] - Optional explicit visibility boolean.
+   * @param {object} [options] - `{ persist: boolean }`.
    * @returns {boolean} Resulting visibility (`true` when shown).
    */
-  togglePanel(forceShow) {
+  togglePanel(forceShow, options = {}) {
     if (typeof forceShow === "boolean") {
       this.isLogHidden = !forceShow;
     } else {
@@ -402,7 +403,9 @@ export class RttStreamController {
       this.collapseBtn.textContent = this.isLogHidden ? "▶ Show" : "◀ Hide";
     }
 
-    this.ctx.getStorage().setItem(SHOW_SYSTEM_LOGS_STORAGE_KEY, String(!this.isLogHidden));
+    if (options.persist !== false) {
+      this.ctx.getStorage().setItem(SHOW_SYSTEM_LOGS_STORAGE_KEY, String(!this.isLogHidden));
+    }
     return !this.isLogHidden;
   }
 
