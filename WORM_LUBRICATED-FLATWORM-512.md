@@ -98,3 +98,4 @@ Undefined command: "from".  Try "help".
 #### Review Tasks & Functional Checklist
 
 - [ ] Verify GDB attach, breakpoint at main / Board::init, single-step (stepi / next), and continue complete cleanly without ISR vectoring, reset, or Undefined command 'from' | `python tools/host.py debug start && arm-none-eabi-gdb -q -batch -ex 'set sysroot /' -ex 'source .vscode/cortex_debug_init.gdb' -ex 'target extended-remote | python3 -u tools/host.py debug gdb-proxy --core 0' -ex 'monitor reset halt' -ex 'maintenance flush register-cache' -ex 'b main' -ex 'continue' -ex 'stepi' -ex 'stepi' -ex 'detach' -ex 'disconnect'` <!-- id:fde800af -->
+- [ ] Attach Dual-Core (GDB) in VS Code, step past cat_detector_shell.rs:60 (Board::init(p).await), and verify target continues without CoreMonitor stuck-task reset | `python tools/host.py cli core status` <!-- id:b97a7d10 -->
