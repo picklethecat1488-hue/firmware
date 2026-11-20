@@ -3,17 +3,13 @@
 import json
 import os
 from pathlib import Path
-import re
 import sys
 from typing import Any, Dict, List, Optional
 
-try:
+if sys.version_info >= (3, 11):
     import tomllib
-except ModuleNotFoundError:
-    try:
-        import tomli as tomllib
-    except ModuleNotFoundError:
-        tomllib = None  # type: ignore
+else:
+    import tomli as tomllib
 
 SESSION_FILE_NAME: str = "host_session.json"
 
@@ -40,21 +36,22 @@ def load_last_session(repo_root: Path) -> Optional[Dict[str, Any]]:
         data = json.loads(session_path.read_text(encoding="utf-8"))
         if isinstance(data, dict) and "package" in data and "bin" in data:
             return data
-    except Exception:
-        pass
+    except OSError:
+        return None
+    except ValueError:
+        return None
     return None
 
 
 def save_last_session(repo_root: Path, session: Dict[str, Any]) -> None:
     """Persist target selection from the active connected session."""
-    # Guard against automated test suites mutating the live workspace session file
     if "PYTEST_CURRENT_TEST" in os.environ and repo_root.resolve() == Path(__file__).resolve().parents[4]:
         return
     session_path = get_session_file(repo_root)
     try:
         session_path.parent.mkdir(parents=True, exist_ok=True)
         session_path.write_text(json.dumps(session, indent=2), encoding="utf-8")
-    except Exception:
+    except OSError:
         pass
 
 
@@ -64,18 +61,34 @@ def infer_arm_target(
     chip: Optional[str] = None,
     repo_root: Optional[Path] = None,
 ) -> str:
-    """Automatically infer target ARM architecture triple from chip or board configuration."""
-    resolved_chip = chip
-    if not resolved_chip and repo_root:
-        board_toml = repo_root / "board" / "board.toml"
-        if board_toml.exists() and tomllib:
-            try:
+    """Infer target ARM architecture triple from `Cargo.toml` metadata, `board.toml`, or `chip`.
+
+    Raises `ValueError` if the target triple cannot be inferred (never falls back to a default chip
+    or target architecture).
+    """
+    resolved_chip = chip.strip() if chip and chip.strip().lower() != "none" else None
+
+    if repo_root is not None:
+        app_cargo = repo_root / "app" / "Cargo.toml"
+        if app_cargo.is_file():
+            manifest = tomllib.loads(app_cargo.read_text(encoding="utf-8"))
+            pkg_meta = (manifest.get("package") or {}).get("metadata") or {}
+            bin_meta_map = pkg_meta.get("binaries") or {}
+            if bin_name and bin_name in bin_meta_map:
+                bmeta = bin_meta_map[bin_name]
+                explicit_target = str(bmeta.get("target") or "").strip()
+                if explicit_target and explicit_target.lower() != "none":
+                    return explicit_target
+                if not resolved_chip and bmeta.get("chip"):
+                    resolved_chip = str(bmeta["chip"]).strip()
+
+        if not resolved_chip:
+            board_toml = repo_root / "board" / "board.toml"
+            if board_toml.is_file():
                 board_data = tomllib.loads(board_toml.read_text(encoding="utf-8"))
                 boards = board_data.get("boards", {})
-                if package in boards and "chip" in boards[package]:
-                    resolved_chip = boards[package]["chip"]
-            except Exception:
-                pass
+                if package in boards and boards[package].get("chip"):
+                    resolved_chip = str(boards[package]["chip"]).strip()
 
     if resolved_chip:
         c = resolved_chip.lower()
@@ -90,95 +103,64 @@ def infer_arm_target(
         if "cortex-m3" in c or "stm32f1" in c:
             return "thumbv7m-none-eabi"
 
-    # Default embedded target architecture
-    return "thumbv6m-none-eabi"
+    raise ValueError(
+        f"Cannot infer ARM target architecture for package='{package}', bin='{bin_name}', chip='{chip}'; "
+        "declare [package.metadata.binaries.<bin>] in Cargo.toml or pass --target/--chip explicitly."
+    )
 
 
 def discover_target_packages(repo_root: Path) -> List[Dict[str, Any]]:
-    """Scan workspace for embedded application packages and binary targets."""
+    """Scan workspace `Cargo.toml` manifests for embedded application packages and binary metadata."""
     discovered: List[Dict[str, Any]] = []
     ignored_dirs = {"target", "build", ".cargo", "docs", "feedback", "attachments", "tests", "tools"}
 
-    for item in repo_root.iterdir():
+    for item in sorted(repo_root.iterdir(), key=lambda p: p.name):
         if not item.is_dir() or item.name in ignored_dirs or item.name.startswith("."):
             continue
 
         cargo_path = item / "Cargo.toml"
-        if not cargo_path.exists():
+        if not cargo_path.is_file():
             continue
 
         try:
-            content = cargo_path.read_text(encoding="utf-8")
-            pkg_name = None
-            default_run = None
-            binaries: List[str] = []
-
-            if tomllib:
-                data = tomllib.loads(content)
-                pkg_data = data.get("package", {})
-                pkg_name = pkg_data.get("name")
-                default_run = pkg_data.get("default-run")
-                for b in data.get("bin", []):
-                    b_name = b.get("name")
-                    if b_name:
-                        binaries.append(b_name)
-            else:
-                # Fallback regex parsing
-                pkg_match = re.search(r'\[package\][^\[]*?name\s*=\s*"([^"]+)"', content, re.DOTALL)
-                if pkg_match:
-                    pkg_name = pkg_match.group(1)
-                default_run_match = re.search(r'\[package\][^\[]*?default-run\s*=\s*"([^"]+)"', content, re.DOTALL)
-                if default_run_match:
-                    default_run = default_run_match.group(1)
-                bin_matches = re.findall(r'\[\[bin\]\][^\[]*?name\s*=\s*"([^"]+)"', content, re.DOTALL)
-                binaries.extend(bin_matches)
-
-            # Check if default src/main.rs exists if no [[bin]] specified
-            if pkg_name and not binaries and (item / "src" / "main.rs").exists():
-                binaries.append(pkg_name)
-
-            if pkg_name and binaries:
-                chip_val = "rp2040" if pkg_name == "cat_detector" else None
-                # Determine default binary: explicit default-run > cat_detector_shell > shell binary > first binary
-                if default_run and default_run in binaries:
-                    default_bin = default_run
-                elif "cat_detector_shell" in binaries:
-                    default_bin = "cat_detector_shell"
-                elif any("shell" in b for b in binaries):
-                    default_bin = next(b for b in binaries if "shell" in b)
-                else:
-                    default_bin = binaries[0]
-
-                # Ensure default_bin appears first in binaries list for UI selection
-                if default_bin in binaries:
-                    binaries_ordered = [default_bin] + [b for b in binaries if b != default_bin]
-                else:
-                    binaries_ordered = binaries
-
-                inferred = infer_arm_target(pkg_name, default_bin, chip=chip_val, repo_root=repo_root)
-                discovered.append(
-                    {
-                        "package": pkg_name,
-                        "binaries": binaries_ordered,
-                        "default_bin": default_bin,
-                        "inferred_target": inferred,
-                        "chip": chip_val or "rp2040",
-                    }
-                )
-        except Exception:
+            data = tomllib.loads(cargo_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
             continue
 
-    # Guarantee canonical cat_detector package if found or fallback
-    if not any(d["package"] == "cat_detector" for d in discovered):
-        discovered.insert(
-            0,
+        pkg_data = data.get("package") or {}
+        pkg_name = str(pkg_data.get("name") or "").strip()
+        default_run = str(pkg_data.get("default-run") or "").strip() or None
+        binaries = [str(b.get("name")).strip() for b in (data.get("bin") or []) if b.get("name")]
+        if not pkg_name or not binaries:
+            continue
+
+        bin_metadata_table = ((pkg_data.get("metadata") or {}).get("binaries")) or {}
+        binary_configs: Dict[str, Dict[str, str]] = {}
+        for b_name in binaries:
+            bmeta = bin_metadata_table.get(b_name)
+            if isinstance(bmeta, dict) and bmeta.get("target") and bmeta.get("chip"):
+                binary_configs[b_name] = {
+                    "target": str(bmeta["target"]).strip(),
+                    "chip": str(bmeta["chip"]).strip(),
+                    "board": str(bmeta.get("board") or "").strip(),
+                }
+
+        if not binary_configs:
+            continue
+
+        default_bin = default_run if (default_run and default_run in binaries) else binaries[0]
+        binaries_ordered = [default_bin] + [b for b in binaries if b != default_bin]
+        default_cfg = binary_configs.get(default_bin) or next(iter(binary_configs.values()))
+
+        discovered.append(
             {
-                "package": "cat_detector",
-                "binaries": ["cat_detector_shell", "cat_detector_app", "carrier_board_shell"],
-                "default_bin": "cat_detector_shell",
-                "inferred_target": "thumbv6m-none-eabi",
-                "chip": "rp2040",
-            },
+                "package": pkg_name,
+                "binaries": binaries_ordered,
+                "default_bin": default_bin,
+                "inferred_target": default_cfg["target"],
+                "chip": default_cfg["chip"],
+                "binary_configs": binary_configs,
+            }
         )
 
     return discovered
@@ -222,7 +204,6 @@ def has_explicit_target_args(args_list: Optional[List[str]] = None) -> bool:
             idx += 1
             continue
 
-        # Found explicit argument (e.g. --target, --package, --bin, --release, or subcommand cli, fs, etc.)
         return True
 
     return False

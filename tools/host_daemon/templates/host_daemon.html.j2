@@ -91,6 +91,39 @@
       border-color: var(--xerxes-amber);
       color: var(--xerxes-amber);
     }
+    .test-badge-red {
+      background: rgba(255, 42, 75, 0.18);
+      border-color: var(--xerxes-red);
+      color: var(--xerxes-red);
+    }
+    .test-mode-container {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      overflow: hidden;
+      gap: 6px;
+      padding: 6px 8px;
+    }
+    .test-table-scroll {
+      flex: 1;
+      min-height: 150px;
+      overflow-y: auto;
+      border: 1px solid var(--xerxes-border-mid);
+      background: rgba(4, 9, 12, 0.6);
+    }
+    .test-console-box {
+      height: 165px;
+      min-height: 110px;
+      background: var(--xerxes-bg);
+      border: 1px solid var(--xerxes-border-mid);
+      border-radius: 2px;
+      overflow-y: auto;
+      padding: 6px 8px;
+      font-size: 9px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
     .select-dropdown {
       background: var(--xerxes-panel);
       border: 1px solid var(--xerxes-border-light);
@@ -656,7 +689,7 @@
       <select id="modeSelect" class="select-dropdown">
         <option value="CLI" {% if runner.active_mode == 'CLI' %}selected{% endif %}>CLI (RTT Console)</option>
         <option value="FS" {% if runner.active_mode == 'FS' %}selected{% endif %}>FS (Filesystem)</option>
-        <option value="BRINGUP" {% if runner.active_mode == 'BRINGUP' %}selected{% endif %}>BRINGUP (Checklist)</option>
+        <option value="TEST" {% if runner.active_mode == 'TEST' %}selected{% endif %}>TEST (Device Suites)</option>
       </select>
       <label for="uiScaleSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">SCALE:</label>
       <select id="uiScaleSelect" class="select-dropdown" title="UI Scale (Shortcuts: Cmd/Ctrl +/- or 0 to reset)" style="padding: 2px 4px; font-size: 8.5px; height: 22px;">
@@ -953,20 +986,13 @@
         <button class="btn" data-fs-cmd="format">format</button>
       </div>
 
-      <!-- Optional Bringup Action Toolbar -->
-      <div id="bringupToolbar" class="bringup-toolbar" style="display: {% if runner.active_mode == 'BRINGUP' %}flex{% else %}none{% endif %};">
-        <label for="bringupScriptSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">SCRIPT:</label>
-        <select id="bringupScriptSelect" class="select-dropdown">
-          <option value="">Loading bringup scripts...</option>
-        </select>
-        <button class="btn btn-cyan" id="btnBringupStep" title="Execute current checklist step">▶ Step</button>
-        <button class="btn btn-cyan" id="btnBringupRun" title="Auto-run remaining checklist steps">⚡ Run All</button>
-        <button class="btn btn-amber" id="btnBringupReset" title="Reset checklist to step 1">↺ Reset</button>
-        <button class="btn" id="btnBringupReport" title="Export markdown verification report">📄 Report</button>
-        <span id="bringupSummaryBadge" class="badge" style="margin-left: auto;">CHECKLIST: IDLE</span>
+      <!-- Active Manual Test Prompt Banner (populated from pytest /api/manual_prompt heartbeats) -->
+      <div id="manualPromptBanner" class="bringup-toolbar" style="display: none; border-color: var(--xerxes-amber); gap: 8px; cursor: pointer;">
+        <span class="badge badge-amber">MANUAL TEST</span>
+        <span id="manualPromptSummary" style="font-size: 8.5px; color: var(--xerxes-text-light);"></span>
       </div>
 
-      <div class="panel-content" id="cliView" style="display: {% if runner.active_mode in ('FS', 'BRINGUP') %}none{% else %}block{% endif %};">
+      <div class="panel-content" id="cliView" style="display: {% if runner.active_mode in ('FS', 'TEST') %}none{% else %}block{% endif %};">
         <div class="log-line log-line-info">&gt; Interactive CLI workstation ready. Type commands below.</div>
       </div>
 
@@ -974,46 +1000,107 @@
         <div class="log-line log-line-info">&gt; Filesystem (host_fs) workstation ready. Type FS commands below (e.g. 'ls', 'cat metadata', 'format').</div>
       </div>
 
-      <div class="panel-content bringup-panel-content" id="bringupView" style="display: {% if runner.active_mode == 'BRINGUP' %}flex{% else %}none{% endif %}; flex-direction: row; padding: 0; overflow: hidden; height: 100%;">
-        <!-- Left: Step list -->
-        <div class="bringup-sidebar">
-          <div class="bringup-sidebar-header">CHECKLIST STEPS</div>
-          <ul class="bringup-step-list" id="bringupStepList">
-            <li class="log-line log-line-info" style="padding: 8px;">Loading checklist steps...</li>
-          </ul>
+      <!-- On-Device Test Runner Mode (supersedes legacy bringup workstation) -->
+      <div id="testView" class="test-mode-container" style="display: {% if runner.active_mode == 'TEST' %}flex{% else %}none{% endif %};">
+        <div class="bringup-toolbar" style="padding: 6px 8px; border: 1px solid var(--xerxes-border-mid); border-radius: 2px; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-cyan" id="btnTestScan">🔄 Scan</button>
+            <select id="testFilterProject" class="select-dropdown" title="Filter by @device_test(project=...)">
+              <option value="all" selected>All Projects</option>
+            </select>
+            <select id="testFilterScenario" class="select-dropdown" title="Filter by @device_test(scenarios=...)">
+              <option value="all" selected>All Scenarios</option>
+              <option value="default">Smoke + Integration</option>
+              <option value="smoke">Smoke</option>
+              <option value="integration">Integration</option>
+              <option value="bringup">Bringup</option>
+            </select>
+            <input type="text" id="testFilterBoard" class="cmd-input" value="*" placeholder="Board glob (*, auto, rp2040*)" style="width: 130px; flex: none; padding: 3px 6px; font-size: 8.5px;" title="Filter by board_type glob pattern or 'auto'">
+            <select id="testFilterBinary" class="select-dropdown" title="Filter by @device_test(target_binary=...)">
+              <option value="all" selected>All Binaries</option>
+            </select>
+            <select id="testFilterManual" class="select-dropdown" title="Filter by manual vs automated tests">
+              <option value="all" selected>All Modes</option>
+              <option value="automated">Automated Only</option>
+              <option value="manual">Manual Only</option>
+            </select>
+            <input type="text" id="testFilterSearch" class="cmd-input" placeholder="Filter name / description..." style="width: 155px; flex: none; padding: 3px 6px; font-size: 8.5px;">
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <span id="testDetectedBoardBadge" class="badge badge-amber">BOARD: NOT SCANNED</span>
+            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 8.5px; color: var(--xerxes-text-muted); cursor: pointer;">
+              <input type="checkbox" id="testEnableManualCb" checked>
+              <span>Prompt Manual</span>
+            </label>
+            <button type="button" class="btn btn-cyan" id="btnTestRunSelected">▶ Run Selected (0)</button>
+            <button type="button" class="btn btn-cyan" id="btnTestRunFiltered">▶ Run Filtered (0)</button>
+            <button type="button" class="btn btn-red" id="btnTestCancel" disabled>⏹ Stop</button>
+          </div>
         </div>
-        <!-- Right: Active Step Details, Prompt Card & Live CLI Output -->
-        <div class="bringup-main-area">
-          <div class="bringup-card bringup-prompt-card" id="bringupPromptCard">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <span id="bringupCardTitle" style="font-weight: bold; color: var(--xerxes-cyan); font-size: 10px;">NO SCRIPT LOADED</span>
-              <span id="bringupCardType" class="badge">TYPE: --</span>
-            </div>
-            <div id="bringupCardDesc" style="font-size: 8.5px; color: var(--xerxes-text-light); margin-bottom: 8px;">Select a bringup script above to begin verification.</div>
-            <div id="bringupCardDetails" style="font-size: 8px; color: var(--xerxes-text-muted);"></div>
-            <div id="bringupPromptActionArea" style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--xerxes-border-mid); display: none;">
-              <div style="font-size: 8.5px; color: var(--xerxes-amber); font-weight: bold; margin-bottom: 6px;" id="bringupPromptText">ACTION REQUIRED: Verify step outcome</div>
-              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <input type="text" id="bringupPromptNotes" class="cmd-input" placeholder="Notes/observations (optional)..." style="flex: 1; min-width: 160px; height: 22px; font-size: 8.5px;">
-                <button class="btn btn-cyan" id="btnBringupPass" data-bringup-action="pass">✔ Pass</button>
-                <button class="btn btn-red" id="btnBringupFail" data-bringup-action="fail">✘ Fail</button>
-                <button class="btn btn-amber" id="btnBringupSkip" data-bringup-action="skip">⏭ Skip</button>
-              </div>
-            </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; color: var(--xerxes-text-muted); padding: 0 2px;">
+          <span id="testSummaryStats">0 Shown | 0 Selected | 0 Passed • 0 Failed • 0 Skipped [IDLE]</span>
+          <span>Top-to-bottom deterministic suite order</span>
+        </div>
+
+        <!-- Interactive Manual Operator Prompt Card (YES/NO, Measured Value, Cancel with Comment) -->
+        <div id="testManualPromptCard" class="bringup-card bringup-prompt-card" style="display: none; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span class="badge badge-amber">⚡ MANUAL BENCHTOP PROMPT</span>
+            <strong id="testManualTitle" style="font-size: 9.5px; color: var(--xerxes-cyan);"></strong>
           </div>
-          <div class="panel-header" style="background: var(--xerxes-header-bg); border-top: 1px solid var(--xerxes-border-mid); padding: 4px 8px;">
-            <span style="font-size: 8.5px; color: var(--xerxes-cyan);">LIVE BRINGUP LOGS &amp; CLI OUTPUT</span>
-            <button class="btn btn-copy" id="btnCopyBringupLog">📋 Copy Log</button>
+          <div style="font-size: 9px; color: var(--xerxes-text-muted);">
+            <strong>Procedure:</strong> <span id="testManualProcedure" style="color: var(--xerxes-text-light);"></span>
           </div>
-          <div class="panel-content" id="bringupConsoleOutput" style="flex: 1; overflow-y: auto; background: var(--xerxes-bg); border: 1px solid var(--xerxes-border-mid); padding: 6px; font-size: 8.5px; font-family: var(--font-mono);">
-            <div class="log-line log-line-info">&gt; Bringup workstation initialized.</div>
+          <div style="font-size: 9.5px; color: var(--xerxes-amber); font-weight: bold;">
+            <span>Prompt:</span> <span id="testManualPromptText" style="color: var(--xerxes-text-light);"></span>
           </div>
+
+          <div id="testManualYesNoRow" style="display: flex; align-items: center; gap: 8px;">
+            <button type="button" class="btn btn-cyan" id="btnManualYes">✓ YES</button>
+            <button type="button" class="btn btn-red" id="btnManualNo">✕ NO</button>
+          </div>
+
+          <div id="testManualMeasurementRow" style="display: none; align-items: center; gap: 8px;">
+            <label for="testManualValueInput" style="font-size: 8.5px; color: var(--xerxes-text-muted);">MEASURED VALUE:</label>
+            <input type="text" id="testManualValueInput" class="cmd-input" placeholder="e.g. 5.01" style="max-width: 150px; flex: none;">
+            <span id="testManualUnitLabel" style="font-size: 9px; color: var(--xerxes-cyan); font-weight: bold;"></span>
+            <button type="button" class="btn btn-cyan" id="btnManualSubmitValue">Submit Measurement</button>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--xerxes-border-dark); padding-top: 6px;">
+            <input type="text" id="testManualCommentInput" class="cmd-input" placeholder="Required comment to cancel this manual test..." style="font-size: 8.5px;">
+            <button type="button" class="btn btn-amber" id="btnManualCancel">Cancel Test</button>
+          </div>
+          <div id="testManualErrorMsg" style="display: none; font-size: 8.5px; color: var(--xerxes-red);"></div>
+        </div>
+
+        <div class="test-table-scroll">
+          <table class="bringup-table" style="margin-top: 0;">
+            <thead>
+              <tr>
+                <th style="width: 26px;"><input type="checkbox" id="testSelectAllCb" title="Select all filtered tests"></th>
+                <th style="width: 34px;">#</th>
+                <th>Test &amp; Description</th>
+                <th style="width: 105px;">Project</th>
+                <th style="width: 150px;">Mode / Scenarios</th>
+                <th style="width: 115px;">Boards</th>
+                <th style="width: 145px;">Target Binary</th>
+                <th style="width: 140px;">Status</th>
+              </tr>
+            </thead>
+            <tbody id="testTableBody"></tbody>
+          </table>
+        </div>
+
+        <div class="test-console-box" id="testConsoleOutput">
+          <span class="term-dim">&gt; Click 🔄 Scan or switch to TEST mode to discover @device_test suites.</span>
         </div>
       </div>
     </div>
   </main>
 
-  <footer class="cli-input-bar">
+  <footer class="cli-input-bar" id="cliInputBar" style="display: {% if runner.active_mode == 'TEST' %}none{% else %}flex{% endif %};">
     <div id="cliFuzzyHistory" class="cli-fuzzy-history" style="display:none;">
       <div class="fuzzy-header">
         <span class="fuzzy-prompt">(reverse-i-search)`':</span>
@@ -1029,9 +1116,9 @@
 
   <script id="app-boot-config" type="application/json">
     {{ {
-      "package": runner.package | default("cat_detector"),
-      "binName": runner.bin_name | default("cat_detector_shell"),
-      "target": runner.target | default("thumbv6m-none-eabi"),
+      "package": runner.package | default(none),
+      "binName": runner.bin_name | default(none),
+      "target": runner.target | default(none),
       "activeMode": runner.active_mode | default("CLI"),
       "release": runner.release | default(false),
       "speed": runner.speed | default(1000),
