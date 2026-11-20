@@ -1,12 +1,13 @@
-# 🔴 `[WORM-GLOWING-BURROWER-8]` Weird errors observed from GDB terminal
+# 🟢 `[WORM-GLOWING-BURROWER-8]` Weird errors observed from GDB terminal
 
 - **UUID**: `d256f589-959d-470f-b27f-45783e44556a`
 - **ID**: `WORM-GLOWING-BURROWER-8`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-20 02:18:34 UTC`
+- **Resolved**: `2026-11-20 02:57:03 UTC`
 
 #### Description
 
@@ -66,3 +67,7 @@ Also saw a error message trying to disconnect from target.
 
 - [ ] Start target debug server via host.py and verify GDB Core 0/Core 1 RSP listeners are active | `python tools/host.py debug start && python tools/host.py debug status` <!-- id:5076079d -->
 - [ ] Connect arm-none-eabi-gdb via extended-remote, execute monitor reset halt + flushregs, and disconnect cleanly without vMustReplyEmpty or detach errors | `arm-none-eabi-gdb -q -batch -ex 'target extended-remote 127.0.0.1:3333' -ex 'monitor reset halt' -ex 'flushregs' -ex 'detach' -ex 'disconnect'` <!-- id:28deace6 -->
+
+#### Resolution Notes
+
+Deduplicated pre-QStartNoAckMode RSP packet retransmissions (eliminating vMustReplyEmpty receiving shifted vCont replies), added extended-remote '!' and vKill support, handled running-target detach ('D') cleanly with 'OK', emitted O<hex>+OK on monitor reset halt with full multi-slot FPB re-arming and flushregs, and disabled OcpCadViewer wildcard debug watch in .vscode/settings.json to stop 'Undefined command: from' errors.
