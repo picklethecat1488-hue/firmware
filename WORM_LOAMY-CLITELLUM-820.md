@@ -7,7 +7,7 @@
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-19 18:35:51 UTC`
-- **Resolved**: `2026-11-19 23:41:24 UTC`
+- **Resolved**: `2026-11-20 02:23:22 UTC`
 - **Rejected**: `2026-11-19 19:40:49 UTC`
 
 #### Description
@@ -89,13 +89,6 @@ FAILED tools/device_tests/suites/test_cat_detector_integration.py::test_system_a
 ❌ Stress Run [1/10] FAILED after 118.3s (exit code 1; 0/10 runs passed in 118.3s).
 (firmware-env)
 ```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-LOAMY-CLITELLUM-820.log](attachments/WORM-LOAMY-CLITELLUM-820/target_system_logs_WORM-LOAMY-CLITELLUM-820.log) | Target system and defmt logs from host daemon session |
-| `log` | [target_test_execution_logs_WORM-LOAMY-CLITELLUM-820.log](attachments/WORM-LOAMY-CLITELLUM-820/target_test_execution_logs_WORM-LOAMY-CLITELLUM-820.log) | Test execution logs from host daemon Test Mode |
 
 #### Attached Commits
 
