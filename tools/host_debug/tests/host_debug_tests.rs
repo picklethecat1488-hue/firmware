@@ -1061,3 +1061,76 @@ fn test_worm_glowing_burrower_8_ack_retransmit_running_detach_and_reset_rearm() 
 
     handle.stop();
 }
+
+#[test]
+fn test_worm_bristly_roundworm_431_gdb_zero_warnings_on_exec_file_and_reg_cache_flush() {
+    if Command::new("arm-none-eabi-gdb")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+
+    let tmp_elf = std::env::temp_dir().join(format!("worm_431_test_{}.elf", std::process::id()));
+    // Minimal valid 32-bit little-endian ARM ELF header (`ET_EXEC`, `EM_ARM`)
+    let mut elf_bytes = vec![0u8; 52];
+    elf_bytes[0..4].copy_from_slice(b"\x7fELF");
+    elf_bytes[4] = 1; // ELFCLASS32
+    elf_bytes[5] = 1; // ELFDATA2LSB
+    elf_bytes[6] = 1; // EV_CURRENT
+    elf_bytes[16..18].copy_from_slice(&2u16.to_le_bytes()); // ET_EXEC
+    elf_bytes[18..20].copy_from_slice(&40u16.to_le_bytes()); // EM_ARM
+    elf_bytes[20..24].copy_from_slice(&1u32.to_le_bytes()); // EV_CURRENT
+    elf_bytes[24..28].copy_from_slice(&RESET_HANDLER_ADDR.to_le_bytes());
+    elf_bytes[40..42].copy_from_slice(&52u16.to_le_bytes()); // e_ehsize
+    std::fs::write(&tmp_elf, &elf_bytes).expect("write minimal ARM ELF");
+
+    let (gdb_backend, _gdb_shared) = MockDualCoreBackend::new();
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let cfg = DebugServerConfig {
+        bind_host: "127.0.0.1".to_string(),
+        gdb_core0_port: 0,
+        gdb_core1_port: Some(0),
+        rtt_bridge_port: None,
+        halted_on_reset: true,
+        exec_file_path: Some(tmp_elf.to_string_lossy().to_string()),
+        json_events: false,
+    };
+    let srv = start_debug_server_with_backend(gdb_backend, &cfg, shutdown)
+        .expect("start WORM-431 gdb server");
+
+    let gdb_out = Command::new("arm-none-eabi-gdb")
+        .args([
+            "-q",
+            "-batch",
+            "-ex",
+            "set sysroot /",
+            "-ex",
+            &format!("target extended-remote 127.0.0.1:{}", srv.gdb_core0_port),
+            "-ex",
+            "monitor reset halt",
+            "-ex",
+            "maintenance flush register-cache",
+            "-ex",
+            "detach",
+            "-ex",
+            "disconnect",
+        ])
+        .output()
+        .expect("run arm-none-eabi-gdb for WORM-431");
+    srv.stop();
+    let _ = std::fs::remove_file(&tmp_elf);
+
+    let combined = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&gdb_out.stdout),
+        String::from_utf8_lossy(&gdb_out.stderr)
+    );
+    assert!(gdb_out.status.success(), "{}", combined);
+    assert!(
+        !combined.to_lowercase().contains("warning:"),
+        "Expected zero GDB warnings on attach + monitor reset halt + maintenance flush register-cache, got:\n{}",
+        combined
+    );
+}

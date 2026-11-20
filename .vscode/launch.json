@@ -10,6 +10,9 @@
       "executable": "${workspaceFolder}/target/active_target.elf",
       "gdbTarget": "127.0.0.1:${input:gdbCore0Port}",
       "preLaunchTask": "host: sync active target symbols",
+      "preAttachCommands": [
+        "set sysroot /"
+      ],
       "overrideRestartCommands": [
         "monitor reset halt",
         "maintenance flush register-cache"
@@ -27,6 +30,9 @@
       "executable": "${workspaceFolder}/target/active_target.elf",
       "gdbTarget": "127.0.0.1:${input:gdbCore1Port}",
       "preLaunchTask": "host: sync active target symbols",
+      "preAttachCommands": [
+        "set sysroot /"
+      ],
       "overrideRestartCommands": [
         "monitor reset halt",
         "maintenance flush register-cache"
