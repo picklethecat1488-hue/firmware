@@ -1,13 +1,15 @@
-//! Unit and TCP integration tests for `host_debug` GDB RSP and RTT memory bridge.
+//! Unit, RSP command-coverage, and live `arm-none-eabi-gdb` TCP integration tests for `host_debug`.
 
 use host_debug::{
-    decode_hex, encode_hex, extract_next_rsp_frame, format_rsp_packet,
-    start_debug_server_with_backend, CoreBreakpointTable, DebugBackend, DebugServerConfig,
-    RspAction, RspCoreHandler, RspFrame,
+    build_arm_cortex_m_register_layout, decode_hex, encode_hex, extract_next_rsp_frame,
+    format_rsp_packet, start_debug_server_with_backend, supports_arm_hw_breakpoint_at,
+    ArmBreakpointManager, ArmHardwareOps, DebugBackend, DebugServerConfig, ProcessorArch,
+    RspAction, RspCoreHandler, RspFrame, RspReplyCode, TargetArchProfile, TargetRegisterLayout,
 };
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::process::Command;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -22,15 +24,24 @@ const RTT_TEST_BLOCK_ADDR: u64 = 0x2000_0800;
 
 #[derive(Clone, Debug)]
 struct MockCoreState {
+    arch: ProcessorArch,
+    has_fpu: bool,
     halted: bool,
     regs: BTreeMap<u16, u32>,
     bp_ctrl_enabled: bool,
     hw_comparators: Vec<Option<u64>>,
     pending_target_pcs: Vec<u32>,
+    fail_reg_writes: bool,
 }
 
 impl MockCoreState {
-    fn new(initial_pc: u32, halted: bool, bp_units: usize) -> Self {
+    fn new(
+        arch: ProcessorArch,
+        has_fpu: bool,
+        initial_pc: u32,
+        halted: bool,
+        bp_units: usize,
+    ) -> Self {
         let mut regs = BTreeMap::new();
         for r in 0..=14u16 {
             regs.insert(r, 0);
@@ -40,12 +51,21 @@ impl MockCoreState {
         regs.insert(16, 0x0100_0000);
         regs.insert(17, 0x2004_0000);
         regs.insert(18, 0);
+        if has_fpu {
+            for s in 0..32u16 {
+                regs.insert(64 + s, 0);
+            }
+            regs.insert(33, 0);
+        }
         Self {
+            arch,
+            has_fpu,
             halted,
             regs,
             bp_ctrl_enabled: false,
             hw_comparators: vec![None; bp_units],
             pending_target_pcs: Vec::new(),
+            fail_reg_writes: false,
         }
     }
 }
@@ -58,62 +78,44 @@ struct SharedMockHardware {
     non_halting_mem_ops: usize,
 }
 
-struct MockDualCoreBackend {
-    state: Arc<Mutex<SharedMockHardware>>,
+struct SharedHwAdapter<'a> {
+    state: &'a Arc<Mutex<SharedMockHardware>>,
 }
 
-impl MockDualCoreBackend {
-    fn new() -> (Self, Arc<Mutex<SharedMockHardware>>) {
-        let mut memory = BTreeMap::new();
-        // Seed Thumb `nop` (`0x46C0`, little-endian `[0xC0, 0x46]`) in SRAM function slot.
-        memory.insert(SRAM_FUNC_ADDR, 0xC0);
-        memory.insert(SRAM_FUNC_ADDR + 1, 0x46);
-        for (idx, &b) in b"SEGGER RTT\0\0\0\0\0\0".iter().enumerate() {
-            memory.insert(RTT_TEST_BLOCK_ADDR + idx as u64, b);
+impl ArmHardwareOps for SharedHwAdapter<'_> {
+    fn core_arch(&self, core_idx: usize) -> ProcessorArch {
+        self.state.lock().unwrap().cores[core_idx].arch
+    }
+
+    fn raw_read_memory(
+        &mut self,
+        _core_idx: usize,
+        addr: u64,
+        buf: &mut [u8],
+    ) -> Result<(), String> {
+        let mut guard = self.state.lock().unwrap();
+        guard.non_halting_mem_ops += 1;
+        for (idx, slot) in buf.iter_mut().enumerate() {
+            *slot = guard.memory.get(&(addr + idx as u64)).copied().unwrap_or(0);
         }
-
-        let shared = Arc::new(Mutex::new(SharedMockHardware {
-            cores: vec![
-                MockCoreState::new(RESET_HANDLER_ADDR, true, 4),
-                MockCoreState::new(0x0000_0100, false, 4),
-            ],
-            memory,
-            core1_rearm_count: 0,
-            non_halting_mem_ops: 0,
-        }));
-        (
-            Self {
-                state: Arc::clone(&shared),
-            },
-            shared,
-        )
-    }
-}
-
-impl DebugBackend for MockDualCoreBackend {
-    fn chip_name(&self) -> &str {
-        "rp2040"
+        Ok(())
     }
 
-    fn core_count(&self) -> usize {
-        2
+    fn raw_write_memory(&mut self, _core_idx: usize, addr: u64, data: &[u8]) -> Result<(), String> {
+        let mut guard = self.state.lock().unwrap();
+        guard.non_halting_mem_ops += 1;
+        for (idx, &b) in data.iter().enumerate() {
+            guard.memory.insert(addr + idx as u64, b);
+        }
+        Ok(())
     }
 
-    fn core_has_fpu(&mut self, _core_idx: usize) -> bool {
-        false
+    fn raw_read_pc(&mut self, core_idx: usize) -> Result<u32, String> {
+        let guard = self.state.lock().unwrap();
+        Ok(guard.cores[core_idx].regs.get(&15).copied().unwrap_or(0))
     }
 
-    fn available_hw_breakpoints(&mut self, core_idx: usize) -> usize {
-        self.state.lock().unwrap().cores[core_idx]
-            .hw_comparators
-            .len()
-    }
-
-    fn supports_hw_breakpoint_at(&self, _core_idx: usize, addr: u64) -> bool {
-        addr < 0x2000_0000
-    }
-
-    fn core_halted(&mut self, core_idx: usize) -> Result<bool, String> {
+    fn raw_core_halted(&mut self, core_idx: usize) -> Result<bool, String> {
         let mut guard = self.state.lock().unwrap();
         let core = &mut guard.cores[core_idx];
         if !core.halted && core.bp_ctrl_enabled {
@@ -128,20 +130,7 @@ impl DebugBackend for MockDualCoreBackend {
         Ok(core.halted)
     }
 
-    fn halt_core(&mut self, core_idx: usize) -> Result<u32, String> {
-        let mut guard = self.state.lock().unwrap();
-        let core = &mut guard.cores[core_idx];
-        core.halted = true;
-        Ok(*core.regs.get(&15).unwrap_or(&0))
-    }
-
-    fn resume_core(&mut self, core_idx: usize) -> Result<(), String> {
-        let mut guard = self.state.lock().unwrap();
-        guard.cores[core_idx].halted = false;
-        Ok(())
-    }
-
-    fn step_core(&mut self, core_idx: usize) -> Result<u32, String> {
+    fn raw_step_core(&mut self, core_idx: usize) -> Result<u32, String> {
         let mut guard = self.state.lock().unwrap();
         let core = &mut guard.cores[core_idx];
         let next_pc = core.regs.get(&15).copied().unwrap_or(0).wrapping_add(2);
@@ -150,56 +139,9 @@ impl DebugBackend for MockDualCoreBackend {
         Ok(next_pc)
     }
 
-    fn reset_and_halt_core(&mut self, core_idx: usize) -> Result<u32, String> {
+    fn raw_resume_core(&mut self, core_idx: usize) -> Result<(), String> {
         let mut guard = self.state.lock().unwrap();
-        let core = &mut guard.cores[core_idx];
-        core.regs.insert(15, RESET_HANDLER_ADDR);
-        core.halted = true;
-        core.bp_ctrl_enabled = false;
-        for slot in core.hw_comparators.iter_mut() {
-            *slot = None;
-        }
-        Ok(RESET_HANDLER_ADDR)
-    }
-
-    fn reset_and_run_core(&mut self, core_idx: usize) -> Result<(), String> {
-        let mut guard = self.state.lock().unwrap();
-        let core = &mut guard.cores[core_idx];
-        core.regs.insert(15, RESET_HANDLER_ADDR);
-        core.halted = false;
-        core.bp_ctrl_enabled = false;
-        for slot in core.hw_comparators.iter_mut() {
-            *slot = None;
-        }
-        Ok(())
-    }
-
-    fn read_core_reg(&mut self, core_idx: usize, dcrsr: u16) -> Result<u32, String> {
-        let guard = self.state.lock().unwrap();
-        Ok(guard.cores[core_idx].regs.get(&dcrsr).copied().unwrap_or(0))
-    }
-
-    fn write_core_reg(&mut self, core_idx: usize, dcrsr: u16, value: u32) -> Result<(), String> {
-        let mut guard = self.state.lock().unwrap();
-        guard.cores[core_idx].regs.insert(dcrsr, value);
-        Ok(())
-    }
-
-    fn read_memory(&mut self, _core_idx: usize, addr: u64, buf: &mut [u8]) -> Result<(), String> {
-        let mut guard = self.state.lock().unwrap();
-        guard.non_halting_mem_ops += 1;
-        for (idx, slot) in buf.iter_mut().enumerate() {
-            *slot = guard.memory.get(&(addr + idx as u64)).copied().unwrap_or(0);
-        }
-        Ok(())
-    }
-
-    fn write_memory(&mut self, _core_idx: usize, addr: u64, data: &[u8]) -> Result<(), String> {
-        let mut guard = self.state.lock().unwrap();
-        guard.non_halting_mem_ops += 1;
-        for (idx, &b) in data.iter().enumerate() {
-            guard.memory.insert(addr + idx as u64, b);
-        }
+        guard.cores[core_idx].halted = false;
         Ok(())
     }
 
@@ -245,6 +187,212 @@ impl DebugBackend for MockDualCoreBackend {
             guard.core1_rearm_count += 1;
         }
         Ok(true)
+    }
+}
+
+struct MockDualCoreBackend {
+    state: Arc<Mutex<SharedMockHardware>>,
+    bp_mgr: ArmBreakpointManager,
+}
+
+impl MockDualCoreBackend {
+    fn new() -> (Self, Arc<Mutex<SharedMockHardware>>) {
+        Self::with_arch(ProcessorArch::Armv6m, false)
+    }
+
+    fn with_arch(arch: ProcessorArch, has_fpu: bool) -> (Self, Arc<Mutex<SharedMockHardware>>) {
+        let mut memory = BTreeMap::new();
+        // Seed Thumb `nop` (`0x46C0`, little-endian `[0xC0, 0x46]`) at Reset_Handler, main, and SRAM slot.
+        for base in [
+            RESET_HANDLER_ADDR as u64,
+            (RESET_HANDLER_ADDR + 2) as u64,
+            CORE0_MAIN_LOC_ADDR as u64,
+            SRAM_FUNC_ADDR,
+        ] {
+            memory.insert(base, 0xC0);
+            memory.insert(base + 1, 0x46);
+        }
+        for (idx, &b) in b"SEGGER RTT\0\0\0\0\0\0".iter().enumerate() {
+            memory.insert(RTT_TEST_BLOCK_ADDR + idx as u64, b);
+        }
+
+        let shared = Arc::new(Mutex::new(SharedMockHardware {
+            cores: vec![
+                MockCoreState::new(arch, has_fpu, RESET_HANDLER_ADDR, true, 4),
+                MockCoreState::new(arch, has_fpu, 0x0000_0100, false, 4),
+            ],
+            memory,
+            core1_rearm_count: 0,
+            non_halting_mem_ops: 0,
+        }));
+        (
+            Self {
+                state: Arc::clone(&shared),
+                bp_mgr: ArmBreakpointManager::new(&[4, 4], None),
+            },
+            shared,
+        )
+    }
+}
+
+impl DebugBackend for MockDualCoreBackend {
+    fn chip_name(&self) -> &str {
+        "rp2040"
+    }
+
+    fn core_count(&self) -> usize {
+        self.state.lock().unwrap().cores.len()
+    }
+
+    fn core_register_layout(&mut self, core_idx: usize) -> TargetRegisterLayout {
+        let guard = self.state.lock().unwrap();
+        let c = &guard.cores[core_idx];
+        build_arm_cortex_m_register_layout(c.arch, c.has_fpu)
+    }
+
+    fn core_halted(&mut self, core_idx: usize) -> Result<bool, String> {
+        let mut hw = SharedHwAdapter { state: &self.state };
+        hw.raw_core_halted(core_idx)
+    }
+
+    fn halt_core(&mut self, core_idx: usize) -> Result<u32, String> {
+        let mut guard = self.state.lock().unwrap();
+        let core = &mut guard.cores[core_idx];
+        core.halted = true;
+        Ok(*core.regs.get(&15).unwrap_or(&0))
+    }
+
+    fn resume_core(&mut self, core_idx: usize) -> Result<(), String> {
+        let mut hw = SharedHwAdapter { state: &self.state };
+        if hw.raw_core_halted(core_idx)? {
+            let _ = self.bp_mgr.step_over_sw_bkpt_if_needed(&mut hw, core_idx);
+        }
+        let _ = self.bp_mgr.ensure_armed(&mut hw, core_idx);
+        hw.raw_resume_core(core_idx)
+    }
+
+    fn step_core(&mut self, core_idx: usize) -> Result<u32, String> {
+        if !self.core_halted(core_idx)? {
+            let _ = self.halt_core(core_idx);
+        }
+        let mut hw = SharedHwAdapter { state: &self.state };
+        if let Some(pc) = self.bp_mgr.step_over_sw_bkpt_if_needed(&mut hw, core_idx)? {
+            return Ok(pc);
+        }
+        hw.raw_step_core(core_idx)
+    }
+
+    fn reset_and_halt_core(&mut self, core_idx: usize) -> Result<u32, String> {
+        {
+            let mut guard = self.state.lock().unwrap();
+            let core = &mut guard.cores[core_idx];
+            let entry = if core_idx == 0 {
+                RESET_HANDLER_ADDR
+            } else {
+                CORE1_RESET_HANDLER_ADDR
+            };
+            core.regs.insert(15, entry);
+            core.halted = true;
+            core.bp_ctrl_enabled = false;
+            for slot in core.hw_comparators.iter_mut() {
+                *slot = None;
+            }
+        }
+        let mut hw = SharedHwAdapter { state: &self.state };
+        let _ = self.bp_mgr.ensure_armed(&mut hw, core_idx);
+        Ok(if core_idx == 0 {
+            RESET_HANDLER_ADDR
+        } else {
+            CORE1_RESET_HANDLER_ADDR
+        })
+    }
+
+    fn reset_and_run_core(&mut self, core_idx: usize) -> Result<(), String> {
+        {
+            let mut guard = self.state.lock().unwrap();
+            let core = &mut guard.cores[core_idx];
+            core.regs.insert(15, RESET_HANDLER_ADDR);
+            core.halted = false;
+            core.bp_ctrl_enabled = false;
+            for slot in core.hw_comparators.iter_mut() {
+                *slot = None;
+            }
+        }
+        let mut hw = SharedHwAdapter { state: &self.state };
+        let _ = self.bp_mgr.ensure_armed(&mut hw, core_idx);
+        Ok(())
+    }
+
+    fn read_core_reg(&mut self, core_idx: usize, hw_reg_id: u16) -> Result<u32, String> {
+        let guard = self.state.lock().unwrap();
+        Ok(guard.cores[core_idx]
+            .regs
+            .get(&hw_reg_id)
+            .copied()
+            .unwrap_or(0))
+    }
+
+    fn write_core_reg(
+        &mut self,
+        core_idx: usize,
+        hw_reg_id: u16,
+        value: u32,
+    ) -> Result<(), String> {
+        let mut guard = self.state.lock().unwrap();
+        if guard.cores[core_idx].fail_reg_writes {
+            return Err("Simulated register write failure".to_string());
+        }
+        guard.cores[core_idx].regs.insert(hw_reg_id, value);
+        Ok(())
+    }
+
+    fn read_memory(&mut self, core_idx: usize, addr: u64, buf: &mut [u8]) -> Result<(), String> {
+        let mut hw = SharedHwAdapter { state: &self.state };
+        hw.raw_read_memory(core_idx, addr, buf)
+    }
+
+    fn read_memory_masked(
+        &mut self,
+        core_idx: usize,
+        addr: u64,
+        buf: &mut [u8],
+    ) -> Result<(), String> {
+        self.read_memory(core_idx, addr, buf)?;
+        if let Some(table) = self.bp_mgr.cores.get(core_idx) {
+            table.mask_memory_read(addr, buf);
+        }
+        Ok(())
+    }
+
+    fn write_memory(&mut self, core_idx: usize, addr: u64, data: &[u8]) -> Result<(), String> {
+        let mut hw = SharedHwAdapter { state: &self.state };
+        hw.raw_write_memory(core_idx, addr, data)
+    }
+
+    fn insert_breakpoint(
+        &mut self,
+        core_idx: usize,
+        addr: u64,
+        allow_sw_ram: bool,
+    ) -> Result<bool, String> {
+        let mut hw = SharedHwAdapter { state: &self.state };
+        self.bp_mgr
+            .insert_breakpoint(&mut hw, core_idx, addr, allow_sw_ram)
+    }
+
+    fn remove_breakpoint(&mut self, core_idx: usize, addr: u64) -> Result<(), String> {
+        let mut hw = SharedHwAdapter { state: &self.state };
+        self.bp_mgr.remove_breakpoint(&mut hw, core_idx, addr)
+    }
+
+    fn clear_all_breakpoints(&mut self, core_idx: usize) -> Result<(), String> {
+        let mut hw = SharedHwAdapter { state: &self.state };
+        self.bp_mgr.clear_all(&mut hw, core_idx)
+    }
+
+    fn poll_background_core_maintenance(&mut self, core_idx: usize) -> bool {
+        let mut hw = SharedHwAdapter { state: &self.state };
+        self.bp_mgr.poll_maintenance(&mut hw, core_idx)
     }
 }
 
@@ -311,7 +459,7 @@ impl TestRspClient {
 }
 
 #[test]
-fn test_rsp_framing_target_xml_sram_sw_breakpoints_and_hw_limit() {
+fn test_rsp_framing_rinja_target_xml_sram_sw_breakpoints_and_arch_limits() {
     let mut raw_stream = Vec::new();
     raw_stream.extend_from_slice(b"+$qSupported#37$bad#00\x03");
     assert_eq!(extract_next_rsp_frame(&mut raw_stream), Some(RspFrame::Ack));
@@ -334,42 +482,69 @@ fn test_rsp_framing_target_xml_sram_sw_breakpoints_and_hw_limit() {
         Some(RspFrame::CtrlC)
     );
 
-    let (mut backend, shared) = MockDualCoreBackend::new();
-    let mut bp_table = CoreBreakpointTable::new(4);
-    let mut handler = RspCoreHandler::new(0, false);
+    // Verify ProcessorArch breakpoint address limits across ARMv6-M vs ARMv8-M.
+    assert!(supports_arm_hw_breakpoint_at(
+        ProcessorArch::Armv6m,
+        0x1000_1000
+    ));
+    assert!(!supports_arm_hw_breakpoint_at(
+        ProcessorArch::Armv6m,
+        0x2000_0200
+    ));
+    assert!(supports_arm_hw_breakpoint_at(
+        ProcessorArch::Armv8m,
+        0x2000_0200
+    ));
 
-    // 1. Verify chunked target.xml read contains Cortex-M m-profile and m-system features.
-    let xml_reply = match handler.handle_packet(
-        b"qXfer:features:read:target.xml:0,fff",
-        &mut backend,
-        &mut bp_table,
-    ) {
-        RspAction::Reply(s) => s,
-        other => panic!("Unexpected action: {:?}", other),
-    };
+    // Verify Rinja-rendered XML for ARMv8-M with FPU single-sources every register number.
+    let v8m_layout = build_arm_cortex_m_register_layout(ProcessorArch::Armv8m, true);
+    assert!(v8m_layout.target_xml().contains("org.gnu.gdb.arm.vfp"));
+    assert!(v8m_layout
+        .target_xml()
+        .contains("<reg name=\"fpscr\" bitsize=\"32\" regnum=\"64\" type=\"int\"/>"));
+    assert_eq!(
+        v8m_layout.lookup_gdb_register(64).map(|r| r.hw_reg_id),
+        Some(33)
+    );
+
+    let (mut backend, shared) = MockDualCoreBackend::new();
+    let layout = backend.core_register_layout(0);
+    let mut handler = RspCoreHandler::new(0, layout, Some("/tmp/test_fw.elf".to_string()));
+
+    // 1. Verify chunked target.xml and exec-file reads.
+    let xml_reply =
+        match handler.handle_packet(b"qXfer:features:read:target.xml:0,fff", &mut backend) {
+            RspAction::Reply(s) => s,
+            other => panic!("Unexpected action: {:?}", other),
+        };
     assert!(xml_reply.starts_with('l'));
     assert!(xml_reply.contains("org.gnu.gdb.arm.m-profile"));
     assert!(xml_reply.contains("regnum=\"25\""));
+
+    assert_eq!(
+        handler.handle_packet(b"qXfer:exec-file:read::0,100", &mut backend),
+        RspAction::Reply("l/tmp/test_fw.elf".to_string())
+    );
 
     // 2. Allocate all 4 hardware Flash breakpoints; 5th Flash breakpoint must return E0E.
     for idx in 0..4u64 {
         let cmd = format!("Z1,{:x},2", 0x1000_1000 + idx * 4);
         assert_eq!(
-            handler.handle_packet(cmd.as_bytes(), &mut backend, &mut bp_table),
-            RspAction::Reply("OK".to_string())
+            handler.handle_packet(cmd.as_bytes(), &mut backend),
+            RspAction::status(RspReplyCode::Ok)
         );
     }
     assert_eq!(
-        handler.handle_packet(b"Z1,10001020,2", &mut backend, &mut bp_table),
-        RspAction::Reply("E0E".to_string())
+        handler.handle_packet(b"Z1,10001020,2", &mut backend),
+        RspAction::status(RspReplyCode::ErrNoBreakpointSlot)
     );
 
     // 3. Even with all 4 Flash FPB slots full, an SRAM breakpoint (`0x2000_0230`) installs `0xBE00`
     //    while masking `m` reads and stepping cleanly over the restored Thumb instruction!
     let sram_insert = format!("Z0,{:x},2", SRAM_FUNC_ADDR);
     assert_eq!(
-        handler.handle_packet(sram_insert.as_bytes(), &mut backend, &mut bp_table),
-        RspAction::Reply("OK".to_string())
+        handler.handle_packet(sram_insert.as_bytes(), &mut backend),
+        RspAction::status(RspReplyCode::Ok)
     );
     {
         let guard = shared.lock().unwrap();
@@ -377,41 +552,293 @@ fn test_rsp_framing_target_xml_sram_sw_breakpoints_and_hw_limit() {
         assert_eq!(guard.memory.get(&(SRAM_FUNC_ADDR + 1)), Some(&0xBE));
     }
 
-    // GDB memory read (`m`) sees original Thumb `nop` (`c046`), not `00be`!
     let read_sram_cmd = format!("m{:x},2", SRAM_FUNC_ADDR);
     assert_eq!(
-        handler.handle_packet(read_sram_cmd.as_bytes(), &mut backend, &mut bp_table),
+        handler.handle_packet(read_sram_cmd.as_bytes(), &mut backend),
         RspAction::Reply("c046".to_string())
     );
 
-    // Set PC to SRAM_FUNC_ADDR | 1 and step once: PC advances by 2 and `0xBE00` remains armed.
     let set_pc_cmd = format!(
         "P0f={}",
         encode_hex(&((SRAM_FUNC_ADDR as u32 | 1).to_le_bytes()))
     );
     assert_eq!(
-        handler.handle_packet(set_pc_cmd.as_bytes(), &mut backend, &mut bp_table),
-        RspAction::Reply("OK".to_string())
+        handler.handle_packet(set_pc_cmd.as_bytes(), &mut backend),
+        RspAction::status(RspReplyCode::Ok)
     );
     assert_eq!(
-        handler.handle_packet(b"s", &mut backend, &mut bp_table),
-        RspAction::Reply("S05".to_string())
+        handler.handle_packet(b"s", &mut backend),
+        RspAction::status(RspReplyCode::SigTrap)
     );
     assert_eq!(
         shared.lock().unwrap().cores[0].regs.get(&15).copied(),
         Some(SRAM_FUNC_ADDR as u32 + 2)
     );
 
-    // Removing the SRAM breakpoint restores original `[0xC0, 0x46]` in RAM.
     let sram_remove = format!("z0,{:x},2", SRAM_FUNC_ADDR);
     assert_eq!(
-        handler.handle_packet(sram_remove.as_bytes(), &mut backend, &mut bp_table),
-        RspAction::Reply("OK".to_string())
+        handler.handle_packet(sram_remove.as_bytes(), &mut backend),
+        RspAction::status(RspReplyCode::Ok)
     );
     {
         let guard = shared.lock().unwrap();
         assert_eq!(guard.memory.get(&SRAM_FUNC_ADDR), Some(&0xC0));
         assert_eq!(guard.memory.get(&(SRAM_FUNC_ADDR + 1)), Some(&0x46));
+    }
+}
+
+#[test]
+fn test_exhaustive_rsp_handler_packets_fpu_registers_binary_writes_and_live_gdb_cli() {
+    let (mut backend, shared) = MockDualCoreBackend::with_arch(ProcessorArch::Armv8m, true);
+    let layout = backend.core_register_layout(0);
+    let mut handler = RspCoreHandler::new(0, layout.clone(), Some("/workspace/fw.elf".to_string()));
+
+    // 1. Handshake & thread queries
+    assert_eq!(
+        handler.handle_packet(b"qSupported:multiprocess+", &mut backend),
+        RspAction::Reply(
+            "PacketSize=4096;qXfer:features:read+;QStartNoAckMode+;vContSupported+;hwbreak+;swbreak+;qXfer:exec-file:read+"
+                .to_string()
+        )
+    );
+    assert_eq!(
+        handler.handle_packet(b"QStartNoAckMode", &mut backend),
+        RspAction::status(RspReplyCode::Ok)
+    );
+    assert!(handler.no_ack_mode);
+    assert_eq!(
+        handler.handle_packet(b"!", &mut backend),
+        RspAction::status(RspReplyCode::Ok)
+    );
+    assert_eq!(
+        handler.handle_packet(b"vMustReplyEmpty", &mut backend),
+        RspAction::status(RspReplyCode::Empty)
+    );
+    assert_eq!(
+        handler.handle_packet(b"qOffsets", &mut backend),
+        RspAction::status(RspReplyCode::Empty)
+    );
+    assert_eq!(
+        handler.handle_packet(b"qTStatus", &mut backend),
+        RspAction::status(RspReplyCode::Empty)
+    );
+    assert_eq!(
+        handler.handle_packet(b"qAttached", &mut backend),
+        RspAction::Reply("1".to_string())
+    );
+    assert_eq!(
+        handler.handle_packet(b"qC", &mut backend),
+        RspAction::Reply("QC01".to_string())
+    );
+    assert_eq!(
+        handler.handle_packet(b"qfThreadInfo", &mut backend),
+        RspAction::Reply("m01".to_string())
+    );
+    assert_eq!(
+        handler.handle_packet(b"qsThreadInfo", &mut backend),
+        RspAction::Reply("l".to_string())
+    );
+    assert_eq!(
+        handler.handle_packet(b"qThreadExtraInfo,1", &mut backend),
+        RspAction::Reply(encode_hex(b"Core 0"))
+    );
+    for ok_cmd in [
+        b"qSymbol::".as_slice(),
+        b"Hg0",
+        b"Hc-1",
+        b"T01",
+        b"qRcmd,68616c74",
+    ] {
+        assert_eq!(
+            handler.handle_packet(ok_cmd, &mut backend),
+            RspAction::status(RspReplyCode::Ok)
+        );
+    }
+
+    // 2. Paginated `target.xml` reading (`m` chunk followed by `l` chunk)
+    let first_chunk =
+        match handler.handle_packet(b"qXfer:features:read:target.xml:0,20", &mut backend) {
+            RspAction::Reply(s) => s,
+            other => panic!("unexpected: {:?}", other),
+        };
+    assert!(first_chunk.starts_with('m'));
+    assert_eq!(first_chunk.len(), 1 + 0x20);
+
+    // 3. `g`/`G` bulk register read/write & `p`/`P` single register (including FPU `s0` & `fpscr`)
+    let g_initial = match handler.handle_packet(b"g", &mut backend) {
+        RspAction::Reply(s) => s,
+        other => panic!("unexpected: {:?}", other),
+    };
+    assert_eq!(g_initial.len(), layout.general_registers().len() * 8);
+    assert_eq!(
+        handler.handle_packet(format!("G{}", g_initial).as_bytes(), &mut backend),
+        RspAction::status(RspReplyCode::Ok)
+    );
+
+    // Write FPU `s0` (GDB reg 0x20 = 32) and `fpscr` (GDB reg 0x40 = 64)
+    assert_eq!(
+        handler.handle_packet(b"P20=0000803f", &mut backend),
+        RspAction::status(RspReplyCode::Ok)
+    );
+    assert_eq!(
+        handler.handle_packet(b"p20", &mut backend),
+        RspAction::Reply("0000803f".to_string())
+    );
+    assert_eq!(
+        handler.handle_packet(b"P40=10000000", &mut backend),
+        RspAction::status(RspReplyCode::Ok)
+    );
+    assert_eq!(
+        handler.handle_packet(b"p40", &mut backend),
+        RspAction::Reply("10000000".to_string())
+    );
+
+    // Simulated register write error returns `E02`, invalid reg returns `E01`
+    assert_eq!(
+        handler.handle_packet(b"pff", &mut backend),
+        RspAction::status(RspReplyCode::ErrBadRequest)
+    );
+    shared.lock().unwrap().cores[0].fail_reg_writes = true;
+    assert_eq!(
+        handler.handle_packet(b"P00=11223344", &mut backend),
+        RspAction::status(RspReplyCode::ErrRegAccess)
+    );
+    shared.lock().unwrap().cores[0].fail_reg_writes = false;
+
+    // 4. `M` hex memory write & `X` binary write with escaped `$` (`0x24` -> `0x7d 0x04`), `#` (`0x23` -> `0x7d 0x03`), `}` (`0x7d` -> `0x7d 0x5d`)
+    assert_eq!(
+        handler.handle_packet(b"M20000900,4:deadbeef", &mut backend),
+        RspAction::status(RspReplyCode::Ok)
+    );
+    assert_eq!(
+        handler.handle_packet(b"m20000900,4", &mut backend),
+        RspAction::Reply("deadbeef".to_string())
+    );
+
+    let mut x_pkt = b"X20000910,4:".to_vec();
+    x_pkt.extend_from_slice(&[0x7d, 0x04, 0x7d, 0x03, 0x7d, 0x5d, 0x42]);
+    assert_eq!(
+        handler.handle_packet(&x_pkt, &mut backend),
+        RspAction::status(RspReplyCode::Ok)
+    );
+    assert_eq!(
+        handler.handle_packet(b"m20000910,4", &mut backend),
+        RspAction::Reply("24237d42".to_string())
+    );
+
+    // 5. `s<addr>`, `vCont;s`, `vCont;t`, `c<addr>`, and `qRcmd` `reset run`
+    assert_eq!(
+        handler.handle_packet(b"s10000500", &mut backend),
+        RspAction::status(RspReplyCode::SigTrap)
+    );
+    assert_eq!(
+        shared.lock().unwrap().cores[0].regs.get(&15).copied(),
+        Some(0x1000_0502)
+    );
+    assert_eq!(
+        handler.handle_packet(b"vCont;s:1", &mut backend),
+        RspAction::status(RspReplyCode::SigTrap)
+    );
+    assert_eq!(
+        handler.handle_packet(b"c10000600", &mut backend),
+        RspAction::WaitForHalt
+    );
+    assert_eq!(
+        handler.handle_packet(b"vCont;t", &mut backend),
+        RspAction::status(RspReplyCode::SigTrap)
+    );
+    let reset_run_act = handler.handle_packet(
+        format!("qRcmd,{}", encode_hex(b"reset run")).as_bytes(),
+        &mut backend,
+    );
+    assert!(matches!(reset_run_act, RspAction::ReplyPackets(_)));
+
+    // Invalid UTF-8 returns `E01`
+    assert_eq!(
+        handler.handle_packet(&[0xff, 0xfe], &mut backend),
+        RspAction::status(RspReplyCode::ErrBadRequest)
+    );
+
+    // 6. Live `arm-none-eabi-gdb` subprocess integration test against TCP `host_debug` server
+    if Command::new("arm-none-eabi-gdb")
+        .arg("--version")
+        .output()
+        .is_ok()
+    {
+        let (gdb_backend, gdb_shared) = MockDualCoreBackend::new();
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let cfg = DebugServerConfig {
+            bind_host: "127.0.0.1".to_string(),
+            gdb_core0_port: 0,
+            gdb_core1_port: Some(0),
+            rtt_bridge_port: Some(0),
+            halted_on_reset: true,
+            exec_file_path: None,
+            json_events: false,
+        };
+        let srv = start_debug_server_with_backend(gdb_backend, &cfg, shutdown)
+            .expect("start gdb integration server");
+        gdb_shared.lock().unwrap().cores[0]
+            .pending_target_pcs
+            .push(CORE0_MAIN_LOC_ADDR);
+
+        let gdb_out = Command::new("arm-none-eabi-gdb")
+            .args([
+                "-q",
+                "-batch",
+                "-ex",
+                &format!("target extended-remote 127.0.0.1:{}", srv.gdb_core0_port),
+                "-ex",
+                "set confirm off",
+                "-ex",
+                "set {int}0x20000840 = 0x13572468",
+                "-ex",
+                "x/1wx 0x20000840",
+                "-ex",
+                &format!("hbreak *0x{:x}", CORE0_MAIN_LOC_ADDR),
+                "-ex",
+                "continue",
+                "-ex",
+                "stepi",
+                "-ex",
+                "monitor reset halt",
+                "-ex",
+                "maintenance flush register-cache",
+                "-ex",
+                "info reg pc sp",
+                "-ex",
+                "detach",
+                "-ex",
+                "disconnect",
+            ])
+            .output()
+            .expect("invoke arm-none-eabi-gdb");
+        srv.stop();
+
+        let stdout = String::from_utf8_lossy(&gdb_out.stdout);
+        let stderr = String::from_utf8_lossy(&gdb_out.stderr);
+        let combined = format!("{}\n{}", stdout, stderr);
+        assert!(
+            gdb_out.status.success(),
+            "arm-none-eabi-gdb exited with {:?}\nstdout:\n{}\nstderr:\n{}",
+            gdb_out.status,
+            stdout,
+            stderr
+        );
+        assert!(stdout.contains("0x13572468"), "stdout:\n{}", stdout);
+        assert!(
+            combined.contains("Target reset and halted at Reset_Handler"),
+            "combined:\n{}",
+            combined
+        );
+        assert!(stdout.contains("0x100001c0"), "stdout:\n{}", stdout);
+        assert!(
+            !combined.contains("deprecated")
+                && !stderr.contains("Invalid remote reply")
+                && !stderr.contains("Remote replied unexpectedly"),
+            "combined:\n{}",
+            combined
+        );
     }
 }
 
@@ -425,7 +852,7 @@ fn test_dual_core_tcp_reset_handler_to_loc_core1_psm_rearm_and_rtt_bridge() {
         gdb_core1_port: Some(0),
         rtt_bridge_port: Some(0),
         halted_on_reset: true,
-        core1_post_reset_trap_addr: None,
+        exec_file_path: None,
         json_events: false,
     };
 
@@ -440,13 +867,11 @@ fn test_dual_core_tcp_reset_handler_to_loc_core1_psm_rearm_and_rtt_bridge() {
     let mut rtt_bridge =
         GdbClient::connect(&format!("127.0.0.1:{}", rtt_port)).expect("connect RTT bridge");
 
-    // 1. Core 0 starts halted at Reset_Handler (`0x1000_01C0`).
     assert_eq!(gdb_c0.send_cmd("QStartNoAckMode"), "OK");
     assert_eq!(gdb_c1.send_cmd("QStartNoAckMode"), "OK");
     assert_eq!(gdb_c0.send_cmd("?"), "S05");
     assert_eq!(gdb_c0.read_pc(), RESET_HANDLER_ADDR);
 
-    // 2. Non-halting RTT memory bridge reads and writes SRAM while Core 0 is halted at Reset_Handler.
     let mut rtt_hdr = [0u8; 10];
     rtt_bridge
         .read_mem(RTT_TEST_BLOCK_ADDR, &mut rtt_hdr)
@@ -456,8 +881,6 @@ fn test_dual_core_tcp_reset_handler_to_loc_core1_psm_rearm_and_rtt_bridge() {
         .write_mem(RTT_TEST_BLOCK_ADDR + 32, &[0xDE, 0xAD, 0xBE, 0xEF])
         .expect("RTT bridge write");
 
-    // 3. Set Core 0 breakpoint at a Rust LOC (`CORE0_MAIN_LOC_ADDR`) and Core 1 breakpoint at
-    //    `Core1_Reset_Handler` (`CORE1_RESET_HANDLER_ADDR`, passing Thumb bit `| 1`).
     assert_eq!(
         gdb_c0.send_cmd(&format!("Z1,{:x},2", CORE0_MAIN_LOC_ADDR)),
         "OK"
@@ -467,7 +890,6 @@ fn test_dual_core_tcp_reset_handler_to_loc_core1_psm_rearm_and_rtt_bridge() {
         "OK"
     );
 
-    // Queue Core 0 hitting `CORE0_MAIN_LOC_ADDR`.
     shared.lock().unwrap().cores[0]
         .pending_target_pcs
         .push(CORE0_MAIN_LOC_ADDR);
@@ -475,8 +897,6 @@ fn test_dual_core_tcp_reset_handler_to_loc_core1_psm_rearm_and_rtt_bridge() {
     assert_eq!(gdb_c0.read_packet_reply(), "S05");
     assert_eq!(gdb_c0.read_pc(), CORE0_MAIN_LOC_ADDR);
 
-    // 4. Simulate Core 0 calling `spawn_core1()`, which pulses RP2040 `PSM.frce_off.proc1` and
-    //    wipes Core 1's hardware `bp_ctrl_enabled` + `hw_comparators` while Core 1 is waiting!
     gdb_c1.send_continue();
     {
         let mut guard = shared.lock().unwrap();
@@ -486,12 +906,10 @@ fn test_dual_core_tcp_reset_handler_to_loc_core1_psm_rearm_and_rtt_bridge() {
         c1.pending_target_pcs.push(CORE1_RESET_HANDLER_ADDR);
     }
 
-    // `host_debug` detects the wiped BPU on Core 1, re-arms `Core1_Reset_Handler`, and halts Core 1!
     assert_eq!(gdb_c1.read_packet_reply(), "S05");
     assert_eq!(gdb_c1.read_pc(), CORE1_RESET_HANDLER_ADDR);
     assert!(shared.lock().unwrap().core1_rearm_count >= 1);
 
-    // 5. Advance Core 1 from `Core1_Reset_Handler` to an arbitrary Core 1 task LOC (`CORE1_TASK_LOC_ADDR`).
     assert_eq!(
         gdb_c1.send_cmd(&format!("Z1,{:x},2", CORE1_TASK_LOC_ADDR)),
         "OK"
@@ -503,12 +921,10 @@ fn test_dual_core_tcp_reset_handler_to_loc_core1_psm_rearm_and_rtt_bridge() {
     assert_eq!(gdb_c1.read_packet_reply(), "S05");
     assert_eq!(gdb_c1.read_pc(), CORE1_TASK_LOC_ADDR);
 
-    // 6. Verify async Ctrl-C (`0x03`) interrupt halts running Core 0 cleanly with `S02`.
     gdb_c0.send_continue();
     std::thread::sleep(Duration::from_millis(15));
     assert_eq!(gdb_c0.send_ctrl_c(), "S02");
 
-    // 7. Detach both GDB sessions (`D`) and verify breakpoints are cleared and cores resumed.
     assert_eq!(gdb_c0.send_cmd("D"), "OK");
     assert_eq!(gdb_c1.send_cmd("D"), "OK");
     drop(gdb_c0);
@@ -532,7 +948,7 @@ fn test_worm_glowing_burrower_8_ack_retransmit_running_detach_and_reset_rearm() 
         gdb_core1_port: Some(0),
         rtt_bridge_port: None,
         halted_on_reset: true,
-        core1_post_reset_trap_addr: None,
+        exec_file_path: None,
         json_events: false,
     };
 
@@ -540,14 +956,12 @@ fn test_worm_glowing_burrower_8_ack_retransmit_running_detach_and_reset_rearm() 
         start_debug_server_with_backend(backend, &config, shutdown).expect("start debug server");
     let c0_port = handle.gdb_core0_port;
 
-    // 1. Reproduce pre-`QStartNoAckMode` `$qSupported` timeout retransmission (no `+` ACK between
-    //    duplicate packets). Without deduplication, `vMustReplyEmpty` receives `vCont;c;C;s;S;t`!
     let mut client1 = TestRspClient::connect(c0_port);
     let qsup = format_rsp_packet("qSupported:multiprocess+;swbreak+;hwbreak+;vContSupported+");
     let mut burst = Vec::new();
     burst.push(b'+');
     burst.extend_from_slice(&qsup);
-    burst.extend_from_slice(&qsup); // Retransmitted before server ACK arrived
+    burst.extend_from_slice(&qsup);
     client1
         .stream
         .write_all(&burst)
@@ -574,14 +988,12 @@ fn test_worm_glowing_burrower_8_ack_retransmit_running_detach_and_reset_rearm() 
         "Extended-remote mode ('!') must reply OK"
     );
 
-    // 2. Verify `monitor reset halt` (`qRcmd`) streams `O<hex>` console output followed by `OK`
-    //    and re-arms non-zero hardware breakpoint slots wiped by MCU reset so `main` still hits!
-    assert_eq!(client1.send_cmd("Z1,10000300,2"), "OK"); // occupies slot 0
+    assert_eq!(client1.send_cmd("Z1,10000300,2"), "OK");
     assert_eq!(
         client1.send_cmd(&format!("Z1,{:x},2", CORE0_MAIN_LOC_ADDR)),
         "OK"
-    ); // occupies slot 1
-    assert_eq!(client1.send_cmd("z1,10000300,2"), "OK"); // frees slot 0 while slot 1 stays active
+    );
+    assert_eq!(client1.send_cmd("z1,10000300,2"), "OK");
 
     let rcmd_pkt = format_rsp_packet(&format!("qRcmd,{}", encode_hex(b"reset halt")));
     client1
@@ -607,9 +1019,6 @@ fn test_worm_glowing_burrower_8_ack_retransmit_running_detach_and_reset_rearm() 
     assert_eq!(client1.read_packet_reply(), "S05");
     assert_eq!(client1.read_pc(), CORE0_MAIN_LOC_ADDR);
 
-    // 3. Resume Core 0 (`vCont;c`) so server enters `wait_until_halted_or_interrupted`, then send
-    //    a leading `+` ACK followed by `$D#44` (`target-detach` while target is running).
-    //    Server must clear breakpoints, leave Core 0 running, reply `"OK"` (never `"S05"`), and close!
     client1
         .stream
         .write_all(&format_rsp_packet("vCont;c"))
@@ -636,7 +1045,6 @@ fn test_worm_glowing_burrower_8_ack_retransmit_running_detach_and_reset_rearm() 
         assert!(guard.cores[0].hw_comparators.iter().all(Option::is_none));
     }
 
-    // 4. Verify a subsequent GDB session immediately connects cleanly on `:3333` with `vKill;1`.
     let mut client2 = TestRspClient::connect(c0_port);
     assert!(client2
         .send_cmd("qSupported:swbreak+;hwbreak+;vContSupported+")

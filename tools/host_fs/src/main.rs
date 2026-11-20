@@ -166,11 +166,7 @@ fn main() -> io::Result<()> {
             }
 
             if let Some(host) = &cli.gdb_bridge {
-                let addr = if host.contains(':') {
-                    host.clone()
-                } else {
-                    format!("{}:50000", host)
-                };
+                let addr = tool_common::normalize_rtt_bridge_addr(host);
                 spinner.set_message(format!(
                     "Connecting to device at {} (address: 0x{:08X}) via GDB bridge...",
                     addr,

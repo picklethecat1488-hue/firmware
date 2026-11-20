@@ -151,6 +151,10 @@ async def test_dual_core_gdb_reset_handler_to_loc(host: AsyncHostSessionClient) 
     core0_loc_spec = "app/src/cat_detector_shell.rs:102"
     core1_loc_spec = "app/src/cat_detector.rs:181"
 
+    prior_status = await host.get_status()
+    prior_dbg = dict(prior_status.get("debug_server") or {})
+    was_debug_enabled = bool(prior_dbg.get("enabled", False))
+
     c0_port = _find_free_local_port()
     c1_port = _find_free_local_port()
     rtt_port = _find_free_local_port()
@@ -228,7 +232,16 @@ async def test_dual_core_gdb_reset_handler_to_loc(host: AsyncHostSessionClient) 
         core_out = await host.cli("core status")
         assert "Core Monitor Status:" in core_out, core_out
     finally:
-        await host.stop_debug_server()
+        if was_debug_enabled:
+            await host.start_debug_server(
+                gdb_core0_port=int(prior_dbg.get("gdb_core0_port") or 3333),
+                gdb_core1_port=int(prior_dbg.get("gdb_core1_port") or 3334),
+                rtt_bridge_port=int(prior_dbg.get("rtt_bridge_port") or 50000),
+                halt_on_reset=False,
+                reset=False,
+            )
+        else:
+            await host.stop_debug_server()
 
 
 @device_test(

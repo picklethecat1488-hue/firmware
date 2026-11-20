@@ -6,21 +6,22 @@ fn main() {}
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 mod host_main {
     use clap::Parser;
-    use host_debug::server::{
-        probe_backend::ProbeRsDebugBackend, run_debug_server_with_backend, DebugServerConfig,
-        DEFAULT_GDB_CORE0_PORT, DEFAULT_GDB_CORE1_PORT, DEFAULT_RTT_BRIDGE_PORT,
-        DEFAULT_SWD_SPEED_KHZ,
-    };
+    use host_debug::arm::probe_backend::ArmProbeDebugBackend;
+    use host_debug::server::{run_debug_server_with_backend, DebugServerConfig};
     use std::io::Read;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use tool_common::{
+        DEFAULT_GDB_CORE0_PORT, DEFAULT_GDB_CORE1_PORT, DEFAULT_RTT_BRIDGE_PORT,
+        DEFAULT_SWD_SPEED_KHZ,
+    };
 
     /// `probe-rs` dual-core GDB RSP debug server and non-intrusive RTT memory bridge.
     #[derive(Parser, Debug)]
     #[command(author, version, about, long_about = None)]
     pub struct CliArgs {
-        /// Path to the compiled target ELF binary (used to infer chip identity when --chip is omitted).
+        /// Path to the compiled target ELF binary (used to infer chip identity and symbol addresses).
         #[arg(short, long)]
         pub elf: Option<PathBuf>,
 
@@ -151,22 +152,29 @@ mod host_main {
             });
         }
 
-        let reset_handler_addr = args.elf.as_ref().and_then(|elf_path| {
+        let core0_reset_addr = args.elf.as_ref().and_then(|elf_path| {
             tool_common::resolve_breakpoint_target(elf_path, "Reset_Handler")
                 .or_else(|_| tool_common::resolve_breakpoint_target(elf_path, "Reset"))
                 .ok()
         });
-        let core1_post_reset_trap_addr = args.elf.as_ref().and_then(|elf_path| {
-            tool_common::resolve_breakpoint_target(elf_path, "multicore.rs:247").ok()
+        let core1_reset_addr = args.elf.as_ref().and_then(|elf_path| {
+            tool_common::resolve_breakpoint_target(elf_path, "Core1_Reset_Handler").ok()
         });
+        let resolved_exec_file = args
+            .elf
+            .as_ref()
+            .and_then(|p| std::fs::canonicalize(p).ok().or_else(|| Some(p.clone())))
+            .map(|p| p.display().to_string());
 
-        let backend = ProbeRsDebugBackend::attach(
+        let backend = ArmProbeDebugBackend::attach(
             &chip,
             args.probe.as_deref(),
             args.speed,
             args.reset,
             args.halt_on_reset,
-            reset_handler_addr,
+            core0_reset_addr,
+            core1_reset_addr,
+            args.elf.as_deref(),
         )?;
 
         let config = DebugServerConfig {
@@ -183,7 +191,7 @@ mod host_main {
                 Some(args.rtt_bridge_port)
             },
             halted_on_reset: args.halt_on_reset,
-            core1_post_reset_trap_addr,
+            exec_file_path: resolved_exec_file,
             json_events: args.json_events,
         };
 

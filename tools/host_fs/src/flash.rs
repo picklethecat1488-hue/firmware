@@ -1,10 +1,37 @@
 use embedded_storage::nor_flash::NorFlashErrorKind;
 use probe_rs::probe::list::Lister;
 use probe_rs::MemoryInterface;
-pub use tool_common::autodetect_project_info;
+pub use tool_common::{autodetect_project_info, DEFAULT_SWD_SPEED_KHZ};
 
-/// Default SWD clock speed in kHz when attaching `host_fs` to a target probe.
-const DEFAULT_SWD_SPEED_KHZ: u32 = 1000;
+/// Read `buf.len()` bytes from `core` at `addr` using 32-bit word block transfers for aligned spans.
+pub fn read_probe_memory_fast(
+    core: &mut probe_rs::Core<'_>,
+    addr: u64,
+    buf: &mut [u8],
+) -> Result<(), probe_rs::Error> {
+    if buf.is_empty() {
+        return Ok(());
+    }
+    let head_len = ((4 - (addr as usize & 3)) & 3).min(buf.len());
+    if head_len > 0 {
+        core.read_8(addr, &mut buf[..head_len])?;
+    }
+    let body_bytes = &mut buf[head_len..];
+    let word_count = body_bytes.len() / 4;
+    if word_count > 0 {
+        let mut words = vec![0u32; word_count];
+        core.read_32(addr + head_len as u64, &mut words)?;
+        for (idx, &w) in words.iter().enumerate() {
+            let off = idx * 4;
+            body_bytes[off..off + 4].copy_from_slice(&w.to_le_bytes());
+        }
+    }
+    let tail_offset = head_len + word_count * 4;
+    if tail_offset < buf.len() {
+        core.read_8(addr + tail_offset as u64, &mut buf[tail_offset..])?;
+    }
+    Ok(())
+}
 
 /// A mock flash driver that implements the embedded-storage-async traits
 /// over an in-memory buffer containing the pulled raw flash binary image.
@@ -134,7 +161,7 @@ impl ProbeFlash {
             if was_running {
                 let _ = core.halt(std::time::Duration::from_millis(500));
             }
-            let read_res = core.read_8(base_address as u64, &mut data);
+            let read_res = read_probe_memory_fast(&mut core, base_address as u64, &mut data);
             if was_running {
                 let _ = core.run();
             }

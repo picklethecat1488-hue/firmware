@@ -1417,7 +1417,7 @@ class DaemonRunner:
                     boot_ready_event.set()
                 if text_line and not text_line.strip().startswith(RTT_SESSION_BANNER_PREFIXES):
                     self.log_cli(text_line)
-            elif ev_type == "cli_prompt":
+            elif ev_type == "shell_idle":
                 with self._lock:
                     self._cli_clear_seq += 1
                 boot_ready_event.set()
@@ -1475,12 +1475,6 @@ class DaemonRunner:
                             self.log(stripped, channel="target")
                         elif stripped.replace(ANSI_CLEAR_LINE_SEQ, "").strip() == "":
                             pass
-                        elif stripped in ("shell>", "shell> ") or (
-                            stripped.replace(ANSI_CLEAR_LINE_SEQ, "").strip() == "shell>"
-                        ):
-                            with self._lock:
-                                self._cli_clear_seq += 1
-                            boot_ready_event.set()
                         else:
                             unescaped = stripped.replace(ANSI_CLEAR_LINE_SEQ, "")
                             if unescaped.lstrip().startswith(SHELL_PROMPT_PREFIX):

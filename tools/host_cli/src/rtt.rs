@@ -39,6 +39,20 @@ impl RttChannel {
         }
     }
 
+    pub fn is_empty<T: TargetAccess + ?Sized>(&self, target: &mut T) -> Result<bool, String> {
+        let mut wr_bytes = [0u8; 4];
+        let mut rd_bytes = [0u8; 4];
+        target.read_mem(self.write_offset_ptr, &mut wr_bytes)?;
+        target.read_mem(self.read_offset_ptr, &mut rd_bytes)?;
+        Ok(wr_bytes == rd_bytes)
+    }
+
+    pub fn read_flags<T: TargetAccess + ?Sized>(&self, target: &mut T) -> Result<u32, String> {
+        let mut flag_bytes = [0u8; 4];
+        target.read_mem(self.flags_offset_ptr, &mut flag_bytes)?;
+        Ok(u32::from_le_bytes(flag_bytes))
+    }
+
     pub fn read<T: TargetAccess + ?Sized>(
         &self,
         target: &mut T,
@@ -384,11 +398,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         spinner.enable_steady_tick(std::time::Duration::from_millis(80));
 
         let connection_res = if let Some(host) = gdb_bridge {
-            let addr = if host.contains(':') {
-                host.to_string()
-            } else {
-                format!("{}:50000", host)
-            };
+            let addr = tool_common::normalize_rtt_bridge_addr(host);
             spinner.set_message(format!("Connecting to GDB bridge session at {}...", addr));
             match GdbClient::connect(&addr) {
                 Ok(client) => {
@@ -582,6 +592,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let mut cli_chunk_parser = host_cli::CliChunkParser::new();
+        let mut shell_idle_poller = host_cli::ShellIdlePoller::new();
 
         // Dump initial CLI output
         if let Some(cli_up) = cli_up_channel {
@@ -887,6 +898,21 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     if stream_cli && !dump {
                         running = false;
+                    }
+                }
+            }
+
+            // 4. Poll RTT shell-idle control flag on `cli_down` once input/output buffers are quiet
+            if json_events && !dump {
+                if let (Some(cli_up), Some(cli_down)) = (cli_up_channel, cli_down_channel) {
+                    if let (Ok(flags), Ok(up_empty), Ok(down_empty)) = (
+                        cli_down.read_flags(target.as_mut()),
+                        cli_up.is_empty(target.as_mut()),
+                        cli_down.is_empty(target.as_mut()),
+                    ) {
+                        if let Some(epoch) = shell_idle_poller.poll(flags, up_empty, down_empty) {
+                            emit_json(&cli_chunk_parser.on_shell_idle(epoch));
+                        }
                     }
                 }
             }

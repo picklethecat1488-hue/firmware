@@ -213,6 +213,58 @@ pub static RTT_SIGNAL: embassy_sync::signal::Signal<
     (),
 > = embassy_sync::signal::Signal::new();
 
+/// Bit flag in `_SEGGER_RTT.down_channels[0].flags` asserted when the target shell loop is idle.
+///
+/// Bits `0..=1` are reserved by SEGGER RTT for channel buffer mode (`0..=2`); upper bits are
+/// ignored by SEGGER RTT readers and used for lock-free single-writer (MCU) / single-reader (host)
+/// shell idle signaling without polling console text for prompt strings.
+pub const RTT_SHELL_IDLE_FLAG: u32 = 1 << 8;
+
+/// Bit shift of the 16-bit wrapping idle-transition epoch in `_SEGGER_RTT.down_channels[0].flags`.
+pub const RTT_SHELL_EPOCH_SHIFT: u32 = 16;
+
+/// Mask preserving SEGGER RTT channel mode bits (`0..=1`).
+pub const RTT_CHANNEL_MODE_MASK: u32 = 0x3;
+
+/// Encode RTT `down_channels[0].flags` combining channel `mode`, `idle` state, and wrapping `epoch`.
+pub const fn encode_rtt_shell_flags(mode: u32, idle: bool, epoch: u16) -> u32 {
+    let base = mode & RTT_CHANNEL_MODE_MASK;
+    let idle_bit = if idle { RTT_SHELL_IDLE_FLAG } else { 0 };
+    base | idle_bit | ((epoch as u32) << RTT_SHELL_EPOCH_SHIFT)
+}
+
+/// Decode `(is_idle, epoch)` from a 32-bit RTT `down_channels[0].flags` word.
+pub const fn decode_rtt_shell_flags(flags: u32) -> (bool, u16) {
+    let idle = (flags & RTT_SHELL_IDLE_FLAG) != 0;
+    let epoch = (flags >> RTT_SHELL_EPOCH_SHIFT) as u16;
+    (idle, epoch)
+}
+
+/// Update the RTT control block's shell-idle flag (and advance its epoch when transitioning to idle).
+pub fn set_rtt_shell_idle(idle: bool) {
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    unsafe {
+        let prev = _SEGGER_RTT.down_channels[0]
+            .flags
+            .load(core::sync::atomic::Ordering::Relaxed) as u32;
+        let mode = prev & RTT_CHANNEL_MODE_MASK;
+        let (was_idle, prev_epoch) = decode_rtt_shell_flags(prev);
+        let next_epoch = if idle && !was_idle {
+            prev_epoch.wrapping_add(1)
+        } else {
+            prev_epoch
+        };
+        let next_flags = encode_rtt_shell_flags(mode, idle, next_epoch) as usize;
+        _SEGGER_RTT.down_channels[0]
+            .flags
+            .store(next_flags, core::sync::atomic::Ordering::Release);
+    }
+    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+    {
+        let _ = idle;
+    }
+}
+
 /// Check if the RTT down channel has unread data.
 pub fn rtt_has_input() -> bool {
     #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -231,14 +283,18 @@ pub fn rtt_has_input() -> bool {
 
 /// Helper macro to execute the RTT character receive loop,
 /// routing bytes into the embedded-cli processor, and automatically executing any
-/// pending async commands.
+/// pending async commands while signaling idle state via `RTT_SHELL_IDLE_FLAG`.
 #[macro_export]
 macro_rules! run_rtt_shell_loop {
     ($cli:expr, $proc:expr, $cmd_type:ty, $prompt:expr) => {
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         loop {
-            $crate::rtt::RTT_SIGNAL.wait().await;
+            if !$crate::rtt::rtt_has_input() {
+                $crate::rtt::set_rtt_shell_idle(true);
+                $crate::rtt::RTT_SIGNAL.wait().await;
+            }
             $crate::rtt::RTT_SIGNAL.reset();
+            $crate::rtt::set_rtt_shell_idle(false);
 
             let mut rx_byte = [0u8; 1];
             while $crate::rtt::read_rtt(&mut rx_byte) > 0 {

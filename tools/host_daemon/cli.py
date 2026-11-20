@@ -195,12 +195,8 @@ def send_daemon_request(
         raise RuntimeError(f"Failed to communicate with host daemon at {url}: {e}")
 
 
-def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
-    """Parse command line arguments for host_daemon."""
-    parser = argparse.ArgumentParser(
-        description="Unified System Shock 2 - Xerxes Host Daemon Workstation",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
+def _add_root_daemon_arguments(parser: argparse.ArgumentParser) -> None:
+    """Register top-level daemon configuration, transport, and debug-server CLI flags."""
     parser.add_argument(
         "--target",
         type=str,
@@ -294,7 +290,6 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Run workstation server in the foreground without detaching from terminal.",
     )
-
     parser.add_argument(
         "--restart",
         action="store_true",
@@ -359,17 +354,21 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Optional probe selector (VID:PID or VID:PID:SERIAL) for multi-target benches.",
     )
 
-    subparsers = parser.add_subparsers(dest="subcommand", help="Host daemon subcommands")
 
-    # CLI forwarding
+def _add_cli_subparser(subparsers: Any) -> None:
+    """Register the `host.py cli` subcommand parser."""
     cli_parser = subparsers.add_parser("cli", help="Forward command to active host daemon CLI")
     cli_parser.add_argument("command", nargs=argparse.REMAINDER, help="CLI command to execute")
 
-    # FS forwarding
+
+def _add_fs_subparser(subparsers: Any) -> None:
+    """Register the `host.py fs` subcommand parser."""
     fs_parser = subparsers.add_parser("fs", help="Forward command to active host daemon FS tool")
     fs_parser.add_argument("command", nargs=argparse.REMAINDER, help="FS subcommand and arguments (e.g. ls, cat ...)")
 
-    # Target Debug Server control (`host.py debug {status,start,stop}`)
+
+def _add_debug_subparser(subparsers: Any) -> None:
+    """Register the `host.py debug` target GDB server control subcommand parser."""
     debug_parser = subparsers.add_parser(
         "debug",
         help="Start, stop, or inspect the probe-rs target GDB debug server on the active host daemon",
@@ -441,22 +440,20 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Format debug server status output as JSON.",
     )
 
-    # Status
-    subparsers.add_parser("status", help="Show status of running host daemon")
 
-    # Sync & Flash
+def _add_lifecycle_subparsers(subparsers: Any) -> None:
+    """Register daemon status, sync/flash, reset/reboot, metadata, and stop subcommands."""
+    subparsers.add_parser("status", help="Show status of running host daemon")
     subparsers.add_parser("sync", help="Trigger target compilation, flash, and RTT sync on running daemon")
     subparsers.add_parser("flash", help="Trigger target compilation, flash, and RTT sync on running daemon")
-
-    # Reset / Reboot / Metadata
     subparsers.add_parser("reset", help="Reset the target device via active host daemon")
     subparsers.add_parser("reboot", help="Reboot the target device and re-attach RTT via active host daemon")
     subparsers.add_parser("metadata", help="Query target .program_metadata and validate against target ELF")
-
-    # Stop
     subparsers.add_parser("stop", help="Stop running host daemon")
 
-    # Target bug / worm report filing
+
+def _add_bug_subparser(subparsers: Any) -> None:
+    """Register the `host.py bug` (`report-bug`) target worm report subcommand parser."""
     bug_parser = subparsers.add_parser(
         "bug",
         aliases=["report-bug"],
@@ -587,7 +584,9 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Format created worm report metadata as JSON.",
     )
 
-    # On-device pytest test runner
+
+def _add_test_subparser(subparsers: Any) -> None:
+    """Register the `host.py test` on-device pytest test runner subcommand parser."""
     test_parser = subparsers.add_parser(
         "test",
         help="Auto-discover attached target board via host_fs and execute async pytest device suites",
@@ -695,6 +694,21 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="TCP loopback port for debugpy symbolic debugger attachment when --debug is enabled.",
     )
 
+
+def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
+    """Parse command line arguments for host_daemon."""
+    parser = argparse.ArgumentParser(
+        description="Unified System Shock 2 - Xerxes Host Daemon Workstation",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    _add_root_daemon_arguments(parser)
+    subparsers = parser.add_subparsers(dest="subcommand", help="Host daemon subcommands")
+    _add_cli_subparser(subparsers)
+    _add_fs_subparser(subparsers)
+    _add_debug_subparser(subparsers)
+    _add_lifecycle_subparsers(subparsers)
+    _add_bug_subparser(subparsers)
+    _add_test_subparser(subparsers)
     return parser.parse_args(args)
 
 
