@@ -490,7 +490,7 @@ def build_template_variants(template_path: Path, repo_root: Path) -> List[Templa
     if name == "host_daemon.html.j2":
         sample_packages = [{"package": "cat_detector", "bins": ["app"]}]
         cli_runner = MockDaemonRunner(active_mode="CLI", release=False, show_system_logs=False)
-        bringup_runner = MockDaemonRunner(active_mode="BRINGUP", release=True, show_system_logs=True)
+        fs_runner = MockDaemonRunner(active_mode="FS", release=True, show_system_logs=True)
         return [
             TemplateVariant(
                 variant_name="cli_mode",
@@ -504,7 +504,7 @@ def build_template_variants(template_path: Path, repo_root: Path) -> List[Templa
             TemplateVariant(
                 variant_name="package_select",
                 context={
-                    "runner": bringup_runner,
+                    "runner": fs_runner,
                     "package_selection_mode": True,
                     "target_packages": sample_packages,
                     "last_session": {"package": "cat_detector", "bin_name": "app"},

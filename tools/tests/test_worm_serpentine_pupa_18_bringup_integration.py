@@ -1,282 +1,116 @@
-"""Regression test for WORM-SERPENTINE-PUPA-18: Bringup Integration with Host Daemon.
+#!/usr/bin/env python3
+"""Regression unit tests for project-filtered device suites and manual prompt streaming (`WORM-SERPENTINE-PUPA-18`)."""
 
-Tests:
-1. Parsing Bringup YAML schema (cat_detector_bringup.yaml, carrier_board_bringup.yaml).
-2. BringupManager script discovery, step execution, regex evaluation, and markdown reporting.
-3. Host Daemon REST API endpoints (/api/bringup/scripts, /api/bringup/load, /api/bringup/status, /api/bringup/step, /api/bringup/respond).
-4. CLI subcommand 'bringup' in tools/host.py and host_daemon/cli.py.
-5. Workstation template host_daemon.html.j2 support for BRINGUP mode, script selector, prompt cards, and CLI output.
-"""
-
-from io import StringIO
 import json
 from pathlib import Path
 import sys
-import tempfile
+import threading
 import unittest
-from unittest.mock import MagicMock, patch
+import urllib.request
 
-_repo_root = Path(__file__).resolve().parent.parent.parent
-_tools_dir = _repo_root / "tools"
-_dashboard_dir = _tools_dir / "dashboard"
-for p in (str(_repo_root), str(_tools_dir), str(_dashboard_dir)):
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+TOOLS_DIR = REPO_ROOT / "tools"
+DASHBOARD_DIR = TOOLS_DIR / "dashboard"
+
+for p in (str(REPO_ROOT), str(TOOLS_DIR), str(DASHBOARD_DIR)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from host_daemon.model.bringup import (
-    BringupConfig,
-    BringupStep,
-    discover_bringup_scripts,
-    load_bringup_yaml,
-)
-from host_daemon.provider.bringup.bringup_manager import BringupManager
+from device_tests.model import ScenarioTier, check_regex, discover_device_tests, infer_scenario_from_script
 from host_daemon.cli import parse_arguments
 from host_daemon.provider.daemon.runner import DaemonRunner
-from host_daemon.provider.daemon.server import HostDaemonRequestHandler, HostDaemonServer
+from host_daemon.provider.daemon.server import HostDaemonServer
 
 
 class TestBringupIntegration(unittest.TestCase):
-    """Test bringup script integration with host and workstation."""
+    """Test suite verifying `device_tests` discovery, `--project` filtering, and `/api/manual_prompt`."""
 
-    def setUp(self):
-        """Set up test environment."""
-        self.repo_root = Path(__file__).resolve().parent.parent.parent
-        self.cat_detector_yaml = self.repo_root / "app" / "cat_detector_bringup.yaml"
-        self.carrier_board_yaml = self.repo_root / "app" / "carrier_board_bringup.yaml"
+    def setUp(self) -> None:
+        """Set up paths and ensure legacy YAML files do not exist."""
+        self.repo_root = REPO_ROOT
+        self.assertFalse((self.repo_root / "app" / "cat_detector_bringup.yaml").exists())
+        self.assertFalse((self.repo_root / "app" / "carrier_board_bringup.yaml").exists())
 
-    def test_yaml_schema_parsing(self):
-        """Verify YAML schema parsing for both cat_detector and carrier_board bringup files."""
-        self.assertTrue(self.cat_detector_yaml.exists(), f"Missing {self.cat_detector_yaml}")
-        self.assertTrue(self.carrier_board_yaml.exists(), f"Missing {self.carrier_board_yaml}")
+    def test_project_discovery_across_modular_listings(self) -> None:
+        """Verify `discover_device_tests` filters across multiple listings by `project` without `step_id`."""
+        cat_tests = discover_device_tests(self.repo_root, project="cat_detector")
+        carrier_tests = discover_device_tests(self.repo_root, project="carrier_board")
 
-        cfg1 = load_bringup_yaml(self.cat_detector_yaml)
-        self.assertEqual(cfg1.project_name, "Cat Detector")
-        self.assertEqual(cfg1.device_chip, "RP2040")
-        self.assertGreater(len(cfg1.steps), 0)
-        first_step = cfg1.steps[0]
-        self.assertEqual(first_step.id, "1")
-        self.assertEqual(first_step.type, "shell_command")
-        self.assertEqual(first_step.command, "fs format")
-        self.assertTrue(first_step.reboot)
+        self.assertGreaterEqual(len(cat_tests), 14)
+        self.assertGreaterEqual(len(carrier_tests), 12)
+        for idx, entry in enumerate(cat_tests, start=1):
+            self.assertEqual(entry["order"], idx)
+            self.assertEqual(entry["project"], "cat_detector")
+            self.assertNotIn("step_id", entry)
 
-        cfg2 = load_bringup_yaml(self.carrier_board_yaml)
-        self.assertEqual(cfg2.project_name, "Carrier Board 2.0")
-        self.assertEqual(cfg2.device_chip, "MCXN947")
-        self.assertGreater(len(cfg2.steps), 0)
-        step_hw = cfg2.steps[0]
-        self.assertEqual(step_hw.type, "hardware_check")
-        self.assertIn("TP1", step_hw.test_points)
+        cat_files = {entry["file_path"] for entry in cat_tests}
+        self.assertGreaterEqual(len(cat_files), 3)
 
-    def test_discover_bringup_scripts(self):
-        """Verify discovering available bringup scripts in repo."""
-        scripts = discover_bringup_scripts(self.repo_root)
-        self.assertIsInstance(scripts, list)
-        self.assertGreaterEqual(len(scripts), 2)
-        paths = [s["path"] for s in scripts]
-        self.assertTrue(any("cat_detector_bringup.yaml" in p for p in paths))
-        self.assertTrue(any("carrier_board_bringup.yaml" in p for p in paths))
-
-    def test_bringup_manager_execution_and_report(self):
-        """Verify BringupManager step execution, regex checking, and report generation."""
-        mock_runner = MagicMock(spec=DaemonRunner)
-        mock_runner.repo_root = self.repo_root
-        mock_runner.execute_cli.return_value = "Battery Status:\n  Voltage: 3950 mV\n  SoC: 85%"
-
-        manager = BringupManager(runner=mock_runner, repo_root=self.repo_root)
-        cfg = manager.load_script(self.cat_detector_yaml)
-        self.assertIsNotNone(cfg)
-        self.assertEqual(manager.status, "idle")
-
-        # Set step to step 2 (battery status) and verify synchronous CLI output capture + regex auto_pass
-        manager.current_step_idx = 1
-        step_result = manager.step()
-        mock_runner.execute_cli.assert_called_with("battery status", wait_for_output=True)
-        self.assertIn(step_result["status"], ("passed", "waiting_prompt"))
-        self.assertTrue(step_result["prompt"]["auto_pass"])
-        self.assertEqual(step_result["prompt"]["matched_line"], "Voltage: 3950 mV")
-
-        # Test responding to a prompt / manual pass
-        resp = manager.respond(action="pass", notes="Verified OK")
-        self.assertTrue(resp["success"])
-        self.assertEqual(len(manager.results), 1)
-        self.assertEqual(manager.results[0]["status"], "passed")
-        self.assertEqual(manager.results[0]["notes"], "Verified OK")
-
-        # Verify step 4 (sensor status) tabular output auto-passes on valid mm/INVALID and fails on FAILED
-        manager.current_step_idx = 3
-        mock_runner.execute_cli.return_value = (
-            "north                                   east                                    west\n"
-            "124mm                                   INVALID                                 98mm (cal: 100mm)"
+        smoke_infer = infer_scenario_from_script(
+            "tools/device_tests/suites/test_cat_detector_smoke.py",
+            self.repo_root,
         )
-        sensor_ok = manager.step()
-        self.assertTrue(sensor_ok["prompt"]["auto_pass"])
+        self.assertEqual(smoke_infer, ScenarioTier.SMOKE.value)
 
-        manager.current_step_idx = 3
-        mock_runner.execute_cli.return_value = (
-            "north                                   east                                    west\n"
-            "FAILED                                  INVALID                                 INVALID"
-        )
-        sensor_fail = manager.step()
-        self.assertFalse(sensor_fail["prompt"]["auto_pass"])
+    def test_regex_checker(self) -> None:
+        """Verify multiline regex evaluation helper."""
+        sample_output = "Reading battery...\nVoltage: 4120 mV\nSoC: 94%\nDone."
+        matched, line = check_regex(sample_output, r"Voltage:\s*\d+\s*mV")
+        self.assertTrue(matched)
+        self.assertEqual(line, "Voltage: 4120 mV")
 
-        # Test markdown report generation
-        with tempfile.NamedTemporaryFile(suffix=".md", delete=False) as tf:
-            report_path = Path(tf.name)
+    def test_cli_subcommand_parsing(self) -> None:
+        """Verify `host.py test` parses `--project`, optional `--script`, and rejects removed `bringup`."""
+        with self.assertRaises(SystemExit):
+            parse_arguments(["bringup", "--list"])
+
+        proj_args = parse_arguments(["test", "--project", "cat_detector", "--scenario", "bringup", "--list"])
+        self.assertEqual(proj_args.subcommand, "test")
+        self.assertEqual(proj_args.project, "cat_detector")
+        self.assertEqual(proj_args.scenario, "bringup")
+        self.assertTrue(proj_args.list_tests)
+
+        script_args = parse_arguments(["test", "--script", "tools/device_tests/suites/test_cat_detector_smoke.py"])
+        self.assertEqual(script_args.script, "tools/device_tests/suites/test_cat_detector_smoke.py")
+        self.assertIsNone(script_args.scenario)
+
+    def test_server_manual_prompt_endpoints(self) -> None:
+        """Verify `GET`/`POST /api/manual_prompt` updates `DaemonRunner` and logs context on `host.py`."""
+        runner = DaemonRunner(repo_root=self.repo_root)
+        server = HostDaemonServer("127.0.0.1", 0, runner)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+
+        base_url = f"http://127.0.0.1:{port}"
         try:
-            report_text = manager.generate_report(output_path=report_path)
-            self.assertTrue(report_path.exists())
-            self.assertIn("# Bringup Verification Report: Cat Detector", report_text)
-            self.assertIn("Verified OK", report_text)
+            payload = {
+                "active": True,
+                "project": "cat_detector",
+                "test_name": "test_motor_calibration_routine",
+                "procedure": "Fill fountain reservoir above min line.",
+                "prompt": "Confirm steady water flow without DIAG faults.",
+            }
+            req = urllib.request.Request(
+                f"{base_url}/api/manual_prompt",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                self.assertEqual(resp.status, 200)
+                post_res = json.loads(resp.read().decode("utf-8"))
+                self.assertTrue(post_res["success"])
+                self.assertEqual(post_res["manual_prompt"]["heartbeat_count"], 1)
+
+            with urllib.request.urlopen(f"{base_url}/api/manual_prompt", timeout=5) as resp:
+                state = json.loads(resp.read().decode("utf-8"))
+                self.assertTrue(state["active"])
+                self.assertEqual(state["test_name"], "test_motor_calibration_routine")
+                self.assertIn("Fill fountain reservoir", state["procedure"])
         finally:
-            if report_path.exists():
-                report_path.unlink()
-
-    def test_cli_subcommand_parsing(self):
-        """Verify 'bringup' subcommand parsing in tools/host.py CLI."""
-        args = parse_arguments(["bringup", "--script", "app/cat_detector_bringup.yaml", "--status"])
-        self.assertEqual(args.subcommand, "bringup")
-        self.assertEqual(args.script, "app/cat_detector_bringup.yaml")
-        self.assertTrue(args.status)
-
-    def test_server_bringup_endpoints(self):
-        """Verify REST API endpoints for bringup script management."""
-        mock_runner = MagicMock(spec=DaemonRunner)
-        mock_runner.repo_root = self.repo_root
-        mock_runner.get_status.return_value = {"mode": "BRINGUP"}
-        mock_runner.logs = []
-        mock_runner.cli_outputs = []
-        mock_runner.fs_outputs = []
-        mock_runner._lock = MagicMock()
-        mock_runner._lock.__enter__.return_value = None
-        mock_runner._lock.__exit__.return_value = None
-
-        server = HostDaemonServer("127.0.0.1", 0, mock_runner)
-        server.server_close()  # Just testing handler dispatch logic
-
-        # Test GET /api/bringup/scripts
-        handler = HostDaemonRequestHandler.__new__(HostDaemonRequestHandler)
-        handler.server = server
-        handler.path = "/api/bringup/scripts"
-        handler.requestline = "GET /api/bringup/scripts HTTP/1.1"
-        handler.headers = {}
-        handler.wfile = MagicMock()
-
-        sent_payloads = []
-
-        def fake_send_json(data, status=200):
-            sent_payloads.append((status, data))
-
-        handler._send_json = fake_send_json
-        handler.do_GET()
-
-        self.assertTrue(sent_payloads)
-        status, scripts = sent_payloads[-1]
-        self.assertEqual(status, 200)
-        self.assertTrue(any("cat_detector" in str(s) for s in scripts))
-
-    def test_bringup_step_types(self):
-        """Verify hardware_check and host_command step execution in BringupManager."""
-        mock_runner = MagicMock(spec=DaemonRunner)
-        mock_runner.repo_root = self.repo_root
-
-        manager = BringupManager(runner=mock_runner, repo_root=self.repo_root)
-        cfg = manager.load_script(self.carrier_board_yaml)
-        self.assertEqual(cfg.project_name, "Carrier Board 2.0")
-
-        # Step 1 is hardware_check
-        res_hw = manager.step()
-        self.assertEqual(res_hw["status"], "waiting_prompt")
-        self.assertIn("TP1", res_hw["prompt"]["test_points"])
-        resp1 = manager.respond("pass", notes="Voltages nominal")
-        self.assertTrue(resp1["success"])
-
-        # Reset checklist
-        res_rst = manager.reset()
-        self.assertTrue(res_rst["success"])
-        self.assertEqual(manager.current_step_idx, 0)
-
-    def test_server_post_bringup_endpoints(self):
-        """Verify POST endpoints for bringup load, step, respond, reset, report, and mode change."""
-        mock_runner = MagicMock(spec=DaemonRunner)
-        mock_runner.repo_root = self.repo_root
-        mock_runner.bringup_manager = BringupManager(runner=mock_runner, repo_root=self.repo_root)
-        mock_runner.get_status.return_value = {"mode": "BRINGUP"}
-
-        server = HostDaemonServer("127.0.0.1", 0, mock_runner)
-        server.server_close()
-
-        handler = HostDaemonRequestHandler.__new__(HostDaemonRequestHandler)
-        handler.server = server
-        handler.headers = {}
-        handler.wfile = MagicMock()
-
-        sent_payloads = []
-
-        def fake_send_json(data, status=200):
-            sent_payloads.append((status, data))
-
-        handler._send_json = fake_send_json
-
-        from io import BytesIO
-
-        # Test POST /api/mode with BRINGUP
-        handler.path = "/api/mode"
-        handler.requestline = "POST /api/mode HTTP/1.1"
-        handler.rfile = BytesIO(json.dumps({"mode": "BRINGUP"}).encode("utf-8"))
-        handler.headers["Content-Length"] = str(len(json.dumps({"mode": "BRINGUP"}).encode("utf-8")))
-        handler.do_POST()
-        self.assertEqual(sent_payloads[-1][0], 200)
-        self.assertEqual(sent_payloads[-1][1]["mode"], "BRINGUP")
-
-        # Test POST /api/bringup/load
-        handler.path = "/api/bringup/load"
-        handler.requestline = "POST /api/bringup/load HTTP/1.1"
-        load_body = json.dumps({"script_path": "app/cat_detector_bringup.yaml"}).encode("utf-8")
-        handler.rfile = BytesIO(load_body)
-        handler.headers["Content-Length"] = str(len(load_body))
-        handler.do_POST()
-        self.assertEqual(sent_payloads[-1][0], 200)
-        self.assertTrue(sent_payloads[-1][1]["success"])
-        self.assertEqual(sent_payloads[-1][1]["config"]["project_name"], "Cat Detector")
-
-        # Test POST /api/bringup/step
-        handler.path = "/api/bringup/step"
-        handler.requestline = "POST /api/bringup/step HTTP/1.1"
-        handler.rfile = BytesIO(b"{}")
-        handler.headers["Content-Length"] = "2"
-        handler.do_POST()
-        self.assertEqual(sent_payloads[-1][0], 200)
-        self.assertEqual(sent_payloads[-1][1]["status"], "waiting_prompt")
-
-        # Test POST /api/bringup/respond
-        handler.path = "/api/bringup/respond"
-        handler.requestline = "POST /api/bringup/respond HTTP/1.1"
-        resp_body = json.dumps({"action": "pass", "notes": "Format passed"}).encode("utf-8")
-        handler.rfile = BytesIO(resp_body)
-        handler.headers["Content-Length"] = str(len(resp_body))
-        handler.do_POST()
-        self.assertEqual(sent_payloads[-1][0], 200)
-        self.assertTrue(sent_payloads[-1][1]["success"])
-
-        # Test POST /api/bringup/reset
-        handler.path = "/api/bringup/reset"
-        handler.requestline = "POST /api/bringup/reset HTTP/1.1"
-        handler.rfile = BytesIO(b"{}")
-        handler.headers["Content-Length"] = "2"
-        handler.do_POST()
-        self.assertEqual(sent_payloads[-1][0], 200)
-        self.assertTrue(sent_payloads[-1][1]["success"])
-
-        # Test POST /api/bringup/report
-        handler.path = "/api/bringup/report"
-        handler.requestline = "POST /api/bringup/report HTTP/1.1"
-        with tempfile.NamedTemporaryFile(suffix=".md") as tf:
-            report_body = json.dumps({"output_path": tf.name}).encode("utf-8")
-            handler.rfile = BytesIO(report_body)
-            handler.headers["Content-Length"] = str(len(report_body))
-            handler.do_POST()
-            self.assertEqual(sent_payloads[-1][0], 200)
-            self.assertTrue(sent_payloads[-1][1]["success"])
+            server.shutdown()
+            server.server_close()
 
 
 if __name__ == "__main__":
