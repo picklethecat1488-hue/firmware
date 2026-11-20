@@ -155,7 +155,10 @@ class DaemonRunner:
         self._cli_seq: int = 0
         self._cli_clear_seq: int = 0
         self._cmd_done_seq: int = 0
+        self._cmd_done_clear_floor: int = 0
         self._last_cmd_error: Optional[str] = None
+        self._json_events_active: bool = False
+        self._last_shell_idle_epoch: Optional[int] = None
         self._fs_seq: int = 0
         self.command_history: List[str] = []
         self._boot_mono: float = time.monotonic()
@@ -452,8 +455,10 @@ class DaemonRunner:
             if probe_was_busy:
                 time.sleep(PROBE_RELEASE_SETTLE_SEC)
             self._update_sync("flashing_target", 3, 75, "Flashing target device via probe-rs...")
-            if not self.flash_target(use_cargo_run=not self.enable_debug_server):
+            if not self.flash_target(use_cargo_run=False):
                 raise RuntimeError(self.status_message or "Flash target failed")
+            if not self.enable_debug_server:
+                time.sleep(PROBE_RELEASE_SETTLE_SEC)
 
             head_commit = None
             try:
@@ -1044,7 +1049,7 @@ class DaemonRunner:
             finally:
                 if rtt_was_running and self.active_mode in ("CLI", "TEST"):
                     time.sleep(PROBE_RELEASE_SETTLE_SEC)
-                    self.start_rtt_streaming(reset_on_attach=not self.enable_debug_server)
+                    self.start_rtt_streaming(reset_on_attach=False)
                 self._record_lifecycle("idle", "Target metadata probe complete", mark_recent=False)
 
     def _resolve_host_debug_cmd_prefix(self) -> List[str]:
@@ -1365,8 +1370,16 @@ class DaemonRunner:
             stream_thread.join(timeout=RTT_STREAM_JOIN_TIMEOUT_SEC)
         self._streaming_thread = None
         self.is_connected = False
+        with self._lock:
+            self._json_events_active = False
+            self._last_shell_idle_epoch = None
 
-    def start_rtt_streaming(self, *, reset_on_attach: bool = True) -> None:
+    def start_rtt_streaming(
+        self,
+        *,
+        reset_on_attach: bool = True,
+        _retry_on_boot_timeout: bool = True,
+    ) -> None:
         """Start streaming RTT logs and CLI interactions in a background thread."""
         if self.elf_path is None:
             self.elf_path = self.resolve_current_elf_path()
@@ -1429,9 +1442,10 @@ class DaemonRunner:
         started_event = threading.Event()
         boot_ready_event = threading.Event()
         session_ready = False
+        has_cli_channel = True
 
         def _handle_json_event(ev_obj: Dict[str, Any]) -> None:
-            nonlocal session_ready
+            nonlocal session_ready, has_cli_channel
             ev_type = str(ev_obj.get("event") or "")
             dev_ts_val = ev_obj.get("device_ts")
             if isinstance(dev_ts_val, (int, float)) and float(dev_ts_val) >= 0.0:
@@ -1442,34 +1456,42 @@ class DaemonRunner:
             if ev_type == "session_started":
                 if not session_ready:
                     self._reset_device_clock()
+                    with self._lock:
+                        self._last_shell_idle_epoch = None
+                with self._lock:
+                    self._json_events_active = True
                 session_ready = True
+                has_cli_channel = bool(ev_obj.get("cli_up", True))
                 self.is_connected = True
                 self.log("RTT streaming process connected")
                 started_event.set()
-                if not bool(ev_obj.get("cli_up", True)):
+                if not has_cli_channel and not bool(ev_obj.get("defmt", True)):
                     boot_ready_event.set()
             elif ev_type == "defmt":
                 level_str = str(ev_obj.get("level") or "INFO").upper()
                 formatted = str(ev_obj.get("formatted") or ev_obj.get("message") or "")
                 if formatted:
                     self.log(formatted, level=level_str, channel="target")
-                if "MPU stack guard configured" in formatted:
+                if not has_cli_channel:
                     boot_ready_event.set()
             elif ev_type == "cli_output":
                 text_line = str(ev_obj.get("text") or "")
-                if "Type 'help' to print usage." in text_line:
-                    boot_ready_event.set()
                 if text_line and not text_line.strip().startswith(RTT_SESSION_BANNER_PREFIXES):
                     self.log_cli(text_line)
             elif ev_type == "shell_idle":
+                raw_epoch = ev_obj.get("epoch")
+                epoch_val = int(raw_epoch) if isinstance(raw_epoch, int) and not isinstance(raw_epoch, bool) else None
                 with self._lock:
-                    self._cli_clear_seq += 1
+                    if epoch_val is None or epoch_val != self._last_shell_idle_epoch:
+                        self._last_shell_idle_epoch = epoch_val
+                        self._cli_clear_seq += 1
                 boot_ready_event.set()
             elif ev_type == "command_completed":
                 ok = bool(ev_obj.get("success", True))
                 err_msg = ev_obj.get("error")
                 with self._lock:
                     self._cmd_done_seq += 1
+                    self._cmd_done_clear_floor = self._cli_clear_seq
                     self._last_cmd_error = str(err_msg) if (not ok and err_msg) else (None if ok else "Command failed")
             elif ev_type == "session_disconnected":
                 self.is_connected = False
@@ -1544,7 +1566,18 @@ class DaemonRunner:
             return
         started_event.wait(timeout=RTT_STARTUP_EVENT_TIMEOUT_SEC)
         if session_ready and self.rtt_process is not None and self.rtt_process.poll() is None:
-            boot_ready_event.wait(timeout=RTT_BOOT_READY_TIMEOUT_SEC)
+            boot_ok = boot_ready_event.wait(timeout=RTT_BOOT_READY_TIMEOUT_SEC)
+            if not boot_ok and _retry_on_boot_timeout and self.rtt_process is not None and self.rtt_process.poll() is None:
+                self.log(
+                    "Target boot/idle signal timed out after RTT attach; issuing recovery reset...",
+                    level="WARN",
+                )
+                self.stop_rtt_streaming()
+                if self.enable_debug_server:
+                    self.stop_debug_server()
+                time.sleep(PROBE_RELEASE_SETTLE_SEC)
+                self.start_rtt_streaming(reset_on_attach=True, _retry_on_boot_timeout=False)
+                return
             time.sleep(RTT_CONSOLE_READY_SETTLE_SEC)
 
     def _collect_cli_output(
@@ -1565,6 +1598,8 @@ class DaemonRunner:
         new_cli: List[str] = []
         new_logs: List[str] = []
         prompt_seen = False
+        post_done_prompt_seen = False
+        json_events_active = False
         structured_done = False
         structured_err: Optional[str] = None
 
@@ -1581,6 +1616,8 @@ class DaemonRunner:
                     ANSI_CLEAR_LINE_SEQ in text for text in new_cli
                 )
                 structured_done = self._cmd_done_seq > start_done_seq
+                post_done_prompt_seen = structured_done and (self._cli_clear_seq > self._cmd_done_clear_floor)
+                json_events_active = self._json_events_active
                 structured_err = self._last_cmd_error if structured_done else None
 
             meaningful_count = sum(
@@ -1596,7 +1633,12 @@ class DaemonRunner:
             cmd_done_log = structured_done or any(
                 "command execution succeeded" in msg or "command execution failed" in msg for msg in new_logs
             )
-            if (prompt_seen or cmd_done_log) and done_seen_time is None:
+            effective_prompt_seen = (
+                (post_done_prompt_seen or (prompt_seen and (last_output_time is not None or not clean_cmd)))
+                if json_events_active
+                else prompt_seen
+            )
+            if (effective_prompt_seen or cmd_done_log) and done_seen_time is None:
                 done_seen_time = now
 
             if done_seen_time is not None:
@@ -1630,7 +1672,8 @@ class DaemonRunner:
         if structured_err is not None or any("command execution failed" in msg for msg in new_logs):
             return f"Command failed: {clean_cmd}"
 
-        if prompt_seen or structured_done or any("command execution succeeded" in msg for msg in new_logs):
+        final_prompt_ok = (post_done_prompt_seen or not clean_cmd) if json_events_active else prompt_seen
+        if final_prompt_ok or structured_done or any("command execution succeeded" in msg for msg in new_logs):
             return f"Executed: {clean_cmd}"
 
         return f"Dispatched: {raw_cmd}"
@@ -1757,7 +1800,7 @@ class DaemonRunner:
             finally:
                 if rtt_was_running and self.active_mode in ("CLI", "TEST"):
                     time.sleep(PROBE_RELEASE_SETTLE_SEC)
-                    self.start_rtt_streaming(reset_on_attach=not self.enable_debug_server)
+                    self.start_rtt_streaming(reset_on_attach=False)
                 self._record_lifecycle("idle", f"Completed host_fs ({subcmd})", mark_recent=False)
 
     def get_status(self) -> Dict[str, Any]:

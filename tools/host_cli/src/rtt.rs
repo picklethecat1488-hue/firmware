@@ -382,6 +382,8 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut is_reconnecting = false;
+    let mut shell_idle_poller = host_cli::ShellIdlePoller::new();
+    let mut pending_stdin = std::collections::VecDeque::<Vec<u8>>::new();
     loop {
         if shutdown_requested.load(std::sync::atomic::Ordering::SeqCst) {
             running = false;
@@ -420,28 +422,42 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                     let _ = probe.set_speed(speed);
                     match probe.attach(chip, probe_rs::Permissions::default()) {
                         Ok(mut session) => {
-                            {
-                                let mut core = session.core(0)?;
+                            let core_setup = (|| -> Result<(), String> {
+                                let mut core = session.core(0).map_err(|e| format!("{:?}", e))?;
                                 if reset && !is_reconnecting {
                                     spinner.set_message("Resetting target CPU...");
-                                    let _ = core.reset();
-                                    std::thread::sleep(Duration::from_millis(100));
+                                    core.reset().map_err(|e| {
+                                        format!("Failed to reset target CPU: {:?}", e)
+                                    })?;
+                                    shell_idle_poller = host_cli::ShellIdlePoller::new();
+                                    std::thread::sleep(Duration::from_millis(50));
                                     let _ = core.run();
-                                    std::thread::sleep(Duration::from_millis(100));
+                                    std::thread::sleep(Duration::from_millis(50));
+                                    if core.core_halted().unwrap_or(false) {
+                                        let _ = core.reset();
+                                        let _ = core.run();
+                                        std::thread::sleep(Duration::from_millis(50));
+                                    }
                                 } else {
-                                    let status = core.status()?;
+                                    let status = core.status().map_err(|e| format!("{:?}", e))?;
                                     spinner.set_message(format!("Core status: {:?}", status));
                                     if status.is_halted() {
                                         spinner
                                             .set_message("Core is halted. Resuming execution...");
                                         let _ = core.run();
-                                        std::thread::sleep(Duration::from_millis(100));
+                                        std::thread::sleep(Duration::from_millis(50));
                                     }
                                 }
                                 is_reconnecting = true;
+                                Ok(())
+                            })();
+                            match core_setup {
+                                Ok(()) => {
+                                    probe_rs_session_store = Some(session);
+                                    Ok(())
+                                }
+                                Err(e) => Err(e),
                             }
-                            probe_rs_session_store = Some(session);
-                            Ok(())
                         }
                         Err(e) => Err(format!("{:?}", e)),
                     }
@@ -454,8 +470,8 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
             if dump {
                 return Err(format!("Connection failed: {}", err).into());
             }
-            spinner.set_message(format!("Connection failed: {}. Retrying in 1s...", err));
-            std::thread::sleep(Duration::from_secs(1));
+            spinner.set_message(format!("Connection failed: {}. Retrying in 350ms...", err));
+            std::thread::sleep(Duration::from_millis(350));
             continue;
         }
 
@@ -548,13 +564,42 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
         // Configure active UP channels to use MODE_BLOCK_IF_FULL (2) on the target
         if let Some(chan) = defmt_channel {
-            target.write_mem(chan.flags_offset_ptr, &u32::to_le_bytes(2))?;
+            if let Err(e) = target.write_mem(chan.flags_offset_ptr, &u32::to_le_bytes(2)) {
+                if dump {
+                    return Err(format!("Failed to set defmt RTT flags: {}", e).into());
+                }
+                spinner.set_message(format!(
+                    "Failed to configure defmt RTT flags: {}. Retrying in 250ms...",
+                    e
+                ));
+                std::thread::sleep(Duration::from_millis(250));
+                continue;
+            }
         }
         if let Some(chan) = cli_up_channel {
-            target.write_mem(chan.flags_offset_ptr, &u32::to_le_bytes(2))?;
+            if let Err(e) = target.write_mem(chan.flags_offset_ptr, &u32::to_le_bytes(2)) {
+                if dump {
+                    return Err(format!("Failed to set cli RTT flags: {}", e).into());
+                }
+                spinner.set_message(format!(
+                    "Failed to configure cli RTT flags: {}. Retrying in 250ms...",
+                    e
+                ));
+                std::thread::sleep(Duration::from_millis(250));
+                continue;
+            }
         }
 
         spinner.finish_and_clear();
+
+        // Set up defmt decoder and DWARF locations BEFORE emitting `SessionStarted` so there is
+        // zero DWARF-parsing stall between `SessionStarted` and the live RTT poll loop.
+        let mut decoder = table.map(|table| table.new_stream_decoder());
+        let locations = if let Some(t) = table {
+            t.get_locations(&elf_data).ok()
+        } else {
+            None
+        };
 
         let emit_json = |ev: &host_cli::HostCliEvent| {
             use std::io::Write as _;
@@ -582,17 +627,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        // Set up defmt decoder
-        let mut decoder = table.map(|table| table.new_stream_decoder());
-
-        let locations = if let Some(t) = table {
-            t.get_locations(&elf_data).ok()
-        } else {
-            None
-        };
-
         let mut cli_chunk_parser = host_cli::CliChunkParser::new();
-        let mut shell_idle_poller = host_cli::ShellIdlePoller::new();
 
         // Dump initial CLI output
         if let Some(cli_up) = cli_up_channel {
@@ -668,6 +703,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         let mut malformed_frames = 0;
         loop {
             let mut did_work = false;
+            let mut pending_completions = Vec::<host_cli::HostCliEvent>::new();
 
             // 1. Poll defmt logs
             if let Some(chan) = defmt_channel {
@@ -808,7 +844,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                                     device_ts_sec,
                                                 )
                                             {
-                                                emit_json(&comp_ev);
+                                                pending_completions.push(comp_ev);
                                             }
                                         } else if !line_str.contains("Device Telemetry: ") {
                                             if !stdout_at_bol {
@@ -835,37 +871,50 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            // 2. Poll CLI output
+            // 2. Poll CLI output (drain completely before emitting deferred `command_completed` events)
             if let Some(cli_up) = cli_up_channel {
-                match cli_up.read(target.as_mut(), &mut rtt_buf) {
-                    Ok(n) if n > 0 => {
-                        use std::io::Write;
-                        did_work = true;
-                        let write_buf = host_cli::cancel_echo(&rtt_buf[..n], &mut sent_buffer);
-                        if !write_buf.is_empty() {
-                            if json_events {
-                                for ev in cli_chunk_parser.push_bytes(&write_buf) {
-                                    emit_json(&ev);
+                loop {
+                    match cli_up.read(target.as_mut(), &mut rtt_buf) {
+                        Ok(n) if n > 0 => {
+                            use std::io::Write;
+                            did_work = true;
+                            let write_buf = host_cli::cancel_echo(&rtt_buf[..n], &mut sent_buffer);
+                            if !write_buf.is_empty() {
+                                if json_events {
+                                    for ev in cli_chunk_parser.push_bytes(&write_buf) {
+                                        emit_json(&ev);
+                                    }
+                                } else {
+                                    if let Some(&last) = write_buf.last() {
+                                        stdout_at_bol = last == b'\n';
+                                    }
+                                    let _ = std::io::stdout().write_all(&write_buf);
+                                    let _ = std::io::stdout().flush();
                                 }
-                            } else {
-                                if let Some(&last) = write_buf.last() {
-                                    stdout_at_bol = last == b'\n';
-                                }
-                                let _ = std::io::stdout().write_all(&write_buf);
-                                let _ = std::io::stdout().flush();
                             }
                         }
+                        Ok(_) => break,
+                        Err(e) => {
+                            run_error = Some(format!("CLI read error: {:?}", e));
+                            break;
+                        }
                     }
-                    Err(e) => {
-                        run_error = Some(format!("CLI read error: {:?}", e));
-                        break;
-                    }
-                    _ => {}
                 }
+            }
+            if run_error.is_some() {
+                break;
+            }
+            for comp_ev in pending_completions.drain(..) {
+                emit_json(&comp_ev);
             }
 
             // 3. Poll CLI input
-            match stdin_rx.try_recv() {
+            let next_input = if let Some(retry_bytes) = pending_stdin.pop_front() {
+                Ok(retry_bytes)
+            } else {
+                stdin_rx.try_recv()
+            };
+            match next_input {
                 Ok(input_bytes) => {
                     did_work = true;
                     if let Some(cli_down) = cli_down_channel {
@@ -887,6 +936,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                             match cli_down.write(target.as_mut(), &input_bytes[written..]) {
                                 Ok(n) => written += n,
                                 Err(e) => {
+                                    pending_stdin.push_front(input_bytes[written..].to_vec());
                                     run_error = Some(format!("CLI write error: {:?}", e));
                                     break;
                                 }
@@ -1028,8 +1078,32 @@ impl<'b> Drop for ProbeRsWrapper<'b> {
 
 impl<'b> TargetAccess for ProbeRsWrapper<'b> {
     fn read_mem(&mut self, addr: u64, buf: &mut [u8]) -> Result<(), String> {
+        if buf.is_empty() {
+            return Ok(());
+        }
         let core = unsafe { &mut *self.core_ptr };
-        core.read_8(addr, buf).map_err(|e| format!("{:?}", e))
+        let head_len = ((4 - (addr as usize & 3)) & 3).min(buf.len());
+        if head_len > 0 {
+            core.read_8(addr, &mut buf[..head_len])
+                .map_err(|e| format!("{:?}", e))?;
+        }
+        let body_bytes = &mut buf[head_len..];
+        let word_count = body_bytes.len() / 4;
+        if word_count > 0 {
+            let mut words = vec![0u32; word_count];
+            core.read_32(addr + head_len as u64, &mut words)
+                .map_err(|e| format!("{:?}", e))?;
+            for (idx, &w) in words.iter().enumerate() {
+                let off = idx * 4;
+                body_bytes[off..off + 4].copy_from_slice(&w.to_le_bytes());
+            }
+        }
+        let tail_offset = head_len + word_count * 4;
+        if tail_offset < buf.len() {
+            core.read_8(addr + tail_offset as u64, &mut buf[tail_offset..])
+                .map_err(|e| format!("{:?}", e))?;
+        }
+        Ok(())
     }
     fn write_mem(&mut self, addr: u64, buf: &[u8]) -> Result<(), String> {
         let core = unsafe { &mut *self.core_ptr };

@@ -2431,3 +2431,67 @@ def test_host_py_test_explicit_debug_server_and_no_debug_server_flags(
     assert host_cli_mod.main(["test", "--no-debug-server"]) == 0
     assert "--no-debug-server" in captured_cmds[-1]
     assert "--debug-server" not in captured_cmds[-1]
+
+    from host_daemon.model import metadata as host_meta
+    from host_daemon.provider.daemon.config import has_explicit_target_args
+
+    assert has_explicit_target_args(["--no-detach", "--no-browser", "--no-debug-server"]) is False
+    assert host_meta._is_transient_metadata_probe_error("Failed to attach as rp2040: Arm(Dap(NoAcknowledge))") is True
+    assert host_meta._is_transient_metadata_probe_error("Error: No debug probes connected") is False
+    monkeypatch.setenv("XERXES_REQUIRE_CONNECTED_TARGET", "1")
+    assert host_meta._is_transient_metadata_probe_error("Error: No debug probes connected") is True
+
+
+def test_collect_cli_output_ignores_pre_completion_shell_idle_in_json_mode(tmp_path: Path) -> None:
+    """Verify early/reconnect `shell_idle` events before `command_completed` never truncate CLI output."""
+    from host_daemon.provider.daemon.runner import DaemonRunner
+
+    runner = DaemonRunner(
+        repo_root=tmp_path,
+        target="thumbv6m-none-eabi",
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+        enable_debug_server=False,
+    )
+    fake_elf = tmp_path / "cat_detector_shell"
+    fake_elf.write_bytes(b"\x7fELF")
+    fake_cli = tmp_path / "host_cli"
+    mock_rtt_py = tmp_path / "mock_rtt_reconnect.py"
+    mock_rtt_py.write_text(
+        "import json, os, queue, sys, threading, time\n"
+        "q = queue.Queue()\n"
+        "def _reader():\n"
+        "    for line in sys.stdin:\n"
+        "        q.put(line.strip())\n"
+        "    os._exit(0)\n"
+        "threading.Thread(target=_reader, daemon=True).start()\n"
+        "print(json.dumps({'event': 'session_started', 'chip': 'rp2040', 'defmt': True, 'cli_up': True, 'cli_down': True}), flush=True)\n"
+        "print(json.dumps({'event': 'shell_idle', 'epoch': 1}), flush=True)\n"
+        "while True:\n"
+        "    cmd = q.get()\n"
+        "    if cmd == 'battery status':\n"
+        "        # Simulate both a duplicate reconnect epoch=1 and a pre-command idle epoch=2\n"
+        "        # followed by a 0.40s (> CLI_COMPLETION_SETTLE_SEC=0.25s) I2C transaction.\n"
+        "        print(json.dumps({'event': 'shell_idle', 'epoch': 1}), flush=True)\n"
+        "        print(json.dumps({'event': 'shell_idle', 'epoch': 2}), flush=True)\n"
+        "        time.sleep(0.40)\n"
+        "        print(json.dumps({'event': 'cli_output', 'text': 'Battery Status:'}), flush=True)\n"
+        "        print(json.dumps({'event': 'cli_output', 'text': '  Voltage: 4022 mV'}), flush=True)\n"
+        "        print(json.dumps({'event': 'command_completed', 'success': True, 'error': None, 'device_ts': 0.85}), flush=True)\n"
+        "        print(json.dumps({'event': 'shell_idle', 'epoch': 3}), flush=True)\n",
+        encoding="utf-8",
+    )
+    fake_cli.write_text(
+        f"#!/bin/sh\nexec '{sys.executable}' -u '{mock_rtt_py}'\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+    runner.host_cli_path = fake_cli
+    runner.elf_path = fake_elf
+    runner.start_rtt_streaming()
+    try:
+        out = runner.execute_cli("battery status", wait_for_output=True, timeout=3.0)
+        assert "Battery Status:" in out
+        assert "Voltage: 4022 mV" in out
+    finally:
+        runner.stop_rtt_streaming()

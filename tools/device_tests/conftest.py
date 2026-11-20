@@ -1,5 +1,6 @@
 """Pytest configuration, top-to-bottom source ordering, project/board filtering, and async fixtures."""
 
+import asyncio
 import datetime
 import os
 from pathlib import Path
@@ -173,7 +174,7 @@ async def host(pytestconfig: pytest.Config) -> AsyncIterator[AsyncHostSessionCli
         except (OSError, RuntimeError):
             daemon_listening = False
 
-        if not daemon_listening:
+        if not daemon_listening and os.environ.get("XERXES_REQUIRE_CONNECTED_TARGET") != "1":
             standalone_board = query_metadata_standalone(REPO_ROOT)
             if standalone_board is None:
                 spawn_needed = False
@@ -199,6 +200,9 @@ async def detected_board(
 ) -> Optional[DetectedBoard]:
     """Query `board_type` once per session via `host.py` (`/api/metadata` -> `host_fs query_metadata`)."""
     board = await host.query_metadata()
+    if board is None and os.environ.get("XERXES_REQUIRE_CONNECTED_TARGET") == "1":
+        await asyncio.sleep(0.5)
+        board = await host.query_metadata(force_refresh=True)
     cli_board_filter = str(pytestconfig.getoption("--board") or "auto").strip()
     if board is not None and cli_board_filter.lower() != "auto":
         if not matches_board_patterns(board.board_type, [cli_board_filter]):
