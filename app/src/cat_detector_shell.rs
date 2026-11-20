@@ -11,6 +11,8 @@
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use cat_detector as app;
 
+board::emit_project_metadata!();
+
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {embassy_executor::Spawner, embedded_cli::cli::CliBuilder, platform::core_monitor};
 
