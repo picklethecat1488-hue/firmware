@@ -342,10 +342,12 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
     // Spawn the stdin reader thread once (if interactive CLI is enabled)
     let (stdin_tx, stdin_rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    let stdin_eof = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let stream_cli =
         channel_mode == crate::ChannelMode::Cli || channel_mode == crate::ChannelMode::Both;
     if stream_cli && !dump {
         use std::io::Read;
+        let eof_flag = std::sync::Arc::clone(&stdin_eof);
         std::thread::spawn(move || {
             let mut stdin = std::io::stdin();
             let mut buf = [0u8; 128];
@@ -356,7 +358,10 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                             break;
                         }
                     }
-                    _ => break,
+                    _ => {
+                        eof_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                        break;
+                    }
                 }
             }
         });
@@ -481,11 +486,21 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
             match parse_rtt_channels(target.as_mut(), rtt_symbol_addr, object_file.as_ref()) {
                 Ok(chans) => chans,
                 Err(e) => {
+                    const BRIDGE_RETRY_DELAY_MS: u64 = 250;
+                    const DIRECT_RETRY_DELAY_MS: u64 = 1000;
+                    if stream_cli && !dump && stdin_eof.load(std::sync::atomic::Ordering::SeqCst) {
+                        break;
+                    }
+                    let retry_ms = if gdb_bridge.is_some() {
+                        BRIDGE_RETRY_DELAY_MS
+                    } else {
+                        DIRECT_RETRY_DELAY_MS
+                    };
                     spinner.set_message(format!(
-                        "Failed to parse RTT channels: {}. Retrying in 1s...",
-                        e
+                        "Failed to parse RTT channels: {}. Retrying in {}ms...",
+                        e, retry_ms
                     ));
-                    std::thread::sleep(Duration::from_secs(1));
+                    std::thread::sleep(Duration::from_millis(retry_ms));
                     continue;
                 }
             };

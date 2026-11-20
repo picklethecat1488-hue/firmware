@@ -1,3 +1,5 @@
+Reset_Handler = Reset;
+
 SECTIONS
 {
     .program_metadata : ALIGN(4)

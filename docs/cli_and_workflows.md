@@ -36,8 +36,20 @@ conda activate firmware-env
 # Launch interactive workstation (defaults to port 8899 in native desktop window)
 python tools/host.py
 
+# Launch with probe-rs dual-core GDB server (:3333/:3334) and :50000 RTT bridge enabled
+python tools/host.py --debug-server --gdb-core0-port 3333 --gdb-core1-port 3334
+
 # Run daemon in background / headless mode
 python tools/host.py --no-browser --detach
+
+# Control or inspect the live target GDB debug server (host_debug)
+python tools/host.py debug status
+python tools/host.py debug start --gdb-core0-port 3333 --gdb-core1-port 3334 --halt-on-reset
+python tools/host.py debug stop
+
+# File a structured target worm report bundling RTT/test logs, host_fs dumps, and attachments
+python tools/host.py bug "ToF sensor NACK under motor load" --severity HIGH --category DRIVER \
+  --attach-crash-log --attach-telemetry --attach ./scope_trace.png
 
 # Forward shell commands directly to the running target over RTT
 python tools/host.py cli motor speed 100
@@ -168,15 +180,15 @@ Accept the workspace extension recommendations when opening the repository (or r
     ```
   - **Live Hardware Inspection While Paused**: When paused at a breakpoint inside an `async def test_*(host)` function, inspect `host.last_output_log` in **Variables** or evaluate live target commands directly in the **Debug Console** (e.g., `await host.cli("gpio status")`).
 
-### 2. Rust Host Unit & Integration Test Debugging (`CodeLLDB`)
+### 2. Rust Host Unit & Integration Test Debugging (`CodeLLDB`) & Cargo Tool Aliases
 
-`[profile.test]` in `Cargo.toml` sets `opt-level = 0` and `debug = 2` (while preserving `opt-level = "s"` on `[profile.dev]` for MCU flash budgets) so local variables are never optimized out during host test stepping:
+`.cargo/config.toml` defines convenient aliases for all Rust host utilities (`cargo host-cli`, `cargo host-fs`, `cargo host-debug`, `cargo code-gen`, `cargo build-host-tools`), and `[profile.test]` in `Cargo.toml` sets `opt-level = 0` and `debug = 2` (while preserving `opt-level = "s"` on `[profile.dev]` for MCU flash budgets) so local variables are never optimized out during host test stepping:
 
 - **Inline CodeLens**: Open any `<crate>/tests/*.rs` integration test file and click **`Debug`** directly above `#[test]`.
 - **Run & Debug Launch Profiles**:
   - **`Rust: Debug Tests in Current File (CodeLLDB)`** — Compiles and launches the active `<crate>/tests/<name>.rs` binary under `CodeLLDB` with `--nocapture`.
   - **`Rust: Debug Single Test by Name (CodeLLDB)`** — Prompts for a test function filter in the active `<crate>/tests/*.rs` file.
-  - **`Rust: Debug Host Tool (host_cli / host_fs)`** — Builds and symbolically debugs `host_cli`, `host_fs`, or `code_gen`.
+  - **`Rust: Debug Host Tool (host_cli / host_fs / host_debug)`** — Builds and symbolically debugs `host_cli`, `host_fs`, `host_debug`, or `code_gen`.
 - **Terminal `cargo nextest` + `CodeLLDB`**:
   ```bash
   cargo nextest run --debugger codelldb-launch <test_name>
@@ -186,16 +198,17 @@ Accept the workspace extension recommendations when opening the repository (or r
 
 Open any suite in `tools/tests/js/*.test.mjs` (or module under `tools/js/`), set a breakpoint, and launch **`JS: Debug Current Test File (node --test)`** to step through zero-globals workstation controllers with full call-stack and closure inspection.
 
-### 4. Bare-Metal Target Firmware Symbolic Debugging (`probe-rs` & `Cortex-Debug`)
+### 4. Bare-Metal Target Firmware Symbolic Debugging (Primary: `tools/host.py` · Secondary: `probe-rs`)
 
-Because a USB SWD probe can only be claimed over raw USB by one host process at a time, stop any background `host.py` daemon first (`python tools/host.py stop` or VS Code task **`host: stop host.py daemon (release USB probe)`**):
+Target firmware debugging uses a unified `probe-rs` architecture across all supported SWD/JTAG probes:
 
-- **`probe-rs-debug` (Integrated `defmt` + `shell>` RTT)**:
-  - **`Debug Shell (probe-rs RP2040)`**, **`Debug Firmware (probe-rs RP2040)`**, and **`Debug Carrier Board Shell (probe-rs MCXN947)`** automatically run their `cargo build` `preLaunchTask`, flash the debug ELF, halt at reset/`main`, decode RTT Channel 0 (`Defmt`), and expose RTT Channel 1 (`String` `shell>`) in VS Code.
-- **`Cortex-Debug` (Segger J-Link & CMSIS-DAP Pico Probe + Dual-Core Compounds)**:
-  - Launch single-core profiles (**`Debug Shell Core 0 (J-Link)`**, **`Debug App Core 0 (J-Link)`**, **`Debug Carrier Board Shell (J-Link MCXN947)`**, **`Debug Shell (Cortex-Debug Pico Probe)`**) or dual-core compounds (**`Debug Shell Dual-Core (J-Link)`**, **`Debug App Dual-Core (J-Link)`**).
-  - `sourceFileMap` (`"firmware": "${workspaceFolder}"`) automatically maps DWARF paths even if an ELF was compiled via `./tools/build/build_firmware.sh` or `./tools/verify.py`.
-  - Under OpenOCD (`Pico Probe`), you can concurrently attach `host_cli` to the active GDB server TCP port to send CLI commands that trigger Rust firmware breakpoints:
-    ```bash
-    cargo run -p host_cli -- -o localhost:50000 --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
-    ```
+1. **Primary Interface — `tools/host.py` (`tools/host_debug` Dual-Core GDB + Concurrent RTT Console)**:
+   - Open **🎯 Target Config** in the `host.py` workstation and check **Enable target GDB debug server on Sync (`host_debug`)** (optionally check **Halt Core 0 at `Reset_Handler` after Sync / Reset** and set explicit **Core 0 / Core 1 GDB Ports** for multi-target benches), or launch/toggle via CLI (`python tools/host.py --debug-server` or `python tools/host.py debug start`).
+   - On `⚡ Sync`, `host.py` flashes the target and launches `host_debug` in a **single reset** while keeping `defmt` logs and interactive `shell>` commands live over the non-halting `:50000` RTT memory bridge (`cargo host-cli --gdb-bridge 127.0.0.1:50000 --json-events`).
+   - In VS Code **Run & Debug**, attach without stopping `host.py`:
+     - **`Host Daemon: Attach Shell Core 0 (GDB)`** / **`Host Daemon: Attach Shell Core 1 (GDB)`** / **`Host Daemon: Attach Shell Dual-Core (GDB)`**
+     - **`Host Daemon: Attach App Core 0 (GDB)`** / **`Host Daemon: Attach App Core 1 (GDB)`** / **`Host Daemon: Attach App Dual-Core (GDB)`**
+     - **`Host Daemon: Attach Carrier Board Shell (GDB)`**
+   - Supports setting breakpoints from **`Reset_Handler`** (Core 0) and **`Core1_Reset_Handler`** (Core 1) to any Rust source LOC in Flash or SRAM across both Segger J-Link and CMSIS-DAP probes.
+2. **Secondary Interface — Standalone `probe-rs` (`probe-rs-debug`)**:
+   - When debugging standalone without a running `host.py` daemon, stop `host.py` (`python tools/host.py stop` or VS Code task **`host: stop host.py daemon (release USB probe)`**) and launch **`probe-rs (Secondary): Debug Shell (RP2040)`**, **`probe-rs (Secondary): Debug Firmware (RP2040)`**, or **`probe-rs (Secondary): Debug Carrier Board Shell (MCXN947)`**.

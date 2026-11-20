@@ -20,9 +20,13 @@ from host_daemon.provider.daemon.test_manager import DeviceTestRunnerManager
 RTT_STDIN_SHUTDOWN_TIMEOUT_SEC: float = 2.5
 RTT_TERMINATE_TIMEOUT_SEC: float = 2.0
 RTT_STREAM_JOIN_TIMEOUT_SEC: float = 1.0
-RTT_STARTUP_EVENT_TIMEOUT_SEC: float = 8.0
-RTT_BOOT_READY_TIMEOUT_SEC: float = 2.0
+RTT_STARTUP_EVENT_TIMEOUT_SEC: float = 20.0
+RTT_BOOT_READY_TIMEOUT_SEC: float = 5.0
 RTT_CONSOLE_READY_SETTLE_SEC: float = 0.20
+DEBUG_SERVER_STARTUP_TIMEOUT_SEC: float = 20.0
+DEFAULT_GDB_CORE0_PORT: int = 3333
+DEFAULT_GDB_CORE1_PORT: int = 3334
+DEFAULT_RTT_BRIDGE_PORT: int = 50000
 PROBE_RELEASE_SETTLE_SEC: float = 0.25
 PROBE_RETRY_BACKOFF_SEC: float = 0.6
 MAX_PROBE_OPEN_RETRIES: int = 2
@@ -77,6 +81,12 @@ class DaemonRunner:
         chip: Optional[str] = None,
         package_selection_mode: bool = False,
         show_system_logs: bool = False,
+        enable_debug_server: bool = False,
+        halt_on_reset: bool = False,
+        gdb_core0_port: int = DEFAULT_GDB_CORE0_PORT,
+        gdb_core1_port: int = DEFAULT_GDB_CORE1_PORT,
+        rtt_bridge_port: int = DEFAULT_RTT_BRIDGE_PORT,
+        probe_selector: Optional[str] = None,
     ) -> None:
         """Initialize DaemonRunner with workspace configuration and build parameters."""
         self.repo_root = repo_root
@@ -112,10 +122,17 @@ class DaemonRunner:
         self.chip: Optional[str] = resolved_chip
         self.package_selection_mode = package_selection_mode
         self.show_system_logs = show_system_logs
+        self.enable_debug_server: bool = bool(enable_debug_server)
+        self.halt_on_reset: bool = bool(halt_on_reset)
+        self.gdb_core0_port: int = int(gdb_core0_port)
+        self.gdb_core1_port: int = int(gdb_core1_port)
+        self.rtt_bridge_port: int = int(rtt_bridge_port)
+        self.probe_selector: Optional[str] = probe_selector
 
         self.elf_path: Optional[Path] = None
         self.host_cli_path: Optional[Path] = None
         self.host_fs_path: Optional[Path] = None
+        self.host_debug_path: Optional[Path] = None
         self.manual_prompt = ManualPromptState()
         self.test_manager = DeviceTestRunnerManager(self)
         self._streams_live_cli: bool = True
@@ -141,6 +158,10 @@ class DaemonRunner:
 
         self.rtt_process: Optional[subprocess.Popen] = None
         self._streaming_thread: Optional[threading.Thread] = None
+        self.debug_process: Optional[subprocess.Popen] = None
+        self._debug_thread: Optional[threading.Thread] = None
+        self.debug_server_active: bool = False
+        self.debug_server_info: Dict[str, Any] = {}
         self.is_flashed = False
         self.is_connected = False
         self.status_message = "Awaiting Target Configuration" if package_selection_mode else "Initialized"
@@ -311,6 +332,12 @@ class DaemonRunner:
         speed: Optional[int] = None,
         chip: Optional[str] = None,
         show_system_logs: Optional[bool] = None,
+        enable_debug_server: Optional[bool] = None,
+        halt_on_reset: Optional[bool] = None,
+        gdb_core0_port: Optional[int] = None,
+        gdb_core1_port: Optional[int] = None,
+        rtt_bridge_port: Optional[int] = None,
+        probe_selector: Optional[str] = None,
     ) -> None:
         """Dynamically update runner configuration parameters and resolved paths."""
         with self._lock:
@@ -328,6 +355,18 @@ class DaemonRunner:
                 self.chip = chip
             if show_system_logs is not None:
                 self.show_system_logs = show_system_logs
+            if enable_debug_server is not None:
+                self.enable_debug_server = bool(enable_debug_server)
+            if halt_on_reset is not None:
+                self.halt_on_reset = bool(halt_on_reset)
+            if gdb_core0_port is not None:
+                self.gdb_core0_port = int(gdb_core0_port)
+            if gdb_core1_port is not None:
+                self.gdb_core1_port = int(gdb_core1_port)
+            if rtt_bridge_port is not None:
+                self.rtt_bridge_port = int(rtt_bridge_port)
+            if probe_selector is not None:
+                self.probe_selector = probe_selector or None
 
             resolved_elf = self.resolve_current_elf_path()
             if resolved_elf is not None:
@@ -353,10 +392,16 @@ class DaemonRunner:
                 "target": self.target,
                 "speed": self.speed,
                 "chip": self.chip,
+                "enable_debug_server": self.enable_debug_server,
+                "halt_on_reset": self.halt_on_reset,
+                "gdb_core0_port": self.gdb_core0_port,
+                "gdb_core1_port": self.gdb_core1_port,
             },
         )
         self.log(
-            f"Updated configuration: package={self.package}, bin={self.bin_name}, target={self.target}, profile={'release' if self.release else 'debug'}, speed={self.speed}"
+            f"Updated configuration: package={self.package}, bin={self.bin_name}, target={self.target}, "
+            f"profile={'release' if self.release else 'debug'}, speed={self.speed}, "
+            f"debug_server={self.enable_debug_server} (GDB :{self.gdb_core0_port}/:{self.gdb_core1_port})"
         )
 
     def sync(self) -> Dict[str, Any]:
@@ -375,18 +420,26 @@ class DaemonRunner:
             # 2. Compile host tools
             if self.is_sync_cancelled:
                 return dict(self.sync_status)
-            self._update_sync("compiling_host_tools", 2, 50, "Compiling host utilities (host_cli, host_fs)...")
+            self._update_sync(
+                "compiling_host_tools",
+                2,
+                50,
+                "Compiling host utilities (host_cli, host_fs, host_debug)...",
+            )
             self.build_host_tools()
 
             # 3. Flash target device (release probe first)
             if self.is_sync_cancelled:
                 return dict(self.sync_status)
-            rtt_was_running = self.rtt_process is not None and self.rtt_process.poll() is None
+            probe_was_busy = (self.rtt_process is not None and self.rtt_process.poll() is None) or (
+                self.debug_process is not None and self.debug_process.poll() is None
+            )
             self.stop_rtt_streaming()
-            if rtt_was_running:
+            self.stop_debug_server()
+            if probe_was_busy:
                 time.sleep(PROBE_RELEASE_SETTLE_SEC)
             self._update_sync("flashing_target", 3, 75, "Flashing target device via probe-rs...")
-            if not self.flash_target():
+            if not self.flash_target(use_cargo_run=not self.enable_debug_server):
                 raise RuntimeError(self.status_message or "Flash target failed")
 
             head_commit = None
@@ -406,14 +459,24 @@ class DaemonRunner:
             with self._lock:
                 self.sync_status["flashed_commit"] = head_commit
 
-            # 4. Start RTT streaming
+            # 4. Start RTT streaming (and host_debug GDB server if enabled, with 1 single reset)
             if self.is_sync_cancelled:
                 return dict(self.sync_status)
-            self._update_sync("starting_rtt", 4, 90, "Starting RTT streaming channels...")
-            self.start_rtt_streaming()
+            step4_msg = (
+                f"Starting probe-rs GDB server (:{self.gdb_core0_port}/:{self.gdb_core1_port}) & RTT bridge..."
+                if self.enable_debug_server
+                else "Starting RTT streaming channels..."
+            )
+            self._update_sync("starting_rtt", 4, 90, step4_msg)
+            self.start_rtt_streaming(reset_on_attach=True)
 
             # Complete
-            self._update_sync("complete", 4, 100, "Target synchronized & RTT connected successfully.", active=False)
+            done_msg = (
+                f"Target synchronized & GDB server active on :{self.gdb_core0_port}/:{self.gdb_core1_port}."
+                if self.enable_debug_server
+                else "Target synchronized & RTT connected successfully."
+            )
+            self._update_sync("complete", 4, 100, done_msg, active=False)
         except Exception as e:
             if self.is_sync_cancelled:
                 return dict(self.sync_status)
@@ -517,6 +580,7 @@ class DaemonRunner:
         if mode == "FS":
             self.log("Switching to Filesystem mode (stopping RTT streaming to release probe)...", channel="system")
             self.stop_rtt_streaming()
+            self.stop_debug_server()
             time.sleep(0.15)
         elif mode == "CLI":
             self.log("Switching to CLI mode (starting RTT streaming)...", channel="system")
@@ -607,6 +671,7 @@ class DaemonRunner:
         exe_suffix = ".exe" if os.name == "nt" else ""
         cli_cand = target_dir / profile_dir / f"host_cli{exe_suffix}"
         fs_cand = target_dir / profile_dir / f"host_fs{exe_suffix}"
+        debug_cand = target_dir / profile_dir / f"host_debug{exe_suffix}"
 
         if not cli_cand.exists() or not fs_cand.exists():
             missing = []
@@ -620,7 +685,9 @@ class DaemonRunner:
 
         self.host_cli_path = cli_cand
         self.host_fs_path = fs_cand
-        self.log(f"Host tools ready: cli={cli_cand}, fs={fs_cand}")
+        if debug_cand.exists():
+            self.host_debug_path = debug_cand
+        self.log(f"Host tools ready: cli={cli_cand}, fs={fs_cand}, debug={self.host_debug_path}")
         return cli_cand, fs_cand
 
     def _run_command_streaming(
@@ -803,7 +870,10 @@ class DaemonRunner:
                 return False
         else:
             chip = self.detect_chip()
-            cmd_args = ["download", "--chip", chip, "--speed", str(self.speed), str(self.elf_path)]
+            cmd_args = ["download", "--chip", chip, "--speed", str(self.speed)]
+            if self.probe_selector:
+                cmd_args.extend(["--probe", self.probe_selector])
+            cmd_args.append(str(self.elf_path))
             self.log(f"Flashing target via probe-rs: {' '.join(cmd_args)}")
             ret, out = 1, ""
             for attempt in range(MAX_PROBE_OPEN_RETRIES + 1):
@@ -834,7 +904,21 @@ class DaemonRunner:
             self._record_lifecycle("rebooting", "Rebooting target MCU over SWD & reconnecting RTT...")
             self.log("Resetting target microcontroller...", channel="system")
             self.stop_rtt_streaming()
+            self.stop_debug_server()
             time.sleep(PROBE_RELEASE_SETTLE_SEC)
+
+            if self.enable_debug_server:
+                self.start_rtt_streaming(reset_on_attach=True)
+                with self._lock:
+                    self.reboot_count += 1
+                self._record_lifecycle("rebooting", "Target reset & GDB server reconnected")
+                return {
+                    "success": True,
+                    "probe_reset": True,
+                    "message": "Target reset completed",
+                    "output": "",
+                    "debug": self.get_debug_status(),
+                }
 
             chip_name = self.chip
             if not chip_name and self.elf_path and self.elf_path.exists():
@@ -847,6 +931,8 @@ class DaemonRunner:
             cmd_args = ["reset", "--chip", chip_name]
             if self.speed:
                 cmd_args.extend(["--speed", str(self.speed)])
+            if self.probe_selector:
+                cmd_args.extend(["--probe", self.probe_selector])
 
             ret, out = 1, ""
             for attempt in range(MAX_PROBE_OPEN_RETRIES + 1):
@@ -920,11 +1006,14 @@ class DaemonRunner:
                     return dict(self._cached_metadata)
 
             self._record_lifecycle("mode_switch", "Probing target .program_metadata over SWD...")
-            rtt_was_running = (self.rtt_process is not None and self.rtt_process.poll() is None) or (
-                self._streaming_thread is not None and self._streaming_thread.is_alive()
+            rtt_was_running = (
+                (self.rtt_process is not None and self.rtt_process.poll() is None)
+                or (self._streaming_thread is not None and self._streaming_thread.is_alive())
+                or self.debug_server_active
             )
             if rtt_was_running:
                 self.stop_rtt_streaming()
+                self.stop_debug_server()
                 time.sleep(PROBE_RELEASE_SETTLE_SEC)
 
             try:
@@ -940,8 +1029,269 @@ class DaemonRunner:
                 return res
             finally:
                 if rtt_was_running and self.active_mode in ("CLI", "TEST"):
-                    self.start_rtt_streaming()
+                    time.sleep(PROBE_RELEASE_SETTLE_SEC)
+                    self.start_rtt_streaming(reset_on_attach=not self.enable_debug_server)
                 self._record_lifecycle("idle", "Target metadata probe complete", mark_recent=False)
+
+    def _resolve_host_debug_cmd_prefix(self) -> List[str]:
+        """Resolve compiled `host_debug` executable path or fall back to `cargo host-debug` alias."""
+        if self.host_debug_path and self.host_debug_path.exists():
+            return [str(self.host_debug_path)]
+        try:
+            target_dir = get_cargo_target_directory(self.repo_root)
+            exe_suffix = ".exe" if os.name == "nt" else ""
+            for prof in ("release", "debug") if self.release else ("debug", "release"):
+                cand = target_dir / prof / f"host_debug{exe_suffix}"
+                if cand.is_file():
+                    self.host_debug_path = cand
+                    return [str(cand)]
+        except (OSError, RuntimeError, ValueError):
+            pass
+        return ["cargo", "host-debug"]
+
+    def get_debug_status(self) -> Dict[str, Any]:
+        """Return a thread-safe snapshot of the `host_debug` GDB server and RTT bridge state."""
+        with self._lock:
+            info = dict(self.debug_server_info)
+            return {
+                "enabled": self.enable_debug_server,
+                "active": self.debug_server_active,
+                "halt_on_reset": self.halt_on_reset,
+                "gdb_core0_port": int(info.get("gdb_core0_port") or self.gdb_core0_port),
+                "gdb_core1_port": info.get("gdb_core1_port", self.gdb_core1_port),
+                "rtt_bridge_port": int(info.get("rtt_bridge_port") or self.rtt_bridge_port),
+                "probe": self.probe_selector,
+                "cores": int(info.get("cores") or 0),
+                "halted_on_reset": bool(info.get("halted_on_reset", False)),
+                "gdb_core0_connected": bool(info.get("gdb_core0_connected", False)),
+                "gdb_core1_connected": bool(info.get("gdb_core1_connected", False)),
+            }
+
+    def stop_debug_server(self) -> None:
+        """Gracefully stop `host_debug` and release the USB debug probe session."""
+        proc = self.debug_process
+        if proc and proc.poll() is None:
+            if proc.stdin:
+                try:
+                    proc.stdin.close()
+                except OSError:
+                    pass
+                try:
+                    proc.wait(timeout=RTT_STDIN_SHUTDOWN_TIMEOUT_SEC)
+                except Exception:
+                    pass
+            if proc.poll() is None:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=RTT_TERMINATE_TIMEOUT_SEC)
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+        self.debug_process = None
+        dbg_thread = self._debug_thread
+        if dbg_thread and dbg_thread.is_alive() and threading.current_thread() is not dbg_thread:
+            dbg_thread.join(timeout=RTT_STREAM_JOIN_TIMEOUT_SEC)
+        self._debug_thread = None
+        with self._lock:
+            self.debug_server_active = False
+            self.debug_server_info = {}
+
+    def start_debug_server(
+        self,
+        *,
+        reset: bool = False,
+        halt_on_reset: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        """Start `host_debug` (`probe-rs` dual-core GDB RSP + `:50000` RTT memory bridge)."""
+        if self.elf_path is None:
+            self.elf_path = self.resolve_current_elf_path()
+        if not self.elf_path or not self.elf_path.exists():
+            raise RuntimeError("Target ELF is not built yet; run sync before starting debug server.")
+
+        self.stop_debug_server()
+        effective_halt = self.halt_on_reset if halt_on_reset is None else bool(halt_on_reset)
+        cmd = [
+            *self._resolve_host_debug_cmd_prefix(),
+            "--elf",
+            str(self.elf_path),
+            "--speed",
+            str(self.speed),
+            "--gdb-core0-port",
+            str(self.gdb_core0_port),
+            "--gdb-core1-port",
+            str(self.gdb_core1_port),
+            "--rtt-bridge-port",
+            str(self.rtt_bridge_port),
+            "--json-events",
+            "--exit-on-stdin-eof",
+        ]
+        if self.chip:
+            cmd.extend(["--chip", self.chip])
+        if self.probe_selector:
+            cmd.extend(["--probe", self.probe_selector])
+        if effective_halt:
+            cmd.append("--halt-on-reset")
+        elif reset:
+            cmd.append("--reset")
+
+        run_env = os.environ.copy()
+        run_env.pop("CARGO_BUILD_TARGET", None)
+        run_env.pop("CARGO_ENCODED_RUSTFLAGS", None)
+
+        ready_event = threading.Event()
+        startup_error: List[str] = []
+
+        def _debug_worker() -> None:
+            try:
+                self.debug_process = subprocess.Popen(
+                    cmd,
+                    cwd=str(self.repo_root),
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    env=run_env,
+                )
+                if self.debug_process.stdout:
+                    for line in iter(self.debug_process.stdout.readline, ""):
+                        stripped = line.rstrip("\r\n")
+                        if not stripped:
+                            continue
+                        if stripped.startswith("{") and stripped.endswith("}"):
+                            try:
+                                ev = json.loads(stripped)
+                            except json.JSONDecodeError:
+                                ev = None
+                            if isinstance(ev, dict) and "event" in ev:
+                                ev_name = str(ev.get("event") or "")
+                                if ev_name == "ready":
+                                    with self._lock:
+                                        self.debug_server_active = True
+                                        self.debug_server_info = {
+                                            "chip": ev.get("chip"),
+                                            "cores": ev.get("cores", 1),
+                                            "gdb_core0_port": ev.get("gdb_core0_port", self.gdb_core0_port),
+                                            "gdb_core1_port": ev.get("gdb_core1_port"),
+                                            "rtt_bridge_port": ev.get("rtt_bridge_port", self.rtt_bridge_port),
+                                            "halted_on_reset": bool(ev.get("halted_on_reset", False)),
+                                            "gdb_core0_connected": False,
+                                            "gdb_core1_connected": False,
+                                        }
+                                    self.log(
+                                        f"Target GDB server ready on Core 0 :{ev.get('gdb_core0_port')} / "
+                                        f"Core 1 :{ev.get('gdb_core1_port')} (RTT bridge :{ev.get('rtt_bridge_port')})",
+                                        channel="debug",
+                                    )
+                                    ready_event.set()
+                                elif ev_name in ("gdb_connected", "gdb_disconnected"):
+                                    core_idx = int(ev.get("core", 0))
+                                    key = f"gdb_core{core_idx}_connected"
+                                    with self._lock:
+                                        self.debug_server_info[key] = bool(ev.get("connected", False))
+                                    self.log(f"GDB client {ev_name} on Core {core_idx}", channel="debug")
+                                elif ev_name == "stopped":
+                                    with self._lock:
+                                        self.debug_server_active = False
+                                continue
+                        startup_error.append(stripped)
+                        self.log(stripped, level="WARN", channel="debug")
+            except Exception as exc:
+                startup_error.append(str(exc))
+                self.log(f"host_debug error: {exc}", level="ERROR", channel="debug")
+            finally:
+                with self._lock:
+                    self.debug_server_active = False
+                ready_event.set()
+
+        self._debug_thread = threading.Thread(target=_debug_worker, daemon=True)
+        self._debug_thread.start()
+        ready_event.wait(timeout=DEBUG_SERVER_STARTUP_TIMEOUT_SEC)
+        if not self.debug_server_active:
+            detail = "; ".join(startup_error[-3:]) if startup_error else "timed out waiting for host_debug ready event"
+            self.stop_debug_server()
+            raise RuntimeError(f"Failed to start target debug server: {detail}")
+        return self.get_debug_status()
+
+    def resolve_elf_breakpoints(self, specs: List[str]) -> Dict[str, int]:
+        """Resolve symbol names and `file:line` DWARF specs against the active target ELF via `host_debug`."""
+        if not specs:
+            return {}
+        if self.elf_path is None:
+            self.elf_path = self.resolve_current_elf_path()
+        if not self.elf_path or not self.elf_path.exists():
+            raise RuntimeError("Target ELF is not built yet; run sync before resolving breakpoints.")
+        cmd = [*self._resolve_host_debug_cmd_prefix(), "--elf", str(self.elf_path)]
+        for spec in specs:
+            cmd.extend(["--resolve", str(spec)])
+        run_env = os.environ.copy()
+        run_env.pop("CARGO_BUILD_TARGET", None)
+        run_env.pop("CARGO_ENCODED_RUSTFLAGS", None)
+        res = subprocess.run(cmd, cwd=str(self.repo_root), env=run_env, capture_output=True, text=True, check=False)
+        if res.returncode != 0:
+            raise RuntimeError(f"host_debug --resolve failed ({res.returncode}): {res.stderr or res.stdout}")
+        raw = json.loads(res.stdout.strip().splitlines()[-1])
+        return {str(spec): int(addr) for spec, addr in raw.items()}
+
+    def enable_live_debug_server(
+        self,
+        *,
+        gdb_core0_port: Optional[int] = None,
+        gdb_core1_port: Optional[int] = None,
+        rtt_bridge_port: Optional[int] = None,
+        probe_selector: Optional[str] = None,
+        halt_on_reset: Optional[bool] = None,
+        reset: bool = False,
+        resolve: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Enable and start `host_debug` on the running daemon, re-routing RTT over its `:50000` bridge."""
+        with self._fs_lock:
+            self.update_config(
+                enable_debug_server=True,
+                halt_on_reset=halt_on_reset,
+                gdb_core0_port=gdb_core0_port,
+                gdb_core1_port=gdb_core1_port,
+                rtt_bridge_port=rtt_bridge_port,
+                probe_selector=probe_selector,
+            )
+            was_busy = (self.rtt_process is not None and self.rtt_process.poll() is None) or self.debug_server_active
+            self.stop_rtt_streaming()
+            self.stop_debug_server()
+            if was_busy:
+                time.sleep(PROBE_RELEASE_SETTLE_SEC)
+            effective_reset = bool(reset or self.halt_on_reset)
+            self.start_debug_server(reset=effective_reset, halt_on_reset=self.halt_on_reset)
+            if self.host_cli_path is None:
+                try:
+                    target_dir = get_cargo_target_directory(self.repo_root)
+                    prof = "release" if self.release else "debug"
+                    exe_suffix = ".exe" if os.name == "nt" else ""
+                    cand = target_dir / prof / f"host_cli{exe_suffix}"
+                    if cand.is_file():
+                        self.host_cli_path = cand
+                except (OSError, RuntimeError, ValueError):
+                    pass
+            if self.active_mode in ("CLI", "TEST"):
+                self.start_rtt_streaming(reset_on_attach=False)
+            status = self.get_debug_status()
+            if resolve:
+                status["resolved"] = self.resolve_elf_breakpoints([str(spec) for spec in resolve])
+            return status
+
+    def disable_live_debug_server(self) -> Dict[str, Any]:
+        """Stop `host_debug` and return RTT streaming to direct USB probe mode without resetting."""
+        with self._fs_lock:
+            self.update_config(enable_debug_server=False, halt_on_reset=False)
+            was_active = (self.rtt_process is not None and self.rtt_process.poll() is None) or self.debug_server_active
+            self.stop_rtt_streaming()
+            self.stop_debug_server()
+            if was_active:
+                time.sleep(PROBE_RELEASE_SETTLE_SEC)
+            if self.active_mode in ("CLI", "TEST") and self.elf_path and self.elf_path.exists():
+                self.start_rtt_streaming(reset_on_attach=False)
+            return self.get_debug_status()
 
     def stop_rtt_streaming(self) -> None:
         """Gracefully stop active RTT streaming process to release the USB debug probe cleanly."""
@@ -972,25 +1322,65 @@ class DaemonRunner:
         self._streaming_thread = None
         self.is_connected = False
 
-    def start_rtt_streaming(self) -> None:
+    def start_rtt_streaming(self, *, reset_on_attach: bool = True) -> None:
         """Start streaming RTT logs and CLI interactions in a background thread."""
-        if not self.host_cli_path or not self.host_cli_path.exists() or not self.elf_path:
+        if self.elf_path is None:
+            self.elf_path = self.resolve_current_elf_path()
+        if not self.elf_path or not self.elf_path.exists():
+            return
+        if self.host_cli_path is None or not self.host_cli_path.exists():
+            try:
+                target_dir = get_cargo_target_directory(self.repo_root)
+                prof = "release" if self.release else "debug"
+                exe_suffix = ".exe" if os.name == "nt" else ""
+                cand = target_dir / prof / f"host_cli{exe_suffix}"
+                if cand.is_file():
+                    self.host_cli_path = cand
+            except (OSError, RuntimeError, ValueError):
+                return
+        if not self.host_cli_path or not self.host_cli_path.exists():
             return
 
         self.stop_rtt_streaming()
+        if not self.enable_debug_server and self.debug_server_active:
+            self.stop_debug_server()
+            time.sleep(PROBE_RELEASE_SETTLE_SEC)
         self._reset_device_clock()
 
-        cmd = [
-            str(self.host_cli_path),
-            "--elf",
-            str(self.elf_path),
-            "--speed",
-            str(self.speed),
-            "--channel",
-            "both",
-            "--reset",
-            "--json-events",
-        ]
+        halted_for_gdb = False
+        if self.enable_debug_server:
+            if not self.debug_server_active:
+                dbg_info = self.start_debug_server(
+                    reset=reset_on_attach,
+                    halt_on_reset=self.halt_on_reset if reset_on_attach else False,
+                )
+            else:
+                dbg_info = self.get_debug_status()
+            halted_for_gdb = bool(dbg_info.get("halted_on_reset", False))
+            bridge_port = int(dbg_info.get("rtt_bridge_port") or self.rtt_bridge_port)
+            cmd = [
+                str(self.host_cli_path),
+                "--elf",
+                str(self.elf_path),
+                "--gdb-bridge",
+                f"127.0.0.1:{bridge_port}",
+                "--channel",
+                "both",
+                "--json-events",
+            ]
+        else:
+            cmd = [
+                str(self.host_cli_path),
+                "--elf",
+                str(self.elf_path),
+                "--speed",
+                str(self.speed),
+                "--channel",
+                "both",
+                "--json-events",
+            ]
+            if reset_on_attach:
+                cmd.append("--reset")
 
         started_event = threading.Event()
         boot_ready_event = threading.Event()
@@ -1112,6 +1502,8 @@ class DaemonRunner:
 
         self._streaming_thread = threading.Thread(target=_stream_worker, daemon=True)
         self._streaming_thread.start()
+        if halted_for_gdb:
+            return
         started_event.wait(timeout=RTT_STARTUP_EVENT_TIMEOUT_SEC)
         if session_ready and self.rtt_process is not None and self.rtt_process.poll() is None:
             boot_ready_event.wait(timeout=RTT_BOOT_READY_TIMEOUT_SEC)
@@ -1224,7 +1616,7 @@ class DaemonRunner:
         wait_for_output: bool,
         timeout: float,
     ) -> str:
-        """Internal CLI dispatch helper; serialized via `self._fs_lock` when `wait_for_output=True`."""
+        """Dispatch a CLI command; serialized via `self._fs_lock` when `wait_for_output=True`."""
         clean_cmd = command.strip()
         if clean_cmd:
             with self._lock:
@@ -1292,12 +1684,15 @@ class DaemonRunner:
             self.log_fs(f"fs> {subcmd} {' '.join(extra_args)}", is_input=True)
             self._record_lifecycle("mode_switch", f"Probe switched to host_fs ({subcmd})")
 
-            # Ensure probe is available by pausing RTT streaming if currently running or starting
-            rtt_was_running = (self.rtt_process is not None and self.rtt_process.poll() is None) or (
-                self._streaming_thread is not None and self._streaming_thread.is_alive()
+            # Ensure probe is available by pausing RTT streaming and debug server if running
+            rtt_was_running = (
+                (self.rtt_process is not None and self.rtt_process.poll() is None)
+                or (self._streaming_thread is not None and self._streaming_thread.is_alive())
+                or self.debug_server_active
             )
             if rtt_was_running:
                 self.stop_rtt_streaming()
+                self.stop_debug_server()
                 time.sleep(PROBE_RELEASE_SETTLE_SEC)
 
             fs_args: List[str] = []
@@ -1317,12 +1712,14 @@ class DaemonRunner:
                         level="WARN",
                     )
                     self.stop_rtt_streaming()
+                    self.stop_debug_server()
                     time.sleep(PROBE_RETRY_BACKOFF_SEC)
                 out = out.strip() or f"Completed {subcmd} (exit code {ret})"
                 return out
             finally:
                 if rtt_was_running and self.active_mode in ("CLI", "TEST"):
-                    self.start_rtt_streaming()
+                    time.sleep(PROBE_RELEASE_SETTLE_SEC)
+                    self.start_rtt_streaming(reset_on_attach=not self.enable_debug_server)
                 self._record_lifecycle("idle", f"Completed host_fs ({subcmd})", mark_recent=False)
 
     def get_status(self) -> Dict[str, Any]:
@@ -1341,6 +1738,7 @@ class DaemonRunner:
             "mode": self.active_mode,
             "message": self.status_message,
             "manual_prompt": self.manual_prompt.to_dict(),
+            "debug_server": self.get_debug_status(),
         }
 
     def stop(self) -> None:
@@ -1349,6 +1747,7 @@ class DaemonRunner:
         self._invalidate_metadata_cache()
         self.test_manager.cancel_run(silent=True)
         self.stop_rtt_streaming()
+        self.stop_debug_server()
         if self._active_sync_process and self._active_sync_process.poll() is None:
             try:
                 self._active_sync_process.terminate()

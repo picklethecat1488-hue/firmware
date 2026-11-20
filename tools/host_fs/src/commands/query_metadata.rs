@@ -22,6 +22,9 @@ const TELEMETRY_PARTITION_KIND: u32 = 1;
 /// Partition kind discriminant for the `metadata` (`sequential_storage::map`) partition.
 const METADATA_PARTITION_KIND: u32 = 2;
 
+/// Default SWD clock speed in kHz when attaching `query_metadata` to a target probe.
+const DEFAULT_SWD_SPEED_KHZ: u32 = 1000;
+
 /// Complete decoded `.program_metadata` dump returned by `host_fs query_metadata`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueriedProgramMetadata {
@@ -302,9 +305,10 @@ pub async fn query_from_target(
     let probe_info = probes
         .first()
         .ok_or_else(|| "No debug probes connected".to_string())?;
-    let probe = probe_info
+    let mut probe = probe_info
         .open()
         .map_err(|e| format!("Failed to open probe: {:?}", e))?;
+    let _ = probe.set_speed(DEFAULT_SWD_SPEED_KHZ);
     let mut session = probe
         .attach(&elf_info.chip, probe_rs::Permissions::default())
         .map_err(|e| format!("Failed to attach as {}: {:?}", elf_info.chip, e))?;

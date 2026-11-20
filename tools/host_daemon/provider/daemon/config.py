@@ -189,15 +189,33 @@ def has_explicit_target_args(args_list: Optional[List[str]] = None) -> bool:
         "--restart",
         "--show-system-logs",
         "--show-logs",
+        "--debug-server",
+        "--halt-on-reset",
+        "--gdb-core0-port",
+        "--gdb-port",
+        "--gdb-core1-port",
+        "--rtt-bridge-port",
+        "--probe",
     }
+
+    value_flags = (
+        "--port",
+        "--host",
+        "--browser",
+        "--gdb-core0-port",
+        "--gdb-port",
+        "--gdb-core1-port",
+        "--rtt-bridge-port",
+        "--probe",
+    )
 
     idx = 0
     while idx < len(args_list):
         arg = args_list[idx]
-        if arg in ("--port", "--host", "--browser"):
+        if arg in value_flags:
             idx += 2
             continue
-        if arg.startswith("--port=") or arg.startswith("--host=") or arg.startswith("--browser="):
+        if any(arg.startswith(f"{vf}=") for vf in value_flags):
             idx += 1
             continue
         if arg in non_target_flags:

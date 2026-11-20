@@ -92,6 +92,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/targets":
             from host_daemon.provider.daemon.config import discover_target_packages, load_last_session
 
+            dbg_status = runner.get_debug_status() if hasattr(runner, "get_debug_status") else {}
             self._send_json(
                 {
                     "packages": discover_target_packages(runner.repo_root),
@@ -104,10 +105,30 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                         "speed": runner.speed,
                         "chip": runner.chip,
                         "show_system_logs": getattr(runner, "show_system_logs", False),
+                        "enable_debug_server": getattr(runner, "enable_debug_server", False),
+                        "halt_on_reset": getattr(runner, "halt_on_reset", False),
+                        "gdb_core0_port": getattr(runner, "gdb_core0_port", 3333),
+                        "gdb_core1_port": getattr(runner, "gdb_core1_port", 3334),
+                        "rtt_bridge_port": getattr(runner, "rtt_bridge_port", 50000),
+                        "debug_server": dbg_status,
                     },
                     "package_selection_mode": getattr(runner, "package_selection_mode", False),
                 }
             )
+        elif path == "/api/debug/status":
+            if hasattr(runner, "get_debug_status"):
+                self._send_json(runner.get_debug_status())
+            else:
+                self._send_json(
+                    {
+                        "enabled": bool(getattr(runner, "enable_debug_server", False)),
+                        "active": bool(getattr(runner, "debug_server_active", False)),
+                        "halt_on_reset": bool(getattr(runner, "halt_on_reset", False)),
+                        "gdb_core0_port": int(getattr(runner, "gdb_core0_port", 3333)),
+                        "gdb_core1_port": int(getattr(runner, "gdb_core1_port", 3334)),
+                        "rtt_bridge_port": int(getattr(runner, "rtt_bridge_port", 50000)),
+                    }
+                )
         elif path in ("/api/sync", "/api/sync/status"):
             with runner._lock:
                 self._send_json(dict(runner.sync_status))
@@ -228,6 +249,12 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     release=payload.get("release"),
                     speed=payload.get("speed"),
                     chip=payload.get("chip"),
+                    enable_debug_server=payload.get("enable_debug_server"),
+                    halt_on_reset=payload.get("halt_on_reset"),
+                    gdb_core0_port=payload.get("gdb_core0_port"),
+                    gdb_core1_port=payload.get("gdb_core1_port"),
+                    rtt_bridge_port=payload.get("rtt_bridge_port"),
+                    probe_selector=payload.get("probe"),
                 )
                 try:
                     from host_daemon.cli import get_lock_data, write_lock_file
@@ -257,6 +284,18 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             chp = payload.get("chip") or runner.chip
             tgt = payload.get("target")
             show_logs = payload.get("show_system_logs")
+            enable_dbg = (
+                payload.get("enable_debug_server")
+                if "enable_debug_server" in payload
+                else getattr(runner, "enable_debug_server", False)
+            )
+            halt_rst = (
+                payload.get("halt_on_reset") if "halt_on_reset" in payload else getattr(runner, "halt_on_reset", False)
+            )
+            c0_port = payload.get("gdb_core0_port") or getattr(runner, "gdb_core0_port", 3333)
+            c1_port = payload.get("gdb_core1_port") or getattr(runner, "gdb_core1_port", 3334)
+            rtt_port = payload.get("rtt_bridge_port") or getattr(runner, "rtt_bridge_port", 50000)
+            probe_sel = payload.get("probe") if "probe" in payload else getattr(runner, "probe_selector", None)
 
             if not tgt:
                 tgt = infer_arm_target(pkg, bin_name, chip=chp, repo_root=runner.repo_root)
@@ -269,6 +308,12 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 speed=spd,
                 chip=chp,
                 show_system_logs=show_logs,
+                enable_debug_server=enable_dbg,
+                halt_on_reset=halt_rst,
+                gdb_core0_port=int(c0_port),
+                gdb_core1_port=int(c1_port),
+                rtt_bridge_port=int(rtt_port),
+                probe_selector=probe_sel,
             )
             runner.package_selection_mode = False
             save_last_session(
@@ -280,6 +325,10 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     "target": tgt,
                     "speed": spd,
                     "chip": chp,
+                    "enable_debug_server": bool(enable_dbg),
+                    "halt_on_reset": bool(halt_rst),
+                    "gdb_core0_port": int(c0_port),
+                    "gdb_core1_port": int(c1_port),
                 },
             )
             try:
@@ -308,8 +357,34 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     "package": pkg,
                     "bin": bin_name,
                     "profile": "release" if rel else "debug",
+                    "enable_debug_server": bool(enable_dbg),
+                    "halt_on_reset": bool(halt_rst),
+                    "gdb_core0_port": int(c0_port),
+                    "gdb_core1_port": int(c1_port),
                 }
             )
+        elif path == "/api/debug/start":
+            try:
+                raw_resolve = payload.get("resolve")
+                resolve_specs = [str(s) for s in raw_resolve] if isinstance(raw_resolve, list) else None
+                dbg = runner.enable_live_debug_server(
+                    gdb_core0_port=payload.get("gdb_core0_port"),
+                    gdb_core1_port=payload.get("gdb_core1_port"),
+                    rtt_bridge_port=payload.get("rtt_bridge_port"),
+                    probe_selector=payload.get("probe"),
+                    halt_on_reset=payload.get("halt_on_reset"),
+                    reset=bool(payload.get("reset", False)),
+                    resolve=resolve_specs,
+                )
+                self._send_json({"success": True, "debug": dbg})
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=400)
+        elif path == "/api/debug/stop":
+            try:
+                dbg = runner.disable_live_debug_server()
+                self._send_json({"success": True, "debug": dbg})
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=400)
         elif path == "/api/sync/cancel":
             res = runner.cancel_sync()
             self._send_json(res)

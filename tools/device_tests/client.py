@@ -610,6 +610,53 @@ class AsyncHostSessionClient:
             pass
         return {}
 
+    async def start_debug_server(
+        self,
+        *,
+        gdb_core0_port: Optional[int] = None,
+        gdb_core1_port: Optional[int] = None,
+        rtt_bridge_port: Optional[int] = None,
+        halt_on_reset: bool = False,
+        reset: bool = False,
+        resolve: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Start `host_debug` on the bound daemon and return its bound GDB/RTT port metadata."""
+        payload: Dict[str, Any] = {
+            "halt_on_reset": bool(halt_on_reset),
+            "reset": bool(reset),
+        }
+        if gdb_core0_port is not None:
+            payload["gdb_core0_port"] = int(gdb_core0_port)
+        if gdb_core1_port is not None:
+            payload["gdb_core1_port"] = int(gdb_core1_port)
+        if rtt_bridge_port is not None:
+            payload["rtt_bridge_port"] = int(rtt_bridge_port)
+        if resolve is not None:
+            payload["resolve"] = [str(spec) for spec in resolve]
+        if self._runner is not None and hasattr(self._runner, "enable_live_debug_server"):
+            return await asyncio.to_thread(
+                self._runner.enable_live_debug_server,
+                gdb_core0_port=gdb_core0_port,
+                gdb_core1_port=gdb_core1_port,
+                rtt_bridge_port=rtt_bridge_port,
+                halt_on_reset=halt_on_reset,
+                reset=reset,
+                resolve=resolve,
+            )
+        res = await self._request("/api/debug/start", payload, timeout=20.0)
+        if isinstance(res, dict) and isinstance(res.get("debug"), dict):
+            return dict(res["debug"])
+        return dict(res) if isinstance(res, dict) else {}
+
+    async def stop_debug_server(self) -> Dict[str, Any]:
+        """Stop `host_debug` on the bound daemon and return RTT streaming to direct USB probe mode."""
+        if self._runner is not None and hasattr(self._runner, "disable_live_debug_server"):
+            return await asyncio.to_thread(self._runner.disable_live_debug_server)
+        res = await self._request("/api/debug/stop", {}, timeout=15.0)
+        if isinstance(res, dict) and isinstance(res.get("debug"), dict):
+            return dict(res["debug"])
+        return dict(res) if isinstance(res, dict) else {}
+
     async def close(self) -> None:
         """Tear down owned temporary daemon or restore prior target config on an existing daemon."""
         if self._runner is not None:
