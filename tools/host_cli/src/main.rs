@@ -48,9 +48,13 @@ pub struct Cli {
     #[arg(long)]
     pub reset: bool,
 
-    /// Connect to an existing OpenOCD GDB server session (e.g. "localhost:3333" or "127.0.0.1")
-    #[arg(short = 'o', long)]
-    pub openocd_host: Option<String>,
+    /// Connect via a `host_debug` GDB RSP memory bridge (e.g. "127.0.0.1:50000")
+    #[arg(short = 'b', long)]
+    pub gdb_bridge: Option<String>,
+
+    /// Emit structured single-line NDJSON events on stdout for `tools/host.py`
+    #[arg(long, alias = "json")]
+    pub json_events: bool,
 
     /// Show raw hex/ascii dump of initial cached RTT CLI buffer contents on start
     #[arg(long)]
@@ -92,26 +96,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // Initialize the progress spinner
-    let spinner = indicatif::ProgressBar::new_spinner();
-    spinner.set_style(
-        indicatif::ProgressStyle::default_spinner()
-            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
-            .template("{spinner:.green} {msg}")
-            .unwrap(),
-    );
-    spinner.enable_steady_tick(std::time::Duration::from_millis(80));
+    // Initialize the progress spinner (hidden in structured JSON event mode)
+    let spinner = if cli.json_events {
+        indicatif::ProgressBar::hidden()
+    } else {
+        let pb = indicatif::ProgressBar::new_spinner();
+        pb.set_style(
+            indicatif::ProgressStyle::default_spinner()
+                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+                .template("{spinner:.green} {msg}")
+                .unwrap(),
+        );
+        pb.enable_steady_tick(std::time::Duration::from_millis(80));
+        pb
+    };
 
     spinner.set_message("Reading project settings...");
 
     // 1. Resolve target chip (default to autodetection if not specified)
-    let chip = if cli.openocd_host.is_some() {
-        "unknown".to_string()
-    } else if let Some(ref c) = cli.chip {
+    let chip = if let Some(ref c) = cli.chip {
         c.clone()
-    } else {
-        let info = host_cli::autodetect_project_info(&cli.elf)?;
+    } else if let Ok(info) = host_cli::autodetect_project_info(&cli.elf) {
         info.chip
+    } else if cli.gdb_bridge.is_some() {
+        "gdb_bridge".to_string()
+    } else {
+        return Err(host_cli::autodetect_project_info(&cli.elf)
+            .err()
+            .unwrap_or_else(|| "Failed to infer chip from ELF".to_string())
+            .into());
     };
 
     // 2. Parse defmt table from ELF (if not in raw/dump-mem mode)
@@ -144,7 +157,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         raw: cli.raw,
         dump_mem: cli.dump_mem,
         reset: cli.reset,
-        openocd_host: cli.openocd_host.as_deref(),
+        gdb_bridge: cli.gdb_bridge.as_deref(),
+        json_events: cli.json_events,
         show_raw_cli: cli.show_raw_cli,
         spinner: &spinner,
         channel_mode: cli.channel,

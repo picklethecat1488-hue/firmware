@@ -1,10 +1,14 @@
 //! and RTT source abstractions for host_cli.
 
 pub mod dump;
+pub mod events;
 pub mod stream;
 pub mod tracing;
 
 pub use dump::dump_logs;
+pub use events::{
+    detect_shell_completion_event, extract_defmt_level, CliChunkParser, HostCliEvent,
+};
 pub use stream::{cancel_echo, stream_logs};
 pub use tool_common::autodetect_project_info;
 pub use tracing::format_target_namespace;

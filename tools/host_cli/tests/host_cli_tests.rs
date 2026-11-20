@@ -821,3 +821,55 @@ fn test_cancel_echo_preserves_target_output() {
     );
     assert!(sent.is_empty());
 }
+
+#[test]
+fn test_structured_json_events_and_cli_chunk_parser() {
+    let mut parser = host_cli::CliChunkParser::new();
+
+    // 1. Empty `\x1b[2K\r` (`cli.set_prompt("")` when an async command begins) must NOT emit CliPrompt
+    assert!(parser.push_bytes(b"\x1b[2K\r").is_empty());
+
+    // 2. Partial line split across RTT chunks + trailing `\x1b[2Kshell> ` WITHOUT newline
+    let ev1 = parser.push_bytes(b"Battery Status:\r\n  Voltage: 40");
+    assert_eq!(
+        ev1,
+        vec![host_cli::HostCliEvent::CliOutput {
+            text: "Battery Status:".to_string()
+        }]
+    );
+
+    let ev2 = parser.push_bytes(b"22 mV\r\n\x1b[2Kshell> ");
+    assert_eq!(
+        ev2,
+        vec![
+            host_cli::HostCliEvent::CliOutput {
+                text: "  Voltage: 4022 mV".to_string()
+            },
+            host_cli::HostCliEvent::CliPrompt,
+        ]
+    );
+
+    // 3. Verify `detect_shell_completion_event` and JSON serialization
+    let ok_ev = host_cli::detect_shell_completion_event(
+        "0.412300 INFO command execution succeeded",
+        Some(0.4123),
+    )
+    .expect("must detect success");
+    let parsed_ok: serde_json::Value = serde_json::from_str(&ok_ev.to_json_line()).unwrap();
+    assert_eq!(parsed_ok["event"], "command_completed");
+    assert_eq!(parsed_ok["success"], true);
+
+    let err_ev = host_cli::detect_shell_completion_event(
+        "0.512000 ERROR command execution failed: Target out of range",
+        Some(0.512),
+    )
+    .expect("must detect failure");
+    let parsed_err: serde_json::Value = serde_json::from_str(&err_ev.to_json_line()).unwrap();
+    assert_eq!(parsed_err["event"], "command_completed");
+    assert_eq!(parsed_err["success"], false);
+    assert_eq!(parsed_err["error"], "Target out of range");
+    assert_eq!(
+        host_cli::extract_defmt_level("0.512000 WARN battery low"),
+        "WARN"
+    );
+}

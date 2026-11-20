@@ -2,18 +2,256 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Python: Debug Current Test File (Pytest)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": [
+        "-o",
+        "addopts=",
+        "-v",
+        "-s",
+        "--maxfail=1",
+        "${file}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/tools:${workspaceFolder}/tools/validation:${workspaceFolder}/tools/helpers:${workspaceFolder}/tools/dashboard"
+      }
+    },
+    {
+      "name": "Python: Debug Device Test (-k Filter)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/tools/host.py",
+      "args": [
+        "test",
+        "-k",
+        "${input:deviceTestKeyword}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "subProcess": true,
+      "justMyCode": false,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/tools:${workspaceFolder}/tools/validation:${workspaceFolder}/tools/helpers:${workspaceFolder}/tools/dashboard"
+      }
+    },
+    {
+      "name": "Python: Debug Manual Bringup Suite (--manual)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/tools/host.py",
+      "args": [
+        "test",
+        "--project",
+        "${input:bringupProject}",
+        "--scenario",
+        "bringup",
+        "--manual"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "subProcess": true,
+      "justMyCode": false,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/tools:${workspaceFolder}/tools/validation:${workspaceFolder}/tools/helpers:${workspaceFolder}/tools/dashboard"
+      }
+    },
+    {
+      "name": "Python: Attach to host.py test --debug (Port 5678)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "127.0.0.1",
+        "port": 5678
+      },
+      "justMyCode": false,
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "${workspaceFolder}"
+        }
+      ]
+    },
+    {
+      "name": "Python: Debug Host Daemon (tools/host.py)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/tools/host.py",
+      "args": [
+        "--no-detach"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "subProcess": true,
+      "justMyCode": false,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/tools:${workspaceFolder}/tools/validation:${workspaceFolder}/tools/helpers:${workspaceFolder}/tools/dashboard"
+      }
+    },
+    {
+      "name": "Rust: Debug Tests in Current File (CodeLLDB)",
       "type": "lldb",
       "request": "launch",
-      "name": "Debug Test (Nextest)",
       "cargo": {
         "args": [
-          "nextest",
-          "run",
-          "--no-run"
+          "test",
+          "--no-run",
+          "--test",
+          "${fileBasenameNoExtension}"
         ]
       },
-      "args": [],
+      "args": [
+        "--nocapture"
+      ],
+      "cwd": "${workspaceFolder}",
+      "sourceMap": {
+        "firmware": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "Rust: Debug Single Test by Name (CodeLLDB)",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--test",
+          "${fileBasenameNoExtension}"
+        ]
+      },
+      "args": [
+        "${input:rustTestFilter}",
+        "--nocapture"
+      ],
+      "cwd": "${workspaceFolder}",
+      "sourceMap": {
+        "firmware": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "Rust: Debug Host Tool (host_cli / host_fs)",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": [
+          "build",
+          "--package",
+          "${input:hostToolPackage}",
+          "--bin",
+          "${input:hostToolPackage}"
+        ]
+      },
+      "args": [
+        "--elf",
+        "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell"
+      ],
       "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "JS: Debug Current Test File (node --test)",
+      "type": "pwa-node",
+      "request": "launch",
+      "runtimeExecutable": "node",
+      "args": [
+        "--test",
+        "${file}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
+    },
+    {
+      "type": "probe-rs-debug",
+      "request": "launch",
+      "name": "Debug Shell (probe-rs RP2040)",
+      "cwd": "${workspaceFolder}",
+      "chip": "RP2040",
+      "flashingConfig": {
+        "flashingEnabled": true,
+        "haltAfterReset": true
+      },
+      "coreConfigs": [
+        {
+          "coreIndex": 0,
+          "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
+          "rttEnabled": true,
+          "rttChannelFormats": [
+            {
+              "channelNumber": 0,
+              "dataFormat": "Defmt",
+              "showTimestamps": true
+            },
+            {
+              "channelNumber": 1,
+              "dataFormat": "String"
+            }
+          ]
+        }
+      ],
+      "preLaunchTask": "cargo: build cat_detector_shell (debug)"
+    },
+    {
+      "type": "probe-rs-debug",
+      "request": "launch",
+      "name": "Debug Firmware (probe-rs RP2040)",
+      "cwd": "${workspaceFolder}",
+      "chip": "RP2040",
+      "flashingConfig": {
+        "flashingEnabled": true,
+        "haltAfterReset": true
+      },
+      "coreConfigs": [
+        {
+          "coreIndex": 0,
+          "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
+          "rttEnabled": true,
+          "rttChannelFormats": [
+            {
+              "channelNumber": 0,
+              "dataFormat": "Defmt",
+              "showTimestamps": true
+            }
+          ]
+        }
+      ],
+      "preLaunchTask": "cargo: build cat_detector_app (debug)"
+    },
+    {
+      "type": "probe-rs-debug",
+      "request": "launch",
+      "name": "Debug Carrier Board Shell (probe-rs MCXN947)",
+      "cwd": "${workspaceFolder}",
+      "chip": "MCXN947",
+      "flashingConfig": {
+        "flashingEnabled": true,
+        "haltAfterReset": true
+      },
+      "coreConfigs": [
+        {
+          "coreIndex": 0,
+          "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/carrier_board_shell",
+          "rttEnabled": true,
+          "rttChannelFormats": [
+            {
+              "channelNumber": 0,
+              "dataFormat": "Defmt",
+              "showTimestamps": true
+            },
+            {
+              "channelNumber": 1,
+              "dataFormat": "String"
+            }
+          ]
+        }
+      ],
+      "preLaunchTask": "cargo: build carrier_board_shell (debug)"
     },
     {
       "type": "cortex-debug",
@@ -24,7 +262,11 @@
       "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
       "device": "RP2040_M0_0",
       "interface": "swd",
-      "runToEntryPoint": "main"
+      "runToEntryPoint": "main",
+      "sourceFileMap": {
+        "firmware": "${workspaceFolder}"
+      },
+      "preLaunchTask": "cargo: build cat_detector_app (debug)"
     },
     {
       "type": "cortex-debug",
@@ -34,7 +276,10 @@
       "cwd": "${workspaceFolder}",
       "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
       "device": "RP2040_M0_1",
-      "interface": "swd"
+      "interface": "swd",
+      "sourceFileMap": {
+        "firmware": "${workspaceFolder}"
+      }
     },
     {
       "type": "cortex-debug",
@@ -45,7 +290,11 @@
       "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
       "device": "RP2040_M0_0",
       "interface": "swd",
-      "runToEntryPoint": "main"
+      "runToEntryPoint": "main",
+      "sourceFileMap": {
+        "firmware": "${workspaceFolder}"
+      },
+      "preLaunchTask": "cargo: build cat_detector_shell (debug)"
     },
     {
       "type": "cortex-debug",
@@ -55,7 +304,25 @@
       "cwd": "${workspaceFolder}",
       "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
       "device": "RP2040_M0_1",
-      "interface": "swd"
+      "interface": "swd",
+      "sourceFileMap": {
+        "firmware": "${workspaceFolder}"
+      }
+    },
+    {
+      "type": "cortex-debug",
+      "request": "launch",
+      "name": "Debug Carrier Board Shell (J-Link MCXN947)",
+      "servertype": "jlink",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/carrier_board_shell",
+      "device": "MCXN947_M33_0",
+      "interface": "swd",
+      "runToEntryPoint": "main",
+      "sourceFileMap": {
+        "firmware": "${workspaceFolder}"
+      },
+      "preLaunchTask": "cargo: build carrier_board_shell (debug)"
     },
     {
       "type": "cortex-debug",
@@ -74,7 +341,11 @@
         "adapter speed 5000"
       ],
       "runToEntryPoint": "main",
-      "serverPort": 3333
+      "serverPort": 3333,
+      "sourceFileMap": {
+        "firmware": "${workspaceFolder}"
+      },
+      "preLaunchTask": "cargo: build cat_detector_app (debug)"
     },
     {
       "type": "cortex-debug",
@@ -93,7 +364,11 @@
         "adapter speed 5000"
       ],
       "runToEntryPoint": "main",
-      "serverPort": 3333
+      "serverPort": 3333,
+      "sourceFileMap": {
+        "firmware": "${workspaceFolder}"
+      },
+      "preLaunchTask": "cargo: build cat_detector_shell (debug)"
     },
     {
       "type": "cortex-debug",
@@ -104,7 +379,11 @@
       "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/release/cat_detector_app",
       "device": "RP2040_M0_0",
       "interface": "swd",
-      "runToEntryPoint": "main"
+      "runToEntryPoint": "main",
+      "sourceFileMap": {
+        "firmware": "${workspaceFolder}"
+      },
+      "preLaunchTask": "cargo: build cat_detector_app (release + tracing)"
     },
     {
       "type": "cortex-debug",
@@ -114,7 +393,10 @@
       "cwd": "${workspaceFolder}",
       "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/release/cat_detector_app",
       "device": "RP2040_M0_1",
-      "interface": "swd"
+      "interface": "swd",
+      "sourceFileMap": {
+        "firmware": "${workspaceFolder}"
+      }
     },
     {
       "type": "cortex-debug",
@@ -133,7 +415,11 @@
         "adapter speed 5000"
       ],
       "runToEntryPoint": "main",
-      "serverPort": 3333
+      "serverPort": 3333,
+      "sourceFileMap": {
+        "firmware": "${workspaceFolder}"
+      },
+      "preLaunchTask": "cargo: build cat_detector_app (release + tracing)"
     },
     {
       "type": "cortex-debug",
@@ -143,7 +429,61 @@
       "cwd": "${workspaceFolder}",
       "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/release/cat_detector_app",
       "gdbTarget": "localhost:3334",
-      "device": "RP2040"
+      "device": "RP2040",
+      "sourceFileMap": {
+        "firmware": "${workspaceFolder}"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Debug Shell Dual-Core (J-Link)",
+      "configurations": [
+        "Debug Shell Core 0 (J-Link)",
+        "Attach Shell Core 1 (J-Link)"
+      ]
+    },
+    {
+      "name": "Debug App Dual-Core (J-Link)",
+      "configurations": [
+        "Debug App Core 0 (J-Link)",
+        "Attach App Core 1 (J-Link)"
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "deviceTestKeyword",
+      "type": "promptString",
+      "description": "Pytest -k test name/keyword expression (e.g. tof_proximity or battery and not alert)",
+      "default": "tof_proximity"
+    },
+    {
+      "id": "bringupProject",
+      "type": "pickString",
+      "description": "Target firmware project for manual bringup debugging",
+      "options": [
+        "cat_detector",
+        "carrier_board"
+      ],
+      "default": "cat_detector"
+    },
+    {
+      "id": "rustTestFilter",
+      "type": "promptString",
+      "description": "Rust test function name or substring filter",
+      "default": ""
+    },
+    {
+      "id": "hostToolPackage",
+      "type": "pickString",
+      "description": "Host Rust diagnostic binary to build and debug",
+      "options": [
+        "host_cli",
+        "host_fs",
+        "code_gen"
+      ],
+      "default": "host_cli"
     }
   ]
 }
