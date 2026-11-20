@@ -2,12 +2,13 @@
 
 - **UUID**: `84515a48-b63e-482f-95f5-f34dd28638b5`
 - **ID**: `WORM-LOAMY-CLITELLUM-820`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-19 18:35:51 UTC`
 - **Resolved**: `2026-11-20 02:23:22 UTC`
+- **Accepted**: `2026-11-20 02:23:24 UTC`
 - **Rejected**: `2026-11-19 19:40:49 UTC`
 
 #### Description
