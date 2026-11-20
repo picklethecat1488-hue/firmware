@@ -155,6 +155,10 @@ impl DebugBackend for MockDualCoreBackend {
         let core = &mut guard.cores[core_idx];
         core.regs.insert(15, RESET_HANDLER_ADDR);
         core.halted = true;
+        core.bp_ctrl_enabled = false;
+        for slot in core.hw_comparators.iter_mut() {
+            *slot = None;
+        }
         Ok(RESET_HANDLER_ADDR)
     }
 
@@ -163,6 +167,10 @@ impl DebugBackend for MockDualCoreBackend {
         let core = &mut guard.cores[core_idx];
         core.regs.insert(15, RESET_HANDLER_ADDR);
         core.halted = false;
+        core.bp_ctrl_enabled = false;
+        for slot in core.hw_comparators.iter_mut() {
+            *slot = None;
+        }
         Ok(())
     }
 
@@ -512,4 +520,136 @@ fn test_dual_core_tcp_reset_handler_to_loc_core1_psm_rearm_and_rtt_bridge() {
     assert!(!final_guard.cores[0].halted);
     assert!(!final_guard.cores[1].halted);
     assert!(final_guard.non_halting_mem_ops >= 2);
+}
+
+#[test]
+fn test_worm_glowing_burrower_8_ack_retransmit_running_detach_and_reset_rearm() {
+    let (backend, shared) = MockDualCoreBackend::new();
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let config = DebugServerConfig {
+        bind_host: "127.0.0.1".to_string(),
+        gdb_core0_port: 0,
+        gdb_core1_port: Some(0),
+        rtt_bridge_port: None,
+        halted_on_reset: true,
+        core1_post_reset_trap_addr: None,
+        json_events: false,
+    };
+
+    let handle =
+        start_debug_server_with_backend(backend, &config, shutdown).expect("start debug server");
+    let c0_port = handle.gdb_core0_port;
+
+    // 1. Reproduce pre-`QStartNoAckMode` `$qSupported` timeout retransmission (no `+` ACK between
+    //    duplicate packets). Without deduplication, `vMustReplyEmpty` receives `vCont;c;C;s;S;t`!
+    let mut client1 = TestRspClient::connect(c0_port);
+    let qsup = format_rsp_packet("qSupported:multiprocess+;swbreak+;hwbreak+;vContSupported+");
+    let mut burst = Vec::new();
+    burst.push(b'+');
+    burst.extend_from_slice(&qsup);
+    burst.extend_from_slice(&qsup); // Retransmitted before server ACK arrived
+    client1
+        .stream
+        .write_all(&burst)
+        .expect("write duplicate qSupported");
+    client1.stream.flush().expect("flush duplicate qSupported");
+
+    let qsup_reply = client1.read_packet_reply();
+    assert!(qsup_reply.starts_with("PacketSize=4096;"), "{}", qsup_reply);
+
+    client1.stream.write_all(b"+").expect("ack qSupported");
+    assert_eq!(client1.send_cmd("vCont?"), "vCont;c;C;s;S;t");
+    client1.stream.write_all(b"+").expect("ack vCont?");
+    assert_eq!(
+        client1.send_cmd("vMustReplyEmpty"),
+        "",
+        "vMustReplyEmpty must not receive a shifted vCont reply after qSupported retransmit"
+    );
+    client1.stream.write_all(b"+").expect("ack vMustReplyEmpty");
+    assert_eq!(client1.send_cmd("QStartNoAckMode"), "OK");
+    client1.stream.write_all(b"+").expect("final ack");
+    assert_eq!(
+        client1.send_cmd("!"),
+        "OK",
+        "Extended-remote mode ('!') must reply OK"
+    );
+
+    // 2. Verify `monitor reset halt` (`qRcmd`) streams `O<hex>` console output followed by `OK`
+    //    and re-arms non-zero hardware breakpoint slots wiped by MCU reset so `main` still hits!
+    assert_eq!(client1.send_cmd("Z1,10000300,2"), "OK"); // occupies slot 0
+    assert_eq!(
+        client1.send_cmd(&format!("Z1,{:x},2", CORE0_MAIN_LOC_ADDR)),
+        "OK"
+    ); // occupies slot 1
+    assert_eq!(client1.send_cmd("z1,10000300,2"), "OK"); // frees slot 0 while slot 1 stays active
+
+    let rcmd_pkt = format_rsp_packet(&format!("qRcmd,{}", encode_hex(b"reset halt")));
+    client1
+        .stream
+        .write_all(&rcmd_pkt)
+        .expect("write monitor reset halt");
+    client1.stream.flush().expect("flush monitor reset halt");
+    let first_rcmd_reply = client1.read_packet_reply();
+    assert!(
+        first_rcmd_reply.starts_with('O'),
+        "Expected O<hex> console packet from monitor reset halt, got: {}",
+        first_rcmd_reply
+    );
+    let console_msg =
+        String::from_utf8(decode_hex(&first_rcmd_reply[1..]).expect("decode O<hex>")).unwrap();
+    assert!(console_msg.contains("Target reset and halted at Reset_Handler"));
+    assert_eq!(client1.read_packet_reply(), "OK");
+
+    shared.lock().unwrap().cores[0]
+        .pending_target_pcs
+        .push(CORE0_MAIN_LOC_ADDR);
+    client1.send_continue();
+    assert_eq!(client1.read_packet_reply(), "S05");
+    assert_eq!(client1.read_pc(), CORE0_MAIN_LOC_ADDR);
+
+    // 3. Resume Core 0 (`vCont;c`) so server enters `wait_until_halted_or_interrupted`, then send
+    //    a leading `+` ACK followed by `$D#44` (`target-detach` while target is running).
+    //    Server must clear breakpoints, leave Core 0 running, reply `"OK"` (never `"S05"`), and close!
+    client1
+        .stream
+        .write_all(&format_rsp_packet("vCont;c"))
+        .expect("write vCont;c");
+    client1.stream.flush().expect("flush vCont;c");
+    std::thread::sleep(Duration::from_millis(20));
+
+    let mut detach_while_running = vec![b'+'];
+    detach_while_running.extend_from_slice(&format_rsp_packet("D"));
+    client1
+        .stream
+        .write_all(&detach_while_running)
+        .expect("write +$D#44 while running");
+    client1.stream.flush().expect("flush +$D#44 while running");
+    assert_eq!(
+        client1.read_packet_reply(),
+        "OK",
+        "Detaching while target is running must reply OK, not S05"
+    );
+    drop(client1);
+    {
+        let guard = shared.lock().unwrap();
+        assert!(!guard.cores[0].halted);
+        assert!(guard.cores[0].hw_comparators.iter().all(Option::is_none));
+    }
+
+    // 4. Verify a subsequent GDB session immediately connects cleanly on `:3333` with `vKill;1`.
+    let mut client2 = TestRspClient::connect(c0_port);
+    assert!(client2
+        .send_cmd("qSupported:swbreak+;hwbreak+;vContSupported+")
+        .starts_with("PacketSize=4096;"));
+    client2.stream.write_all(b"+").expect("ack");
+    assert_eq!(client2.send_cmd("vCont?"), "vCont;c;C;s;S;t");
+    client2.stream.write_all(b"+").expect("ack");
+    assert_eq!(client2.send_cmd("vMustReplyEmpty"), "");
+    client2.stream.write_all(b"+").expect("ack");
+    assert_eq!(client2.send_cmd("QStartNoAckMode"), "OK");
+    client2.stream.write_all(b"+").expect("ack");
+    assert_eq!(client2.send_cmd("vKill;1"), "OK");
+    drop(client2);
+
+    handle.stop();
 }

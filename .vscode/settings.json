@@ -1,5 +1,7 @@
 {
   "lldb.rpcServer": "on",
+  "OcpCadViewer.advanced.watchByDefault": false,
+  "OcpCadViewer.advanced.autostart": false,
   "rust-analyzer.cargo.buildScripts.enable": true,
   "rust-analyzer.procMacro.enable": true,
   "python.testing.unittestEnabled": false,

@@ -565,6 +565,13 @@ fn run_core_gdb_listener<B: DebugBackend + 'static>(
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum RunningWaitOutcome {
+    HaltedOrInterrupted,
+    DisconnectClient,
+    StreamClosed,
+}
+
 fn serve_core_gdb_client<B: DebugBackend>(
     mut stream: TcpStream,
     core_idx: usize,
@@ -578,15 +585,29 @@ fn serve_core_gdb_client<B: DebugBackend>(
     let mut handler = RspCoreHandler::new(core_idx, has_fpu);
     let mut rx_buf: Vec<u8> = Vec::with_capacity(4096);
     let mut scratch = [0u8; 2048];
+    let mut last_unacked_rx_payload: Option<Vec<u8>> = None;
+    let mut last_sent_reply: Option<String> = None;
 
     while !shutdown.load(Ordering::SeqCst) {
         while let Some(frame) = extract_next_rsp_frame(&mut rx_buf) {
             match frame {
-                RspFrame::Ack | RspFrame::Nack => {}
+                RspFrame::Ack => {
+                    last_unacked_rx_payload = None;
+                }
+                RspFrame::Nack => {
+                    if !handler.no_ack_mode {
+                        if let Some(ref prev_reply) = last_sent_reply {
+                            if send_rsp_reply(&mut stream, prev_reply).is_err() {
+                                return;
+                            }
+                        }
+                    }
+                }
                 RspFrame::CtrlC => {
                     if let Ok(mut guard) = backend.lock() {
                         let _ = guard.halt_core(core_idx);
                     }
+                    last_sent_reply = Some("S02".to_string());
                     if send_rsp_reply(&mut stream, "S02").is_err() {
                         return;
                     }
@@ -595,7 +616,8 @@ fn serve_core_gdb_client<B: DebugBackend>(
                     payload,
                     checksum_valid,
                 } => {
-                    if !handler.no_ack_mode {
+                    let was_ack_mode = !handler.no_ack_mode;
+                    if was_ack_mode {
                         let ack = if checksum_valid { b"+" } else { b"-" };
                         if stream.write_all(ack).is_err() || stream.flush().is_err() {
                             return;
@@ -604,32 +626,56 @@ fn serve_core_gdb_client<B: DebugBackend>(
                     if !checksum_valid {
                         continue;
                     }
+                    if was_ack_mode
+                        && last_unacked_rx_payload.as_deref() == Some(payload.as_slice())
+                    {
+                        // Deduplicate GDB `remotetimeout` retransmission received before our `+` ACK arrived.
+                        continue;
+                    }
 
-                    let action = {
-                        let mut back_guard = match backend.lock() {
-                            Ok(g) => g,
-                            Err(_) => return,
-                        };
-                        let act = {
-                            let mut bp_guard = match breakpoints.lock() {
+                    let action =
+                        if let Some(stateless_act) = handler.handle_stateless_packet(&payload) {
+                            stateless_act
+                        } else {
+                            let mut back_guard = match backend.lock() {
                                 Ok(g) => g,
                                 Err(_) => return,
                             };
-                            handler.handle_packet(&payload, &mut *back_guard, &mut bp_guard)
-                        };
-                        if payload.starts_with(b"qRcmd,") {
-                            if let Ok(mut armed_guard) = coord.armed_core0_slot.lock() {
-                                *armed_guard = None;
+                            let act = {
+                                let mut bp_guard = match breakpoints.lock() {
+                                    Ok(g) => g,
+                                    Err(_) => return,
+                                };
+                                handler.handle_packet(&payload, &mut *back_guard, &mut bp_guard)
+                            };
+                            if payload.starts_with(b"qRcmd,") {
+                                if let Ok(mut armed_guard) = coord.armed_core0_slot.lock() {
+                                    *armed_guard = None;
+                                }
                             }
-                        }
-                        coord.sync_trap(&mut *back_guard);
-                        act
-                    };
+                            coord.sync_trap(&mut *back_guard);
+                            act
+                        };
+
+                    if handler.no_ack_mode {
+                        last_unacked_rx_payload = None;
+                    } else {
+                        last_unacked_rx_payload = Some(payload);
+                    }
 
                     match action {
                         RspAction::Reply(reply) => {
+                            last_sent_reply = Some(reply.clone());
                             if send_rsp_reply(&mut stream, &reply).is_err() {
                                 return;
+                            }
+                        }
+                        RspAction::ReplyPackets(packets) => {
+                            for pkt_payload in packets {
+                                last_sent_reply = Some(pkt_payload.clone());
+                                if send_rsp_reply(&mut stream, &pkt_payload).is_err() {
+                                    return;
+                                }
                             }
                         }
                         RspAction::Disconnect(opt_reply) => {
@@ -639,17 +685,21 @@ fn serve_core_gdb_client<B: DebugBackend>(
                             return;
                         }
                         RspAction::WaitForHalt => {
-                            if !wait_until_halted_or_interrupted(
+                            match wait_until_halted_or_interrupted(
                                 &mut stream,
                                 &mut rx_buf,
                                 &handler,
+                                &mut last_unacked_rx_payload,
+                                &mut last_sent_reply,
                                 core_idx,
                                 backend,
                                 breakpoints,
                                 coord,
                                 shutdown,
                             ) {
-                                return;
+                                RunningWaitOutcome::HaltedOrInterrupted => {}
+                                RunningWaitOutcome::DisconnectClient
+                                | RunningWaitOutcome::StreamClosed => return,
                             }
                         }
                     }
@@ -681,26 +731,147 @@ fn serve_core_gdb_client<B: DebugBackend>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn drain_running_rx_frames<B: DebugBackend>(
+    stream: &mut TcpStream,
+    rx_buf: &mut Vec<u8>,
+    handler: &RspCoreHandler,
+    last_unacked_rx_payload: &mut Option<Vec<u8>>,
+    last_sent_reply: &mut Option<String>,
+    core_idx: usize,
+    backend: &Arc<Mutex<B>>,
+    breakpoints: &Arc<Mutex<CoreBreakpointTable>>,
+    coord: &Arc<Core1PostResetCoordinator>,
+) -> Option<RunningWaitOutcome> {
+    while let Some(frame) = extract_next_rsp_frame(rx_buf) {
+        match frame {
+            RspFrame::Ack => {
+                *last_unacked_rx_payload = None;
+            }
+            RspFrame::Nack => {
+                if !handler.no_ack_mode {
+                    if let Some(ref prev_reply) = last_sent_reply {
+                        if send_rsp_reply(stream, prev_reply).is_err() {
+                            return Some(RunningWaitOutcome::StreamClosed);
+                        }
+                    }
+                }
+            }
+            RspFrame::CtrlC => {
+                if let Ok(mut back_guard) = backend.lock() {
+                    let _ = back_guard.halt_core(core_idx);
+                }
+                *last_sent_reply = Some("S02".to_string());
+                return if send_rsp_reply(stream, "S02").is_ok() {
+                    Some(RunningWaitOutcome::HaltedOrInterrupted)
+                } else {
+                    Some(RunningWaitOutcome::StreamClosed)
+                };
+            }
+            RspFrame::Packet {
+                payload,
+                checksum_valid,
+            } => {
+                if !handler.no_ack_mode {
+                    let ack = if checksum_valid { b"+" } else { b"-" };
+                    if stream.write_all(ack).is_err() || stream.flush().is_err() {
+                        return Some(RunningWaitOutcome::StreamClosed);
+                    }
+                }
+                if !checksum_valid {
+                    continue;
+                }
+                if !handler.no_ack_mode
+                    && last_unacked_rx_payload.as_deref() == Some(payload.as_slice())
+                {
+                    continue;
+                }
+                if !handler.no_ack_mode {
+                    *last_unacked_rx_payload = Some(payload.clone());
+                }
+
+                let cmd = std::str::from_utf8(&payload).unwrap_or("");
+                if cmd == "D"
+                    || cmd.starts_with("D;")
+                    || cmd == "vKill"
+                    || cmd.starts_with("vKill;")
+                {
+                    if let Ok(mut back_guard) = backend.lock() {
+                        if let Ok(mut bp_guard) = breakpoints.lock() {
+                            let _ = bp_guard.clear_all(&mut *back_guard, core_idx);
+                        }
+                        let _ = back_guard.resume_core(core_idx);
+                        coord.sync_trap(&mut *back_guard);
+                    }
+                    let _ = send_rsp_reply(stream, "OK");
+                    return Some(RunningWaitOutcome::DisconnectClient);
+                }
+                if cmd == "k" {
+                    if let Ok(mut back_guard) = backend.lock() {
+                        if let Ok(mut bp_guard) = breakpoints.lock() {
+                            let _ = bp_guard.clear_all(&mut *back_guard, core_idx);
+                        }
+                        let _ = back_guard.resume_core(core_idx);
+                        coord.sync_trap(&mut *back_guard);
+                    }
+                    return Some(RunningWaitOutcome::DisconnectClient);
+                }
+
+                if let Ok(mut back_guard) = backend.lock() {
+                    let _ = back_guard.halt_core(core_idx);
+                }
+                *last_sent_reply = Some("S05".to_string());
+                return if send_rsp_reply(stream, "S05").is_ok() {
+                    Some(RunningWaitOutcome::HaltedOrInterrupted)
+                } else {
+                    Some(RunningWaitOutcome::StreamClosed)
+                };
+            }
+        }
+    }
+    None
+}
+
+#[allow(clippy::too_many_arguments)]
 fn wait_until_halted_or_interrupted<B: DebugBackend>(
     stream: &mut TcpStream,
     rx_buf: &mut Vec<u8>,
     handler: &RspCoreHandler,
+    last_unacked_rx_payload: &mut Option<Vec<u8>>,
+    last_sent_reply: &mut Option<String>,
     core_idx: usize,
     backend: &Arc<Mutex<B>>,
     breakpoints: &Arc<Mutex<CoreBreakpointTable>>,
     coord: &Arc<Core1PostResetCoordinator>,
     shutdown: &Arc<AtomicBool>,
-) -> bool {
+) -> RunningWaitOutcome {
     let _ = stream.set_read_timeout(Some(Duration::from_millis(CORE_POLL_INTERVAL_MS)));
     let mut poll_buf = [0u8; 256];
-    let mut result_ok = true;
+    let mut outcome = RunningWaitOutcome::HaltedOrInterrupted;
 
     while !shutdown.load(Ordering::SeqCst) {
+        if !rx_buf.is_empty() {
+            if let Some(frame_outcome) = drain_running_rx_frames(
+                stream,
+                rx_buf,
+                handler,
+                last_unacked_rx_payload,
+                last_sent_reply,
+                core_idx,
+                backend,
+                breakpoints,
+                coord,
+            ) {
+                outcome = frame_outcome;
+                break;
+            }
+        }
+
         let halted = {
             let mut back_guard = match backend.lock() {
                 Ok(g) => g,
                 Err(_) => {
-                    result_ok = false;
+                    outcome = RunningWaitOutcome::StreamClosed;
                     break;
                 }
             };
@@ -717,51 +888,33 @@ fn wait_until_halted_or_interrupted<B: DebugBackend>(
         };
 
         if halted {
+            *last_sent_reply = Some("S05".to_string());
             if send_rsp_reply(stream, "S05").is_err() {
-                result_ok = false;
+                outcome = RunningWaitOutcome::StreamClosed;
             }
             break;
         }
 
         match stream.read(&mut poll_buf) {
             Ok(0) => {
-                result_ok = false;
+                outcome = RunningWaitOutcome::StreamClosed;
                 break;
             }
             Ok(n) => {
                 rx_buf.extend_from_slice(&poll_buf[..n]);
-                if let Some(ctrl_pos) = rx_buf.iter().position(|&b| b == 0x03) {
-                    rx_buf.remove(ctrl_pos);
-                    if let Ok(mut back_guard) = backend.lock() {
-                        let _ = back_guard.halt_core(core_idx);
-                    }
-                    if send_rsp_reply(stream, "S02").is_err() {
-                        result_ok = false;
-                    }
+                if let Some(frame_outcome) = drain_running_rx_frames(
+                    stream,
+                    rx_buf,
+                    handler,
+                    last_unacked_rx_payload,
+                    last_sent_reply,
+                    core_idx,
+                    backend,
+                    breakpoints,
+                    coord,
+                ) {
+                    outcome = frame_outcome;
                     break;
-                }
-                // Also support `vCont;t` halt requests while running.
-                if let Some(RspFrame::Packet {
-                    payload: _,
-                    checksum_valid,
-                }) = extract_next_rsp_frame(rx_buf)
-                {
-                    if !handler.no_ack_mode {
-                        let ack = if checksum_valid { b"+" } else { b"-" };
-                        if stream.write_all(ack).is_err() || stream.flush().is_err() {
-                            result_ok = false;
-                            break;
-                        }
-                    }
-                    if checksum_valid {
-                        if let Ok(mut back_guard) = backend.lock() {
-                            let _ = back_guard.halt_core(core_idx);
-                        }
-                        if send_rsp_reply(stream, "S05").is_err() {
-                            result_ok = false;
-                        }
-                        break;
-                    }
                 }
             }
             Err(err)
@@ -770,14 +923,14 @@ fn wait_until_halted_or_interrupted<B: DebugBackend>(
                     std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
                 ) => {}
             Err(_) => {
-                result_ok = false;
+                outcome = RunningWaitOutcome::StreamClosed;
                 break;
             }
         }
     }
 
     let _ = stream.set_read_timeout(Some(Duration::from_millis(ACCEPT_POLL_INTERVAL_MS)));
-    result_ok
+    outcome
 }
 
 fn run_rtt_bridge_listener<B: DebugBackend + 'static>(
@@ -1042,7 +1195,10 @@ pub mod probe_backend {
             }
 
             // On chips with a Mask Boot ROM (e.g. RP2040 halting at 0x0000_00EA before boot2 enables XIP),
-            // set a temporary hardware comparator on `Reset_Handler`, run through boot2, and clear it.
+            // set a temporary hardware comparator on the highest FPB unit for `Reset_Handler`, run through
+            // boot2, and clear that unit cleanly.
+            let temp_slot =
+                (core0.available_breakpoint_units().unwrap_or(4) as usize).saturating_sub(1);
             if let Ok(dhcsr) = core0.read_word_32(CORTEX_M_DHCSR_ADDR) {
                 if (dhcsr & 1) == 0 {
                     let _ = core0.write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_ENABLE);
@@ -1051,7 +1207,7 @@ pub mod probe_backend {
             let _ = core0.write_word_32(CORTEX_M_BP_CTRL_ADDR, CORTEX_M_BP_CTRL_KEY_ENABLE);
             let _ = core0.flush();
             core0
-                .set_hw_breakpoint_unit(0, target_pc as u64)
+                .set_hw_breakpoint_unit(temp_slot, target_pc as u64)
                 .map_err(|e| format!("Failed to arm Reset_Handler breakpoint: {:?}", e))?;
             core0
                 .run()
@@ -1067,8 +1223,9 @@ pub mod probe_backend {
             if !core0.core_halted().unwrap_or(false) {
                 let _ = core0.halt(Duration::from_millis(100));
             }
+            let temp_comp_addr = CORTEX_M_BP_COMP0_ADDR + (temp_slot as u64) * 4;
             if core0.clear_hw_breakpoint(target_pc as u64).is_err() {
-                let _ = core0.write_word_32(CORTEX_M_BP_COMP0_ADDR, 0);
+                let _ = core0.write_word_32(temp_comp_addr, 0);
                 let _ = core0.flush();
             }
             let final_pc = core0
@@ -1321,10 +1478,9 @@ pub mod probe_backend {
             core_idx: usize,
             slots: &[Option<u64>],
         ) -> Result<bool, String> {
-            let Some((first_idx, _)) = slots.iter().enumerate().find(|(_, entry)| entry.is_some())
-            else {
+            if !slots.iter().any(Option::is_some) {
                 return Ok(false);
-            };
+            }
             let mut core = self
                 .session
                 .core(core_idx)
@@ -1332,12 +1488,23 @@ pub mod probe_backend {
             let bp_ctrl = core
                 .read_word_32(CORTEX_M_BP_CTRL_ADDR)
                 .map_err(|e| format!("{:?}", e))?;
-            let first_comp_addr = CORTEX_M_BP_COMP0_ADDR + (first_idx as u64) * 4;
-            let first_comp = core
-                .read_word_32(first_comp_addr)
-                .map_err(|e| format!("{:?}", e))?;
 
-            if (bp_ctrl & 1) != 0 && (first_comp & 1) != 0 {
+            let mut all_armed = (bp_ctrl & 1) != 0;
+            if all_armed {
+                for (slot_idx, entry) in slots.iter().enumerate() {
+                    if entry.is_some() {
+                        let comp_addr = CORTEX_M_BP_COMP0_ADDR + (slot_idx as u64) * 4;
+                        let comp_val = core
+                            .read_word_32(comp_addr)
+                            .map_err(|e| format!("{:?}", e))?;
+                        if (comp_val & 1) == 0 {
+                            all_armed = false;
+                            break;
+                        }
+                    }
+                }
+            }
+            if all_armed {
                 return Ok(false);
             }
 
