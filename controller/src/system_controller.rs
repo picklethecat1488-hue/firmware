@@ -657,7 +657,9 @@ pub async fn handle_system_cli<
             let mut system_ctrl = resolver.resolve_system_ctrl(None);
             if let Ok(ref mut ctrl) = system_ctrl {
                 ctrl.record_activity()
-                    .map_err(|_| "Failed to record system activity")
+                    .map_err(|_| "Failed to record system activity")?;
+                let _ = core::writeln!(writer, "System activity recorded.");
+                Ok(())
             } else {
                 let _ = core::writeln!(
                     writer,

@@ -1,0 +1,1362 @@
+/**
+ * On-Device Test Mode UI Controller (`tools/host.py` — `ACTIVE MODE: TEST`).
+ *
+ * Supersedes the legacy bringup workstation with `@device_test` discovery,
+ * attribute-based filtering (`project`, `scenarios`, `boards` glob, `target_binary`,
+ * `manual`, text search), multi-test selection, top-to-bottom `pytest` execution,
+ * live status/console streaming, and interactive manual operator prompt responses
+ * (`YES`, `NO`, numeric `measurement`, and `cancel` with required comment).
+ */
+
+import { stripAnsi } from "../core/ansi.js";
+import { bindDelegatedEvent, clearChildren, createEl, resolveElement } from "../core/dom.js";
+import { showToast } from "../core/toast.js";
+import { renderTerminalHtml } from "./rtt_stream.js";
+
+export const TEST_RUN_STEPS = Object.freeze({
+  IDLE: "idle",
+  RUNNING: "running",
+  COMPLETE: "complete",
+  FAILED: "failed",
+  CANCELLED: "cancelled",
+});
+
+export const LEFT_PANEL_TABS = Object.freeze({
+  LOGS: "LOGS",
+  TESTS: "TESTS",
+  TEST_LOG: "TEST_LOG",
+});
+
+export const MANUAL_PROMPT_ACTIONS = Object.freeze({
+  YES: "yes",
+  NO: "no",
+  MEASUREMENT: "measurement",
+  CANCEL: "cancel",
+});
+
+export const MANUAL_PROMPT_KINDS = Object.freeze({
+  YES_NO: "yes_no",
+  MEASUREMENT: "measurement",
+});
+
+export const TARGET_LIFECYCLE_PHASES = Object.freeze({
+  IDLE: "idle",
+  FLASHING: "flashing",
+  MODE_SWITCH: "mode_switch",
+  REBOOTING: "rebooting",
+  EXECUTING_TEST: "executing_test",
+  COMPLETE: "complete",
+  FAILED: "failed",
+  CANCELLED: "cancelled",
+});
+
+const CONSOLE_SCROLL_SLACK_PX = 30;
+const COPY_FEEDBACK_DURATION_MS = 1500;
+const MAX_PROGRESS_PCT = 100;
+const INITIAL_OPTIMISTIC_PROGRESS_PCT = 5;
+const ORDER_PAD_WIDTH = 2;
+
+/**
+ * Map a target lifecycle phase to a Xerxes badge CSS class.
+ *
+ * @param {string} phase - Lifecycle phase from `TARGET_LIFECYCLE_PHASES`.
+ * @returns {string}
+ */
+export function phaseBadgeClass(phase) {
+  const normalized = String(phase || TARGET_LIFECYCLE_PHASES.IDLE).toLowerCase();
+  if (normalized === TARGET_LIFECYCLE_PHASES.COMPLETE) {
+    return "badge badge-green";
+  }
+  if (normalized === TARGET_LIFECYCLE_PHASES.FAILED) {
+    return "badge test-badge-red";
+  }
+  if (
+    normalized === TARGET_LIFECYCLE_PHASES.FLASHING ||
+    normalized === TARGET_LIFECYCLE_PHASES.REBOOTING ||
+    normalized === TARGET_LIFECYCLE_PHASES.MODE_SWITCH ||
+    normalized === TARGET_LIFECYCLE_PHASES.CANCELLED
+  ) {
+    return "badge badge-amber";
+  }
+  if (normalized === TARGET_LIFECYCLE_PHASES.EXECUTING_TEST) {
+    return "badge badge-cyan";
+  }
+  return "badge";
+}
+
+/**
+ * Map a per-test status string to a Xerxes badge CSS class.
+ *
+ * @param {string} status - Test outcome or lifecycle label.
+ * @returns {string}
+ */
+export function statusBadgeClass(status) {
+  const upper = String(status || "IDLE").toUpperCase();
+  if (upper === "PASSED") {
+    return "badge badge-green";
+  }
+  if (upper === "FAILED") {
+    return "badge test-badge-red";
+  }
+  if (upper === "RUNNING" || upper === "SKIPPED" || upper === "CANCELLED") {
+    return "badge badge-amber";
+  }
+  return "badge";
+}
+
+/**
+ * Controller for the `#testView` On-Device Test Runner workstation mode.
+ */
+export class TestRunnerController {
+  /**
+   * Construct a `TestRunnerController`.
+   *
+   * @param {object} ctx - Explicit `RuntimeContext`.
+   * @param {object} [options] - Optional element overrides.
+   */
+  constructor(ctx, options = {}) {
+    this.ctx = ctx;
+    this.tests = [];
+    this.facets = { projects: [], scenarios: [], binaries: [], boards: [] };
+    this.detectedBoard = null;
+    this.selectedNodeIds = new Set();
+    this.resultsMap = {};
+    this.consoleLines = [];
+    this.isRunning = false;
+    this.activeStep = TEST_RUN_STEPS.IDLE;
+    this.activePrompt = null;
+    this.isTestMode = false;
+    this.activeLeftTab = LEFT_PANEL_TABS.LOGS;
+    this._lastPromptId = "";
+    this._initializedScan = false;
+    this._cardRefs = new Map();
+    this._unsubscribers = [];
+
+    this.viewEl = resolveElement(ctx, options.viewEl || "testView");
+    this.sidebarView = resolveElement(ctx, options.sidebarView || "testSidebarView");
+    this.logView = resolveElement(ctx, options.logView || "logView");
+    this.leftTabLogsBtn = resolveElement(ctx, options.leftTabLogsBtn || "btnLeftTabLogs");
+    this.leftTabTestsBtn = resolveElement(ctx, options.leftTabTestsBtn || "btnLeftTabTests");
+    this.leftTabTestLogBtn = resolveElement(
+      ctx,
+      options.leftTabTestLogBtn || "btnLeftTabTestLog",
+    );
+    this.leftLogTools = resolveElement(ctx, options.leftLogTools || "leftPanelLogTools");
+    this.leftTestTools = resolveElement(ctx, options.leftTestTools || "leftPanelTestTools");
+    this.leftTestLogTools = resolveElement(
+      ctx,
+      options.leftTestLogTools || "leftPanelTestLogTools",
+    );
+    this.copyTestLogBtn = resolveElement(ctx, options.copyTestLogBtn || "btnCopyTestLog");
+    this.projectSelect = resolveElement(ctx, options.projectSelect || "testFilterProject");
+    this.scenarioSelect = resolveElement(ctx, options.scenarioSelect || "testFilterScenario");
+    this.boardInput = resolveElement(ctx, options.boardInput || "testFilterBoard");
+    this.binarySelect = resolveElement(ctx, options.binarySelect || "testFilterBinary");
+    this.manualSelect = resolveElement(ctx, options.manualSelect || "testFilterManual");
+    this.searchInput = resolveElement(ctx, options.searchInput || "testFilterSearch");
+    this.enableManualCb = resolveElement(ctx, options.enableManualCb || "testEnableManualCb");
+
+    this.scanBtn = resolveElement(ctx, options.scanBtn || "btnTestScan");
+    this.runSelectedBtn = resolveElement(ctx, options.runSelectedBtn || "btnTestRunSelected");
+    this.runFilteredBtn = resolveElement(ctx, options.runFilteredBtn || "btnTestRunFiltered");
+    this.cancelBtn = resolveElement(ctx, options.cancelBtn || "btnTestCancel");
+    this.selectAllCb = resolveElement(ctx, options.selectAllCb || "testSelectAllCb");
+
+    this.boardBadge = resolveElement(ctx, options.boardBadge || "testDetectedBoardBadge");
+    this.summaryStats = resolveElement(ctx, options.summaryStats || "testSummaryStats");
+    this.stackList = resolveElement(ctx, options.stackList || "testStackList");
+    this.consoleOutput = resolveElement(ctx, options.consoleOutput || "testConsoleOutput");
+
+    // Right-Panel Progress & Target Lifecycle Status Card
+    this.progressCard = resolveElement(ctx, options.progressCard || "testProgressCard");
+    this.progressDot = resolveElement(ctx, options.progressDot || "testProgressDot");
+    this.phaseBadge = resolveElement(ctx, options.phaseBadge || "testPhaseBadge");
+    this.progressPctEl = resolveElement(ctx, options.progressPctEl || "testProgressPct");
+    this.progressBar = resolveElement(ctx, options.progressBar || "testProgressBar");
+    this.activityHeadline = resolveElement(
+      ctx,
+      options.activityHeadline || "testActivityHeadline",
+    );
+    this.activityDetail = resolveElement(ctx, options.activityDetail || "testActivityDetail");
+    this.telemetryMode = resolveElement(ctx, options.telemetryMode || "testTelemetryMode");
+    this.telemetryFlash = resolveElement(ctx, options.telemetryFlash || "testTelemetryFlash");
+    this.telemetryReboots = resolveElement(
+      ctx,
+      options.telemetryReboots || "testTelemetryReboots",
+    );
+    this.telemetryCounts = resolveElement(ctx, options.telemetryCounts || "testTelemetryCounts");
+    this.runFeedList = resolveElement(ctx, options.runFeedList || "testRunFeedList");
+
+    // Interactive Manual Prompt Card
+    this.manualCard = resolveElement(ctx, options.manualCard || "testManualPromptCard");
+    this.manualTitle = resolveElement(ctx, options.manualTitle || "testManualTitle");
+    this.manualProcedure = resolveElement(ctx, options.manualProcedure || "testManualProcedure");
+    this.manualPromptText = resolveElement(ctx, options.manualPromptText || "testManualPromptText");
+    this.manualYesNoRow = resolveElement(ctx, options.manualYesNoRow || "testManualYesNoRow");
+    this.manualYesBtn = resolveElement(ctx, options.manualYesBtn || "btnManualYes");
+    this.manualNoBtn = resolveElement(ctx, options.manualNoBtn || "btnManualNo");
+    this.manualMeasurementRow = resolveElement(
+      ctx,
+      options.manualMeasurementRow || "testManualMeasurementRow",
+    );
+    this.manualValueInput = resolveElement(ctx, options.manualValueInput || "testManualValueInput");
+    this.manualUnitLabel = resolveElement(ctx, options.manualUnitLabel || "testManualUnitLabel");
+    this.manualSubmitValueBtn = resolveElement(
+      ctx,
+      options.manualSubmitValueBtn || "btnManualSubmitValue",
+    );
+    this.manualCommentInput = resolveElement(
+      ctx,
+      options.manualCommentInput || "testManualCommentInput",
+    );
+    this.manualCancelBtn = resolveElement(ctx, options.manualCancelBtn || "btnManualCancel");
+    this.manualErrorMsg = resolveElement(ctx, options.manualErrorMsg || "testManualErrorMsg");
+  }
+
+  /**
+   * Bind DOM event listeners for scanning, attribute filters, selection, execution, and manual prompts.
+   */
+  init() {
+    const bindClick = (el, handler) => {
+      if (!el) {
+        return;
+      }
+      el.addEventListener("click", handler);
+      this._unsubscribers.push(() => el.removeEventListener("click", handler));
+    };
+
+    const bindChange = (el, handler) => {
+      if (!el) {
+        return;
+      }
+      el.addEventListener("change", handler);
+      this._unsubscribers.push(() => el.removeEventListener("change", handler));
+    };
+
+    bindClick(this.scanBtn, () => this.scanTests({ probeBoard: true }));
+    bindClick(this.runSelectedBtn, () => this.runSelected());
+    bindClick(this.runFilteredBtn, () => this.runFiltered());
+    bindClick(this.cancelBtn, () => this.cancelRun());
+    bindClick(this.leftTabLogsBtn, () => this.setActiveLeftTab(LEFT_PANEL_TABS.LOGS));
+    bindClick(this.leftTabTestsBtn, () => this.setActiveLeftTab(LEFT_PANEL_TABS.TESTS));
+    bindClick(this.leftTabTestLogBtn, () => this.setActiveLeftTab(LEFT_PANEL_TABS.TEST_LOG));
+    bindClick(this.copyTestLogBtn, () => this.copyConsoleOutput(this.copyTestLogBtn));
+
+    for (const sel of [this.projectSelect, this.scenarioSelect, this.binarySelect, this.manualSelect]) {
+      bindChange(sel, () => this.scanTests({ probeBoard: false }));
+    }
+
+    if (this.boardInput) {
+      const onBoardChange = () => this.scanTests({ probeBoard: false });
+      this.boardInput.addEventListener("change", onBoardChange);
+      this._unsubscribers.push(() =>
+        this.boardInput.removeEventListener("change", onBoardChange),
+      );
+    }
+
+    if (this.searchInput) {
+      const onSearchInput = () => this.scanTests({ probeBoard: false });
+      this.searchInput.addEventListener("input", onSearchInput);
+      this._unsubscribers.push(() =>
+        this.searchInput.removeEventListener("input", onSearchInput),
+      );
+    }
+
+    if (this.selectAllCb) {
+      bindChange(this.selectAllCb, () => {
+        this.setSelectAllVisible(Boolean(this.selectAllCb.checked));
+      });
+    }
+
+    if (this.stackList) {
+      this._unsubscribers.push(
+        bindDelegatedEvent(this.stackList, "change", "[data-test-select]", (_evt, cb) => {
+          const nodeId = cb.getAttribute("data-test-select");
+          if (nodeId) {
+            this.toggleSelection(nodeId, Boolean(cb.checked));
+          }
+        }),
+      );
+
+      this._unsubscribers.push(
+        bindDelegatedEvent(this.stackList, "click", ".test-stack-node", (evt, card) => {
+          const rawTarget = evt.target;
+          const elTarget =
+            rawTarget && typeof rawTarget.closest === "function"
+              ? rawTarget
+              : rawTarget && rawTarget.parentElement
+                ? rawTarget.parentElement
+                : null;
+          if (
+            elTarget &&
+            typeof elTarget.closest === "function" &&
+            elTarget.closest("button, input, label, a")
+          ) {
+            return;
+          }
+          const nodeId = card.getAttribute("data-node-id");
+          if (nodeId) {
+            this.toggleSelection(nodeId, !this.selectedNodeIds.has(nodeId));
+          }
+        }),
+      );
+    }
+
+    bindClick(this.manualYesBtn, () => this.submitManualResponse(MANUAL_PROMPT_ACTIONS.YES));
+    bindClick(this.manualNoBtn, () => this.submitManualResponse(MANUAL_PROMPT_ACTIONS.NO));
+    bindClick(this.manualSubmitValueBtn, () =>
+      this.submitManualResponse(MANUAL_PROMPT_ACTIONS.MEASUREMENT),
+    );
+    bindClick(this.manualCancelBtn, () => this.submitManualResponse(MANUAL_PROMPT_ACTIONS.CANCEL));
+
+    if (this.manualValueInput) {
+      const onValueKeyDown = (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          this.submitManualResponse(MANUAL_PROMPT_ACTIONS.MEASUREMENT);
+        }
+      };
+      this.manualValueInput.addEventListener("keydown", onValueKeyDown);
+      this._unsubscribers.push(() =>
+        this.manualValueInput.removeEventListener("keydown", onValueKeyDown),
+      );
+    }
+
+    this._applyLeftTabDom();
+    this._syncRightPanelCards();
+    this._syncActionButtons();
+  }
+
+  /**
+   * Return the active tab key on the left panel (`"LOGS"` or `"TESTS"`).
+   *
+   * @returns {string}
+   */
+  getActiveLeftTab() {
+    return this.activeLeftTab;
+  }
+
+  /**
+   * Switch the active tab inside `#logPanel` between `"TESTS"` and `"LOGS"`.
+   *
+   * @param {string} tab - Target tab from `LEFT_PANEL_TABS`.
+   */
+  setActiveLeftTab(tab) {
+    let normalized = LEFT_PANEL_TABS.LOGS;
+    if (tab === LEFT_PANEL_TABS.TESTS) {
+      normalized = LEFT_PANEL_TABS.TESTS;
+    } else if (tab === LEFT_PANEL_TABS.TEST_LOG) {
+      normalized = LEFT_PANEL_TABS.TEST_LOG;
+    }
+    this.activeLeftTab = normalized;
+    this._applyLeftTabDom();
+  }
+
+  /**
+   * Synchronize Test Mode tab visibility and default active tab when entering/leaving `TEST` mode.
+   *
+   * @param {boolean} active - True when workstation mode is `TEST`.
+   */
+  setTestModeActive(active) {
+    this.isTestMode = Boolean(active);
+    if (this.leftTabTestsBtn) {
+      this.leftTabTestsBtn.style.display = this.isTestMode ? "inline-flex" : "none";
+    }
+    if (this.leftTabTestLogBtn) {
+      this.leftTabTestLogBtn.style.display = this.isTestMode ? "inline-flex" : "none";
+    }
+    this.setActiveLeftTab(this.isTestMode ? LEFT_PANEL_TABS.TESTS : LEFT_PANEL_TABS.LOGS);
+  }
+
+  /**
+   * Update left-panel tab buttons, content panes, and header tool groups.
+   */
+  _applyLeftTabDom() {
+    const isTests = this.activeLeftTab === LEFT_PANEL_TABS.TESTS;
+    const isTestLog = this.activeLeftTab === LEFT_PANEL_TABS.TEST_LOG;
+    const isSysLogs = !isTests && !isTestLog;
+
+    if (this.leftTabLogsBtn) {
+      this.leftTabLogsBtn.classList.toggle("active", isSysLogs);
+    }
+    if (this.leftTabTestsBtn) {
+      this.leftTabTestsBtn.classList.toggle("active", isTests);
+    }
+    if (this.leftTabTestLogBtn) {
+      this.leftTabTestLogBtn.classList.toggle("active", isTestLog);
+    }
+    if (this.logView) {
+      this.logView.style.display = isSysLogs ? "block" : "none";
+    }
+    if (this.sidebarView) {
+      this.sidebarView.style.display = isTests ? "flex" : "none";
+    }
+    if (this.consoleOutput) {
+      this.consoleOutput.style.display = isTestLog ? "block" : "none";
+    }
+    if (this.leftLogTools) {
+      this.leftLogTools.style.display = isSysLogs ? "inline-flex" : "none";
+    }
+    if (this.leftTestTools) {
+      this.leftTestTools.style.display = isTests ? "inline-flex" : "none";
+    }
+    if (this.leftTestLogTools) {
+      this.leftTestLogTools.style.display = isTestLog ? "inline-flex" : "none";
+    }
+  }
+
+  /**
+   * Ensure an initial scan has run when entering `TEST` mode.
+   *
+   * @returns {Promise<void>}
+   */
+  async ensureInitialized() {
+    if (!this._initializedScan) {
+      this._initializedScan = true;
+      await this.scanTests({ probeBoard: true });
+      await this.pollStatus();
+    }
+  }
+
+  /**
+   * Read the active attribute filter state from the toolbar controls.
+   *
+   * @returns {object}
+   */
+  getCurrentFilters() {
+    return {
+      project: (this.projectSelect && this.projectSelect.value) || "all",
+      scenario: (this.scenarioSelect && this.scenarioSelect.value) || "all",
+      board: ((this.boardInput && this.boardInput.value) || "auto").trim() || "auto",
+      binary: (this.binarySelect && this.binarySelect.value) || "all",
+      manual: (this.manualSelect && this.manualSelect.value) || "all",
+      query: ((this.searchInput && this.searchInput.value) || "").trim(),
+    };
+  }
+
+  /**
+   * Scan `@device_test` suites via `/api/tests/scan` or `/api/tests` with active attribute filters.
+   *
+   * @param {object} [options] - `{ probeBoard: boolean }`.
+   * @returns {Promise<object|null>}
+   */
+  async scanTests(options = {}) {
+    const probeBoard = Boolean(options.probeBoard);
+    const filters = this.getCurrentFilters();
+
+    try {
+      const data = await this.ctx.postJson("/api/tests/scan", {
+        ...filters,
+        probe_board: probeBoard,
+      });
+
+      if (!data) {
+        return null;
+      }
+
+      this._initializedScan = true;
+      this.tests = Array.isArray(data.tests) ? data.tests : [];
+      if (data.facets && typeof data.facets === "object") {
+        this.facets = data.facets;
+        this._populateDynamicFacetSelects();
+      }
+      if ("detected_board" in data) {
+        this.detectedBoard = data.detected_board;
+      }
+
+      for (const item of this.tests) {
+        if (item.last_result && item.node_id && !this.resultsMap[item.node_id]) {
+          this.resultsMap[item.node_id] = item.last_result;
+        }
+      }
+
+      const visibleSet = new Set(this.tests.map((t) => t.node_id));
+      for (const selectedId of this.selectedNodeIds) {
+        if (!visibleSet.has(selectedId)) {
+          this.selectedNodeIds.delete(selectedId);
+        }
+      }
+
+      this._renderBoardBadge();
+      this._renderTestStack();
+      this._syncActionButtons();
+      return data;
+    } catch (err) {
+      showToast(
+        this.ctx,
+        `Failed to scan device tests: ${(err && err.message) || String(err)}`,
+        "error",
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Populate `#testFilterProject` and `#testFilterBinary` options from discovered facets.
+   */
+  _populateDynamicFacetSelects() {
+    this._syncFacetSelect(this.projectSelect, this.facets.projects || [], "All Projects");
+    this._syncFacetSelect(this.binarySelect, this.facets.binaries || [], "All Binaries");
+  }
+
+  /**
+   * Synchronize a `<select>` element's options while preserving its selected value.
+   *
+   * @param {Element|null} selectEl - Target `<select>` element.
+   * @param {Array<string>} values - Discovered facet values.
+   * @param {string} allLabel - Display label for `"all"`.
+   */
+  _syncFacetSelect(selectEl, values, allLabel) {
+    if (!selectEl) {
+      return;
+    }
+    const prevValue = selectEl.value || "all";
+    clearChildren(selectEl);
+
+    const allOpt = createEl(this.ctx, "option", {
+      text: allLabel,
+      attrs: { value: "all" },
+    });
+    allOpt.value = "all";
+    selectEl.appendChild(allOpt);
+
+    for (const val of values) {
+      const opt = createEl(this.ctx, "option", {
+        text: val,
+        attrs: { value: val },
+      });
+      opt.value = val;
+      if (val === prevValue) {
+        opt.selected = true;
+      }
+      selectEl.appendChild(opt);
+    }
+
+    selectEl.value = values.includes(prevValue) ? prevValue : "all";
+  }
+
+  /**
+   * Render the attached board badge (`#testDetectedBoardBadge`).
+   */
+  _renderBoardBadge() {
+    if (!this.boardBadge) {
+      return;
+    }
+    if (this.detectedBoard && this.detectedBoard.board_type) {
+      this.boardBadge.textContent = `BOARD: ${this.detectedBoard.board_type} (${this.detectedBoard.chip})`;
+      this.boardBadge.className = "badge badge-green";
+    } else {
+      this.boardBadge.textContent = "BOARD: NOT DETECTED";
+      this.boardBadge.className = "badge badge-amber";
+    }
+  }
+
+  /**
+   * Toggle selection state of a single `nodeId`.
+   *
+   * @param {string} nodeId - Pytest node ID.
+   * @param {boolean} selected - Desired selection flag.
+   */
+  toggleSelection(nodeId, selected) {
+    if (selected) {
+      this.selectedNodeIds.add(nodeId);
+    } else {
+      this.selectedNodeIds.delete(nodeId);
+    }
+    this._updateTestStackInPlace();
+    this._syncSelectAllCheckbox();
+    this._syncActionButtons();
+  }
+
+  /**
+   * Select or deselect all currently visible filtered tests.
+   *
+   * @param {boolean} selectAll - True to select every visible card.
+   */
+  setSelectAllVisible(selectAll) {
+    if (selectAll) {
+      for (const item of this.tests) {
+        this.selectedNodeIds.add(item.node_id);
+      }
+    } else {
+      for (const item of this.tests) {
+        this.selectedNodeIds.delete(item.node_id);
+      }
+    }
+    this._updateTestStackInPlace();
+    this._syncSelectAllCheckbox();
+    this._syncActionButtons();
+  }
+
+  /**
+   * Keep `#testSelectAllCb` synchronized with card selections.
+   */
+  _syncSelectAllCheckbox() {
+    if (!this.selectAllCb) {
+      return;
+    }
+    const allVisibleSelected =
+      this.tests.length > 0 &&
+      this.tests.every((item) => this.selectedNodeIds.has(item.node_id));
+    this.selectAllCb.checked = allVisibleSelected;
+  }
+
+  /**
+   * Compute VCS-style card CSS classes for a stacked test node.
+   *
+   * @param {boolean} isSelected - Whether the card is selected.
+   * @param {string} statusLabel - Normalized status label (`IDLE`, `RUNNING`, `PASSED`, `FAILED`, `SKIPPED`).
+   * @returns {string}
+   */
+  _computeCardClassName(isSelected, statusLabel) {
+    const classes = ["test-stack-node"];
+    if (isSelected) {
+      classes.push("selected");
+    }
+    const upper = String(statusLabel || "IDLE").toUpperCase();
+    if (upper === "RUNNING") {
+      classes.push("running");
+    } else if (upper === "PASSED") {
+      classes.push("passed");
+    } else if (upper === "FAILED") {
+      classes.push("failed");
+    } else if (upper === "SKIPPED" || upper === "CANCELLED") {
+      classes.push("skipped");
+    }
+    return classes.join(" ");
+  }
+
+  /**
+   * Render the VCS-style stacked `@device_test` execution list (`#testStackList`) on scan updates.
+   */
+  _renderTestStack() {
+    if (!this.stackList) {
+      return;
+    }
+    this._cardRefs.clear();
+    clearChildren(this.stackList);
+
+    if (this.tests.length === 0) {
+      const emptyCard = createEl(this.ctx, "div", {
+        text: "No @device_test cases match the active attribute filters.",
+        style: {
+          color: "var(--xerxes-text-dim)",
+          textAlign: "center",
+          padding: "16px",
+          fontSize: "8.5px",
+        },
+      });
+      this.stackList.appendChild(emptyCard);
+      this._syncSelectAllCheckbox();
+      return;
+    }
+
+    for (const item of this.tests) {
+      const nodeId = String(item.node_id || "");
+      const checkboxEl = createEl(this.ctx, "input", {
+        className: "test-node-checkbox",
+        attrs: {
+          type: "checkbox",
+          "data-test-select": nodeId,
+          title: `Select ${item.name}`,
+        },
+      });
+
+      const orderStr = String(item.order || "").padStart(ORDER_PAD_WIDTH, "0");
+      const orderEl = createEl(this.ctx, "span", {
+        className: "test-node-order",
+        text: `● #${orderStr}`,
+      });
+
+      const titleEl = createEl(this.ctx, "span", {
+        className: "test-node-title",
+        text: item.name,
+      });
+
+      const statusBadgeEl = createEl(this.ctx, "span", {
+        className: "badge",
+        text: "IDLE",
+      });
+
+      const playBtnEl = createEl(this.ctx, "button", {
+        className: "btn btn-cyan test-run-one-btn",
+        text: "▶",
+        attrs: {
+          type: "button",
+          title: `Run ${item.name}`,
+          "data-test-run-one": nodeId,
+        },
+        on: {
+          click: (evt) => {
+            if (evt && typeof evt.preventDefault === "function") {
+              evt.preventDefault();
+            }
+            if (evt && typeof evt.stopPropagation === "function") {
+              evt.stopPropagation();
+            }
+            if (!this.isRunning) {
+              this.runNodes([nodeId]);
+            }
+          },
+        },
+      });
+
+      const headerRow = createEl(this.ctx, "div", {
+        className: "test-node-header-row",
+        children: [
+          createEl(this.ctx, "div", {
+            style: { display: "flex", alignItems: "center", gap: "6px", minWidth: "0" },
+            children: [checkboxEl, orderEl, titleEl],
+          }),
+          createEl(this.ctx, "div", {
+            style: { display: "inline-flex", alignItems: "center", gap: "6px", flexShrink: "0" },
+            children: [statusBadgeEl, playBtnEl],
+          }),
+        ],
+      });
+
+      const subjectEl = createEl(this.ctx, "div", {
+        className: "test-node-subject",
+        text: item.description || "On-device hardware verification step.",
+      });
+
+      const scenarioBadges = Array.isArray(item.scenarios)
+        ? item.scenarios.map((scen) =>
+            createEl(this.ctx, "span", {
+              className: "badge",
+              text: String(scen),
+            }),
+          )
+        : [];
+      const boardsText = Array.isArray(item.boards) ? item.boards.join(", ") : "*";
+      const binText = item.target_binary || "none";
+      const modeBadge = createEl(this.ctx, "span", {
+        className: item.manual ? "badge badge-amber" : "badge badge-cyan",
+        text: item.manual ? "MANUAL" : "AUTO",
+      });
+      const projBadge = createEl(this.ctx, "span", {
+        className: "badge",
+        text: `⎇ ${item.project || "device"}`,
+      });
+      const boardGlobBadge = createEl(this.ctx, "span", {
+        className: "badge",
+        text: boardsText,
+      });
+      const binBadge = createEl(this.ctx, "span", {
+        className: "badge",
+        text: `bin:${binText}`,
+      });
+
+      const tagsRow = createEl(this.ctx, "div", {
+        className: "test-badge-group",
+        style: { marginTop: "1px" },
+        children: [modeBadge, ...scenarioBadges, projBadge, boardGlobBadge, binBadge],
+      });
+
+      const detailEl = createEl(this.ctx, "div", {
+        className: "test-node-detail",
+        style: { display: "none" },
+      });
+
+      const cardEl = createEl(this.ctx, "div", {
+        className: "test-stack-node",
+        dataset: { nodeId },
+        children: [headerRow, subjectEl, tagsRow, detailEl],
+      });
+
+      this._cardRefs.set(nodeId, {
+        item,
+        cardEl,
+        checkboxEl,
+        statusBadgeEl,
+        playBtnEl,
+        detailEl,
+      });
+      this.stackList.appendChild(cardEl);
+    }
+
+    this._updateTestStackInPlace();
+    this._syncSelectAllCheckbox();
+  }
+
+  /**
+   * Update existing stacked test cards in-place so background 1s polling never detaches clicked buttons.
+   */
+  _updateTestStackInPlace() {
+    for (const [nodeId, refs] of this._cardRefs.entries()) {
+      const isSelected = this.selectedNodeIds.has(nodeId);
+      const runInfo = this.resultsMap[nodeId] || refs.item.last_result || null;
+      const statusLabel = runInfo && runInfo.status ? String(runInfo.status) : "IDLE";
+      const durationLabel =
+        runInfo && typeof runInfo.duration_s === "number"
+          ? ` (${runInfo.duration_s.toFixed(2)}s)`
+          : "";
+
+      refs.checkboxEl.checked = isSelected;
+      refs.cardEl.className = this._computeCardClassName(isSelected, statusLabel);
+      refs.statusBadgeEl.className = statusBadgeClass(statusLabel);
+      refs.statusBadgeEl.textContent = `${statusLabel}${durationLabel}`;
+      refs.playBtnEl.disabled = this.isRunning;
+
+      if (runInfo && runInfo.detail) {
+        refs.detailEl.style.display = "block";
+        refs.detailEl.style.color =
+          statusLabel === "FAILED" ? "var(--xerxes-red)" : "var(--xerxes-amber)";
+        refs.detailEl.textContent = String(runInfo.detail);
+      } else {
+        refs.detailEl.style.display = "none";
+        refs.detailEl.textContent = "";
+      }
+    }
+  }
+
+  /**
+   * Update button labels/disabled flags and summary counters (`#testSummaryStats`).
+   */
+  _syncActionButtons() {
+    const selectedCount = this.selectedNodeIds.size;
+    if (this.runSelectedBtn) {
+      this.runSelectedBtn.textContent = `▶ Run Selected (${selectedCount})`;
+      this.runSelectedBtn.disabled = this.isRunning || selectedCount === 0;
+    }
+    if (this.runFilteredBtn) {
+      this.runFilteredBtn.textContent = `▶ Run Filtered (${this.tests.length})`;
+      this.runFilteredBtn.disabled = this.isRunning || this.tests.length === 0;
+    }
+    if (this.cancelBtn) {
+      this.cancelBtn.disabled = !this.isRunning;
+    }
+    if (this.scanBtn) {
+      this.scanBtn.disabled = this.isRunning;
+    }
+
+    if (this.summaryStats) {
+      const results = Object.values(this.resultsMap);
+      const passed = results.filter((r) => r.status === "PASSED").length;
+      const failed = results.filter((r) => r.status === "FAILED").length;
+      const skipped = results.filter((r) => r.status === "SKIPPED").length;
+      this.summaryStats.textContent = `${this.tests.length} Shown | ${selectedCount} Selected | ${passed} Passed • ${failed} Failed • ${skipped} Skipped [${this.activeStep.toUpperCase()}]`;
+    }
+  }
+
+  /**
+   * Execute only the checked `@device_test` rows in top-to-bottom listing order.
+   *
+   * @returns {Promise<object|null>}
+   */
+  async runSelected() {
+    const orderedIds = this.tests
+      .map((item) => item.node_id)
+      .filter((nid) => this.selectedNodeIds.has(nid));
+    if (orderedIds.length === 0) {
+      return null;
+    }
+    return this.runNodes(orderedIds);
+  }
+
+  /**
+   * Execute all currently visible filtered `@device_test` rows in top-to-bottom listing order.
+   *
+   * @returns {Promise<object|null>}
+   */
+  async runFiltered() {
+    const orderedIds = this.tests.map((item) => item.node_id);
+    if (orderedIds.length === 0) {
+      return null;
+    }
+    return this.runNodes(orderedIds);
+  }
+
+  /**
+   * Start an asynchronous test run via `POST /api/tests/run`.
+   *
+   * @param {Array<string>} nodeIds - Ordered pytest node IDs to execute.
+   * @returns {Promise<object|null>}
+   */
+  async runNodes(nodeIds) {
+    if (!Array.isArray(nodeIds) || nodeIds.length === 0) {
+      return null;
+    }
+    const filters = this.getCurrentFilters();
+    const enableManual = this.enableManualCb ? Boolean(this.enableManualCb.checked) : true;
+    const boardArg = filters.board === "*" ? "auto" : filters.board;
+
+    const firstId = String(nodeIds[0]);
+    const firstName = firstId.split("::").pop() || firstId;
+    this.isRunning = true;
+    this.activeStep = TEST_RUN_STEPS.RUNNING;
+    for (let idx = 0; idx < nodeIds.length; idx += 1) {
+      const nid = String(nodeIds[idx]);
+      this.resultsMap[nid] = {
+        node_id: nid,
+        name: nid.split("::").pop() || nid,
+        status: idx === 0 ? "RUNNING" : "PENDING",
+        duration_s: null,
+        detail: "",
+      };
+    }
+    this._updateTestStackInPlace();
+    this._syncActionButtons();
+    this.renderProgressCard({
+      active: true,
+      step: TEST_RUN_STEPS.RUNNING,
+      total: nodeIds.length,
+      completed: 0,
+      passed: 0,
+      failed: 0,
+      skipped: 0,
+      progress_pct: INITIAL_OPTIMISTIC_PROGRESS_PCT,
+      current_test: firstId,
+      results: nodeIds.map((nid) => this.resultsMap[String(nid)]),
+      target_activity: {
+        phase: TARGET_LIFECYCLE_PHASES.EXECUTING_TEST,
+        label: "STARTING RUN",
+        headline: `[1/${nodeIds.length}] Starting ${firstName}`,
+        detail: "Launching on-device pytest runner & probing target metadata...",
+      },
+    });
+
+    try {
+      const res = await this.ctx.postJson("/api/tests/run", {
+        node_ids: nodeIds,
+        board: boardArg,
+        enable_manual: enableManual,
+        filters,
+      });
+      if (res && res.status) {
+        this._applyStatusSnapshot(res.status);
+      } else {
+        await this.pollStatus();
+      }
+      return res;
+    } catch (err) {
+      this.isRunning = false;
+      this.activeStep = TEST_RUN_STEPS.FAILED;
+      this._updateTestStackInPlace();
+      this._syncActionButtons();
+      showToast(
+        this.ctx,
+        `Failed to start test run: ${(err && err.message) || String(err)}`,
+        "error",
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Cancel the active `pytest` run via `POST /api/tests/cancel`.
+   *
+   * @returns {Promise<object|null>}
+   */
+  async cancelRun() {
+    try {
+      const res = await this.ctx.postJson("/api/tests/cancel", {});
+      if (res && res.status) {
+        this._applyStatusSnapshot(res.status);
+      } else {
+        await this.pollStatus();
+      }
+      return res;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Poll `GET /api/tests/status` and update live table badges, console output, and manual prompt UI.
+   *
+   * @returns {Promise<object|null>}
+   */
+  async pollStatus() {
+    try {
+      const snapshot = await this.ctx.fetchJson("/api/tests/status");
+      if (snapshot && typeof snapshot === "object") {
+        this._applyStatusSnapshot(snapshot);
+      }
+      return snapshot;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Apply a `/api/tests/status` snapshot to local state and DOM elements.
+   *
+   * @param {object} snapshot - Status payload from `DeviceTestRunnerManager`.
+   */
+  _applyStatusSnapshot(snapshot) {
+    this.isRunning = Boolean(snapshot.active);
+    this.activeStep = String(snapshot.step || TEST_RUN_STEPS.IDLE);
+
+    if (snapshot.detected_board) {
+      this.detectedBoard = snapshot.detected_board;
+      this._renderBoardBadge();
+    }
+
+    if (snapshot.results_map && typeof snapshot.results_map === "object") {
+      this.resultsMap = {
+        ...this.resultsMap,
+        ...snapshot.results_map,
+      };
+    } else if (Array.isArray(snapshot.results)) {
+      for (const rec of snapshot.results) {
+        if (rec && rec.node_id) {
+          this.resultsMap[rec.node_id] = rec;
+        }
+      }
+    }
+
+    if (Array.isArray(snapshot.console)) {
+      this.consoleLines = snapshot.console;
+      this._renderConsole();
+    }
+
+    this.renderManualPrompt(snapshot.manual_prompt || null);
+    this.renderProgressCard(snapshot);
+    this._updateTestStackInPlace();
+    this._syncActionButtons();
+  }
+
+  /**
+   * Synchronize visibility between `#testProgressCard` and `#testManualPromptCard` on the right panel.
+   */
+  _syncRightPanelCards() {
+    const promptActive = Boolean(this.activePrompt);
+    if (this.manualCard) {
+      this.manualCard.style.display = promptActive ? "flex" : "none";
+    }
+    if (this.progressCard) {
+      this.progressCard.style.display = promptActive ? "none" : "flex";
+    }
+  }
+
+  /**
+   * Render the right-panel Test Progress & Target Lifecycle Status Card (`#testProgressCard`).
+   *
+   * @param {object} snapshot - Status payload from `/api/tests/status`.
+   */
+  renderProgressCard(snapshot) {
+    if (!this.progressCard || !snapshot || typeof snapshot !== "object") {
+      return;
+    }
+
+    const total = Number(snapshot.total || 0);
+    const completed = Number(snapshot.completed || 0);
+    const passed = Number(snapshot.passed || 0);
+    const failed = Number(snapshot.failed || 0);
+    const skipped = Number(snapshot.skipped || 0);
+    const fallbackPct =
+      total > 0 ? Math.min(MAX_PROGRESS_PCT, Math.round((completed / total) * MAX_PROGRESS_PCT)) : 0;
+    const pct = Math.max(
+      0,
+      Math.min(
+        MAX_PROGRESS_PCT,
+        typeof snapshot.progress_pct === "number" ? snapshot.progress_pct : fallbackPct,
+      ),
+    );
+
+    const activity = snapshot.target_activity || {};
+    const phase = String(
+      activity.phase ||
+        (snapshot.active ? TARGET_LIFECYCLE_PHASES.EXECUTING_TEST : snapshot.step || TARGET_LIFECYCLE_PHASES.IDLE),
+    ).toLowerCase();
+    const label = String(activity.label || phase.toUpperCase());
+
+    if (this.progressBar) {
+      this.progressBar.style.width = `${pct}%`;
+    }
+    if (this.progressPctEl) {
+      this.progressPctEl.textContent = `${pct}%`;
+    }
+    if (this.phaseBadge) {
+      this.phaseBadge.textContent = label;
+      this.phaseBadge.className = phaseBadgeClass(phase);
+    }
+    if (this.progressDot) {
+      if (phase === TARGET_LIFECYCLE_PHASES.COMPLETE) {
+        this.progressDot.className = "sync-status-dot success";
+      } else if (phase === TARGET_LIFECYCLE_PHASES.FAILED) {
+        this.progressDot.className = "sync-status-dot error";
+      } else if (
+        snapshot.active ||
+        phase === TARGET_LIFECYCLE_PHASES.FLASHING ||
+        phase === TARGET_LIFECYCLE_PHASES.REBOOTING ||
+        phase === TARGET_LIFECYCLE_PHASES.MODE_SWITCH
+      ) {
+        this.progressDot.className = "sync-status-dot pulse";
+      } else {
+        this.progressDot.className = "sync-status-dot";
+      }
+    }
+
+    if (this.activityHeadline) {
+      this.activityHeadline.textContent =
+        activity.headline ||
+        (snapshot.active
+          ? `Running ${snapshot.current_test || "device test suite"}...`
+          : "Ready to execute on-device @device_test suites");
+    }
+    if (this.activityDetail) {
+      this.activityDetail.textContent =
+        activity.detail ||
+        "Select tests in the left-panel TEST SUITE tab and click ▶ Run Selected or ▶ Run Filtered.";
+    }
+
+    if (this.telemetryMode) {
+      const binLabel = activity.target_bin || "none";
+      const modeLabel = activity.mode || "TEST";
+      const switches = Number(activity.mode_switch_count || 0);
+      this.telemetryMode.textContent = `${binLabel} • MODE: ${modeLabel} (${switches} switch${switches === 1 ? "" : "es"})`;
+    }
+
+    if (this.telemetryFlash) {
+      if (activity.sync_active || phase === TARGET_LIFECYCLE_PHASES.FLASHING) {
+        const syncPct = Number(activity.sync_progress || 0);
+        const syncStep = activity.sync_step || "flashing";
+        this.telemetryFlash.textContent = `Flashing (${syncPct}%) • ${syncStep}`;
+      } else if (activity.flashed) {
+        this.telemetryFlash.textContent = activity.connected
+          ? "Flashed • RTT Online"
+          : "Flashed • Probe Standby";
+      } else {
+        this.telemetryFlash.textContent = activity.connected
+          ? "RTT Online"
+          : "Idle • Probe Standby";
+      }
+    }
+
+    if (this.telemetryReboots) {
+      const reboots = Number(activity.reboot_count || 0);
+      const lastCmd = activity.last_command || "No command dispatched";
+      this.telemetryReboots.textContent = `Reboots: ${reboots} • ${lastCmd}`;
+    }
+
+    if (this.telemetryCounts) {
+      this.telemetryCounts.textContent = `${completed} / ${total} Completed • ${passed} Pass • ${failed} Fail • ${skipped} Skip`;
+    }
+
+    if (this.runFeedList) {
+      clearChildren(this.runFeedList);
+      const runItems = Array.isArray(snapshot.results) ? snapshot.results : [];
+      if (runItems.length === 0) {
+        this.runFeedList.appendChild(
+          createEl(this.ctx, "span", {
+            text: "No active or recent test run in this session.",
+            style: { color: "var(--xerxes-text-dim)" },
+          }),
+        );
+      } else {
+        for (const rec of runItems) {
+          const itemStatus = String(rec.status || "PENDING");
+          const durText =
+            typeof rec.duration_s === "number" ? ` (${rec.duration_s.toFixed(2)}s)` : "";
+          const row = createEl(this.ctx, "div", {
+            className: "test-run-feed-row",
+            children: [
+              createEl(this.ctx, "span", {
+                text: rec.name || rec.node_id || "test",
+                style: {
+                  color:
+                    itemStatus === "RUNNING"
+                      ? "var(--xerxes-cyan)"
+                      : "var(--xerxes-text-light)",
+                  fontWeight: itemStatus === "RUNNING" ? "bold" : "normal",
+                },
+              }),
+              createEl(this.ctx, "span", {
+                className: statusBadgeClass(itemStatus),
+                text: `${itemStatus}${durText}`,
+              }),
+            ],
+          });
+          this.runFeedList.appendChild(row);
+        }
+      }
+    }
+  }
+
+  /**
+   * Render live `pytest` output inside `#testConsoleOutput`.
+   */
+  _renderConsole() {
+    if (!this.consoleOutput) {
+      return;
+    }
+    const shouldScroll =
+      this.consoleOutput.scrollTop + this.consoleOutput.clientHeight >=
+      this.consoleOutput.scrollHeight - CONSOLE_SCROLL_SLACK_PX;
+
+    if (this.consoleLines.length === 0) {
+      this.consoleOutput.innerHTML =
+        '<span class="term-dim">&gt; Select tests above and click ▶ Run Selected or ▶ Run Filtered.</span>';
+      return;
+    }
+
+    this.consoleOutput.innerHTML = this.consoleLines
+      .map((line) => renderTerminalHtml(line))
+      .join("<br>");
+    if (shouldScroll) {
+      this.consoleOutput.scrollTop = this.consoleOutput.scrollHeight;
+    }
+  }
+
+  /**
+   * Render or hide the interactive Manual Test Prompt Card (`#testManualPromptCard`).
+   *
+   * @param {object|null} promptData - Active manual prompt dictionary from `host.py`.
+   */
+  renderManualPrompt(promptData) {
+    this.activePrompt = promptData && promptData.active ? promptData : null;
+    this._syncRightPanelCards();
+    if (!this.manualCard) {
+      return;
+    }
+
+    if (!this.activePrompt) {
+      this._lastPromptId = "";
+      return;
+    }
+
+    const promptId = String(this.activePrompt.prompt_id || "");
+    const isNewPrompt = promptId !== this._lastPromptId;
+    this._lastPromptId = promptId;
+    if (this.manualTitle) {
+      this.manualTitle.textContent = `[${this.activePrompt.project || "device"}] ${this.activePrompt.test_name || "manual_test"}`;
+    }
+    if (this.manualProcedure) {
+      this.manualProcedure.textContent = this.activePrompt.procedure || "";
+    }
+    if (this.manualPromptText) {
+      this.manualPromptText.textContent = this.activePrompt.prompt || "";
+    }
+
+    const isMeasurement = this.activePrompt.kind === MANUAL_PROMPT_KINDS.MEASUREMENT;
+    if (this.manualYesNoRow) {
+      this.manualYesNoRow.style.display = isMeasurement ? "none" : "flex";
+    }
+    if (this.manualMeasurementRow) {
+      this.manualMeasurementRow.style.display = isMeasurement ? "flex" : "none";
+    }
+    if (this.manualUnitLabel) {
+      this.manualUnitLabel.textContent = this.activePrompt.unit ? `(${this.activePrompt.unit})` : "";
+    }
+
+    if (isNewPrompt) {
+      if (this.manualValueInput) {
+        this.manualValueInput.value = "";
+      }
+      if (this.manualCommentInput) {
+        this.manualCommentInput.value = "";
+      }
+      if (this.manualErrorMsg) {
+        this.manualErrorMsg.style.display = "none";
+        this.manualErrorMsg.textContent = "";
+      }
+    }
+  }
+
+  /**
+   * Show an inline validation error inside `#testManualPromptCard`.
+   *
+   * @param {string} message - Validation error text.
+   */
+  _showManualError(message) {
+    if (this.manualErrorMsg) {
+      this.manualErrorMsg.style.display = "block";
+      this.manualErrorMsg.textContent = message;
+    }
+  }
+
+  /**
+   * Submit an operator decision (`yes`, `no`, `measurement`, or `cancel`) to `POST /api/manual_prompt/respond`.
+   *
+   * @param {string} action - One of `MANUAL_PROMPT_ACTIONS`.
+   * @returns {Promise<object|null>}
+   */
+  async submitManualResponse(action) {
+    if (!this.activePrompt) {
+      return null;
+    }
+    const rawValue = this.manualValueInput ? String(this.manualValueInput.value || "").trim() : "";
+    const comment = this.manualCommentInput
+      ? String(this.manualCommentInput.value || "").trim()
+      : "";
+
+    if (action === MANUAL_PROMPT_ACTIONS.MEASUREMENT && !rawValue) {
+      this._showManualError("Enter a numeric measured value before submitting.");
+      return null;
+    }
+    if (action === MANUAL_PROMPT_ACTIONS.CANCEL && !comment) {
+      this._showManualError("Enter a cancellation comment before cancelling the manual test.");
+      return null;
+    }
+
+    try {
+      const res = await this.ctx.postJson("/api/manual_prompt/respond", {
+        prompt_id: this.activePrompt.prompt_id || "",
+        action,
+        value: rawValue,
+        comment,
+      });
+      if (this.manualErrorMsg) {
+        this.manualErrorMsg.style.display = "none";
+        this.manualErrorMsg.textContent = "";
+      }
+      if (res && res.manual_prompt) {
+        this.renderManualPrompt(res.manual_prompt);
+      }
+      return res;
+    } catch (err) {
+      this._showManualError((err && err.message) || String(err));
+      return null;
+    }
+  }
+
+  /**
+   * Copy current test console output to clipboard.
+   *
+   * @param {Element|null} [buttonEl] - Optional trigger button for visual feedback.
+   * @returns {Promise<boolean>}
+   */
+  async copyConsoleOutput(buttonEl = null) {
+    const text = this.consoleLines.map((line) => stripAnsi(line)).join("\n");
+    const ok = await this.ctx.copyTextToClipboard(text);
+    if (buttonEl) {
+      const orig = buttonEl.textContent;
+      buttonEl.textContent = ok ? "✓ Copied!" : "Error";
+      this.ctx.setTimeout(() => {
+        buttonEl.textContent = orig;
+      }, COPY_FEEDBACK_DURATION_MS);
+    }
+    return ok;
+  }
+
+  /**
+   * Clear local test console output lines.
+   */
+  clearConsole() {
+    this.consoleLines = [];
+    this._renderConsole();
+  }
+
+  /**
+   * Unbind all DOM event listeners.
+   */
+  destroy() {
+    for (const unsub of this._unsubscribers) {
+      unsub();
+    }
+    this._unsubscribers = [];
+  }
+}
+
+/**
+ * Factory creating a `TestRunnerController` bound to `ctx`.
+ *
+ * @param {object} ctx - Explicit `RuntimeContext`.
+ * @param {object} [options] - Controller options.
+ * @returns {TestRunnerController}
+ */
+export function createTestRunner(ctx, options = {}) {
+  return new TestRunnerController(ctx, options);
+}

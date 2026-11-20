@@ -39,6 +39,20 @@ impl RttChannel {
         }
     }
 
+    pub fn is_empty<T: TargetAccess + ?Sized>(&self, target: &mut T) -> Result<bool, String> {
+        let mut wr_bytes = [0u8; 4];
+        let mut rd_bytes = [0u8; 4];
+        target.read_mem(self.write_offset_ptr, &mut wr_bytes)?;
+        target.read_mem(self.read_offset_ptr, &mut rd_bytes)?;
+        Ok(wr_bytes == rd_bytes)
+    }
+
+    pub fn read_flags<T: TargetAccess + ?Sized>(&self, target: &mut T) -> Result<u32, String> {
+        let mut flag_bytes = [0u8; 4];
+        target.read_mem(self.flags_offset_ptr, &mut flag_bytes)?;
+        Ok(u32::from_le_bytes(flag_bytes))
+    }
+
     pub fn read<T: TargetAccess + ?Sized>(
         &self,
         target: &mut T,
@@ -273,8 +287,10 @@ pub struct RttOptions<'a> {
     pub dump_mem: bool,
     /// Reset target on connection
     pub reset: bool,
-    /// Host for openocd connection
-    pub openocd_host: Option<&'a str>,
+    /// Host:port for `host_debug` GDB RSP memory bridge connection
+    pub gdb_bridge: Option<&'a str>,
+    /// Emit structured single-line NDJSON events on stdout
+    pub json_events: bool,
     /// Output raw console telemetry
     pub show_raw_cli: bool,
     /// Terminal progress bar spinner
@@ -310,7 +326,8 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         raw,
         dump_mem,
         reset,
-        openocd_host,
+        gdb_bridge,
+        json_events,
         show_raw_cli,
         spinner,
         channel_mode,
@@ -339,10 +356,12 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
     // Spawn the stdin reader thread once (if interactive CLI is enabled)
     let (stdin_tx, stdin_rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    let stdin_eof = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let stream_cli =
         channel_mode == crate::ChannelMode::Cli || channel_mode == crate::ChannelMode::Both;
     if stream_cli && !dump {
         use std::io::Read;
+        let eof_flag = std::sync::Arc::clone(&stdin_eof);
         std::thread::spawn(move || {
             let mut stdin = std::io::stdin();
             let mut buf = [0u8; 128];
@@ -353,7 +372,10 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                             break;
                         }
                     }
-                    _ => break,
+                    _ => {
+                        eof_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                        break;
+                    }
                 }
             }
         });
@@ -375,13 +397,9 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         spinner.reset();
         spinner.enable_steady_tick(std::time::Duration::from_millis(80));
 
-        let connection_res = if let Some(host) = openocd_host {
-            let addr = if host.contains(':') {
-                host.to_string()
-            } else {
-                format!("{}:3333", host)
-            };
-            spinner.set_message(format!("Connecting to OpenOCD GDB session at {}...", addr));
+        let connection_res = if let Some(host) = gdb_bridge {
+            let addr = tool_common::normalize_rtt_bridge_addr(host);
+            spinner.set_message(format!("Connecting to GDB bridge session at {}...", addr));
             match GdbClient::connect(&addr) {
                 Ok(client) => {
                     gdb_client_store = Some(client);
@@ -478,11 +496,21 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
             match parse_rtt_channels(target.as_mut(), rtt_symbol_addr, object_file.as_ref()) {
                 Ok(chans) => chans,
                 Err(e) => {
+                    const BRIDGE_RETRY_DELAY_MS: u64 = 250;
+                    const DIRECT_RETRY_DELAY_MS: u64 = 1000;
+                    if stream_cli && !dump && stdin_eof.load(std::sync::atomic::Ordering::SeqCst) {
+                        break;
+                    }
+                    let retry_ms = if gdb_bridge.is_some() {
+                        BRIDGE_RETRY_DELAY_MS
+                    } else {
+                        DIRECT_RETRY_DELAY_MS
+                    };
                     spinner.set_message(format!(
-                        "Failed to parse RTT channels: {}. Retrying in 1s...",
-                        e
+                        "Failed to parse RTT channels: {}. Retrying in {}ms...",
+                        e, retry_ms
                     ));
-                    std::thread::sleep(Duration::from_secs(1));
+                    std::thread::sleep(Duration::from_millis(retry_ms));
                     continue;
                 }
             };
@@ -528,15 +556,30 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
         spinner.finish_and_clear();
 
-        println!("RTT connected. Active channels:");
-        if defmt_channel.is_some() {
-            println!("  - Up Channel: \"defmt\" (logs)");
-        }
-        if cli_up_channel.is_some() {
-            println!("  - Up Channel: \"cli\" (raw output)");
-        }
-        if cli_down_channel.is_some() {
-            println!("  - Down Channel: \"cli\" (raw input)");
+        let emit_json = |ev: &host_cli::HostCliEvent| {
+            use std::io::Write as _;
+            println!("{}", ev.to_json_line());
+            let _ = io::stdout().flush();
+        };
+
+        if json_events && !dump {
+            emit_json(&host_cli::HostCliEvent::SessionStarted {
+                chip: chip.to_string(),
+                defmt: defmt_channel.is_some(),
+                cli_up: cli_up_channel.is_some(),
+                cli_down: cli_down_channel.is_some(),
+            });
+        } else {
+            println!("RTT connected. Active channels:");
+            if defmt_channel.is_some() {
+                println!("  - Up Channel: \"defmt\" (logs)");
+            }
+            if cli_up_channel.is_some() {
+                println!("  - Up Channel: \"cli\" (raw output)");
+            }
+            if cli_down_channel.is_some() {
+                println!("  - Down Channel: \"cli\" (raw input)");
+            }
         }
 
         // Set up defmt decoder
@@ -548,37 +591,46 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
             None
         };
 
+        let mut cli_chunk_parser = host_cli::CliChunkParser::new();
+        let mut shell_idle_poller = host_cli::ShellIdlePoller::new();
+
         // Dump initial CLI output
         if let Some(cli_up) = cli_up_channel {
             let mut initial_buf = [0u8; 1024];
             match cli_up.read(target.as_mut(), &mut initial_buf) {
                 Ok(n) if n > 0 => {
                     use std::io::Write;
-                    if show_raw_cli {
-                        println!("\n--- Raw CLI Buffer Dump ({} bytes cached) ---", n);
-                        for (i, chunk) in initial_buf[..n].chunks(16).enumerate() {
-                            let hex_string: Vec<String> =
-                                chunk.iter().map(|b| format!("{:02X}", b)).collect();
-                            let hex_part = hex_string.join(" ");
-                            let ascii_part: String = chunk
-                                .iter()
-                                .map(|&b| {
-                                    if (32..=126).contains(&b) {
-                                        b as char
-                                    } else {
-                                        '.'
-                                    }
-                                })
-                                .collect();
-                            println!("0x{:04X}: {:48} | {}", i * 16, hex_part, ascii_part);
+                    if json_events && !dump {
+                        for ev in cli_chunk_parser.push_bytes(&initial_buf[..n]) {
+                            emit_json(&ev);
                         }
-                        println!("--- End of Dump ---\n");
-                    }
+                    } else {
+                        if show_raw_cli {
+                            println!("\n--- Raw CLI Buffer Dump ({} bytes cached) ---", n);
+                            for (i, chunk) in initial_buf[..n].chunks(16).enumerate() {
+                                let hex_string: Vec<String> =
+                                    chunk.iter().map(|b| format!("{:02X}", b)).collect();
+                                let hex_part = hex_string.join(" ");
+                                let ascii_part: String = chunk
+                                    .iter()
+                                    .map(|&b| {
+                                        if (32..=126).contains(&b) {
+                                            b as char
+                                        } else {
+                                            '.'
+                                        }
+                                    })
+                                    .collect();
+                                println!("0x{:04X}: {:48} | {}", i * 16, hex_part, ascii_part);
+                            }
+                            println!("--- End of Dump ---\n");
+                        }
 
-                    let _ = io::stdout().write_all(&initial_buf[..n]);
-                    let _ = io::stdout().flush();
-                    if !initial_buf[..n].ends_with(b"\n") {
-                        println!();
+                        let _ = io::stdout().write_all(&initial_buf[..n]);
+                        let _ = io::stdout().flush();
+                        if !initial_buf[..n].ends_with(b"\n") {
+                            println!();
+                        }
                     }
                 }
                 _ => {}
@@ -598,11 +650,13 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
 
-        println!("\nRTT Session Started (Press Ctrl+C to exit):");
-        if cli_up_channel.is_some() && cli_down_channel.is_some() {
-            println!("Interactive RTT console active. Type commands and press Enter.");
+        if !json_events {
+            println!("\nRTT Session Started (Press Ctrl+C to exit):");
+            if cli_up_channel.is_some() && cli_down_channel.is_some() {
+                println!("Interactive RTT console active. Type commands and press Enter.");
+            }
+            println!();
         }
-        println!();
 
         // Run the poll loop
         let mut rtt_buf = [0u8; 1024];
@@ -636,11 +690,12 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                             .map(|loc| loc.module.as_str());
                                         let clean_module = module_path.map(format_target_namespace);
 
-                                        let device_ts = frame
+                                        let device_ts_sec = frame
                                             .display_timestamp()
                                             .map(|ts| ts.to_string())
-                                            .and_then(|s| s.trim().parse::<f64>().ok())
-                                            .map(|ts_sec| ts_sec * 1_000_000.0);
+                                            .and_then(|s| s.trim().parse::<f64>().ok());
+                                        let device_ts =
+                                            device_ts_sec.map(|ts_sec| ts_sec * 1_000_000.0);
 
                                         match handle_tracing_line(
                                             &line_str,
@@ -734,7 +789,28 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                                     format!("{}{}", module_context, line_str);
                                             }
                                         }
-                                        if !line_str.contains("Device Telemetry: ") {
+                                        if json_events {
+                                            if !line_str.contains("Device Telemetry: ") {
+                                                emit_json(&host_cli::HostCliEvent::Defmt {
+                                                    level: host_cli::extract_defmt_level(
+                                                        &plain_line,
+                                                    )
+                                                    .to_string(),
+                                                    module: clean_module.clone(),
+                                                    device_ts: device_ts_sec,
+                                                    message: plain_line.clone(),
+                                                    formatted: line_str.clone(),
+                                                });
+                                            }
+                                            if let Some(comp_ev) =
+                                                host_cli::detect_shell_completion_event(
+                                                    &plain_line,
+                                                    device_ts_sec,
+                                                )
+                                            {
+                                                emit_json(&comp_ev);
+                                            }
+                                        } else if !line_str.contains("Device Telemetry: ") {
                                             if !stdout_at_bol {
                                                 println!();
                                             }
@@ -767,11 +843,17 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                         did_work = true;
                         let write_buf = host_cli::cancel_echo(&rtt_buf[..n], &mut sent_buffer);
                         if !write_buf.is_empty() {
-                            if let Some(&last) = write_buf.last() {
-                                stdout_at_bol = last == b'\n';
+                            if json_events {
+                                for ev in cli_chunk_parser.push_bytes(&write_buf) {
+                                    emit_json(&ev);
+                                }
+                            } else {
+                                if let Some(&last) = write_buf.last() {
+                                    stdout_at_bol = last == b'\n';
+                                }
+                                let _ = std::io::stdout().write_all(&write_buf);
+                                let _ = std::io::stdout().flush();
                             }
-                            let _ = std::io::stdout().write_all(&write_buf);
-                            let _ = std::io::stdout().flush();
                         }
                     }
                     Err(e) => {
@@ -820,6 +902,21 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
+            // 4. Poll RTT shell-idle control flag on `cli_down` once input/output buffers are quiet
+            if json_events && !dump {
+                if let (Some(cli_up), Some(cli_down)) = (cli_up_channel, cli_down_channel) {
+                    if let (Ok(flags), Ok(up_empty), Ok(down_empty)) = (
+                        cli_down.read_flags(target.as_mut()),
+                        cli_up.is_empty(target.as_mut()),
+                        cli_down.is_empty(target.as_mut()),
+                    ) {
+                        if let Some(epoch) = shell_idle_poller.poll(flags, up_empty, down_empty) {
+                            emit_json(&cli_chunk_parser.on_shell_idle(epoch));
+                        }
+                    }
+                }
+            }
+
             if shutdown_requested.load(std::sync::atomic::Ordering::SeqCst) {
                 running = false;
             }
@@ -862,6 +959,15 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         drop(target);
         drop(probe_rs_session_store);
         drop(gdb_client_store);
+
+        if json_events && !dump {
+            for ev in cli_chunk_parser.flush_remaining() {
+                emit_json(&ev);
+            }
+            emit_json(&host_cli::HostCliEvent::SessionDisconnected {
+                error: run_error.clone(),
+            });
+        }
 
         if let Some(err) = run_error {
             if !running || shutdown_requested.load(std::sync::atomic::Ordering::SeqCst) {

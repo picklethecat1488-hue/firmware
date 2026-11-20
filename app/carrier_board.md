@@ -6,7 +6,7 @@ For dedicated architecture specifications and repository standards, see:
 - **[Carrier Board 2.0 (NXP MCX N947) Firmware Architecture Guide](../docs/carrier_board_architecture.md)**: Silicon specs, dual-core AMP architecture, inter-core IPC protocol, storage partition map, and power states.
 - **[Unified Firmware Architecture Guide](../docs/firmware_architecture.md)**: Modular design principles, cross-platform concurrency patterns, and layered crate demarcations.
 
-The source of truth for bringup verification steps is [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml).
+The source of truth for bringup, integration, and smoke verification steps is [`tools/device_tests/suites/test_carrier_board_bringup.py`](../tools/device_tests/suites/test_carrier_board_bringup.py).
 
 ---
 
@@ -836,7 +836,7 @@ flowchart LR
     S1["Stage 1: Register Smoke Tests<br/>(GPIO / CLKOUT)"] --> S2["Stage 2: Synchronous HAL<br/>(On-Chip I2C, I3C, UART, BLE)"]
     S2 --> S3["Stage 3: Async DMA HAL<br/>(eDMA / I2S / Interrupts / Timers)"]
     S3 --> S4["Stage 4: Dual-Core IPC<br/>(MU Handshake & Ping-Pong)"]
-    S4 --> S5["Stage 5: Bringup YAML Gate<br/>(carrier_board_bringup.yaml)"]
+    S4 --> S5["Stage 5: Device Pytest Gate<br/>(test_carrier_board_bringup.py)"]
 ```
 
 1. **Stage 1: Silicon Register Smoke Tests**:
@@ -857,8 +857,8 @@ flowchart LR
 4. **Stage 4: Dual-Core Bringup & Inter-Core IPC Benchmark**:
    - Core 0 initiates Core 1 startup; Core 1 transmits a greeting token back to Core 0 via the Messaging Unit (MU).
    - Measure round-trip ping-pong latency across the shared SRAMX ring buffer; verify zero data corruption.
-5. **Stage 5: Full Bringup YAML Integration**:
-   - Execute all automated checks codified in [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml). Verification passes only when 100% of checks succeed.
+5. **Stage 5: Full Device Pytest Suite Integration**:
+   - Execute all automated checks codified in [`tools/device_tests/suites/test_carrier_board_bringup.py`](../tools/device_tests/suites/test_carrier_board_bringup.py). Verification passes only when 100% of checks succeed.
 
 ---
 
@@ -1125,7 +1125,7 @@ To deliver instantaneous user responsiveness while guaranteeing cryptographic in
 
 ## 7. Hardware Bringup, Verification & Architecture Risk Protocol
 
-The authoritative source of truth for bringup verification is [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml). All hardware verification procedures must follow the step definitions established in that configuration.
+The authoritative source of truth for bringup verification is [`tools/device_tests/suites/test_carrier_board_bringup.py`](../tools/device_tests/suites/test_carrier_board_bringup.py). All hardware verification procedures must follow the step definitions established in that configuration.
 
 ### Architecture Risk Identification & Mitigation Matrix
 
@@ -1165,7 +1165,7 @@ flowchart LR
   - Internal flash partitioning: `bootloader` (64 KB), `app` (1,856 KB), `metadata` (64 KB), and `keystore` (64 KB).
   - High-speed UART0 (1 Mb/s) diagnostic banner and Segger RTT logging output.
 - **Verification Gate**:
-  - Executes steps 1–4 of [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml).
+  - Executes steps 1–4 of [`tools/device_tests/suites/test_carrier_board_bringup.py`](../tools/device_tests/suites/test_carrier_board_bringup.py).
   - `embassy-mcx` Stage 1 register smoke tests and foundational timer/UART async drivers pass on hardware.
   - Cold boot ready latency measured $\le 39.5\,\text{ms}$ (strict budget: $\le 50.0\,\text{ms}$).
   - Ed25519 signature verification and anti-rollback monotonic counter validation pass 100% on valid and invalid test images.
@@ -1178,7 +1178,7 @@ flowchart LR
   - `embassy-ipc-channel` protocol operational with Messaging Unit (MU) doorbell hardware interrupts.
   - High-performance POD direct copy and `minicbor` framing for cross-core telemetry events.
 - **Verification Gate**:
-  - Executes steps 5–7 of [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml).
+  - Executes steps 5–7 of [`tools/device_tests/suites/test_carrier_board_bringup.py`](../tools/device_tests/suites/test_carrier_board_bringup.py).
   - 100,000 round-trip IPC messages transferred without dropped frames, race conditions, or core lockups.
   - The Real-Time Processing Core (Core 0) maintains deterministic 1 kHz sensor sampling loop jitter $\le 2.0\,\mu\text{s}$.
 
@@ -1192,7 +1192,7 @@ flowchart LR
   - Host filesystem tool (`tools/host_fs`) operational with `dev:builtin-flash` and `dev:ext-flash` targets.
   - SRAM-relocatable flashing kernel (`flash_loader_ram`, 8 KB) for OTA image installation.
 - **Verification Gate**:
-  - Executes steps 8–10 of [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml).
+  - Executes steps 8–10 of [`tools/device_tests/suites/test_carrier_board_bringup.py`](../tools/device_tests/suites/test_carrier_board_bringup.py).
   - Flash wear leveling, power-loss brownout atomicity, and CRC32 payload verification pass across 5,000 simulated power interruption cycles.
 
 #### Milestone 4 (M4): Peripheral Sensors, User Interface & Communications
@@ -1201,7 +1201,7 @@ flowchart LR
   - Always-On Core (Core 1) low-power drivers: TI LP5009 RGB LED controller, TI BQ24074 charger monitor, MAX17048 fuel gauge, and FlexSPI SLC NAND storage subsystem (`sequential-storage`).
   - High-speed UART host servicing interface (`tools/host_cli`) supporting production provisioning and field diagnostics.
 - **Verification Gate**:
-  - Executes steps 11–14 of [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml).
+  - Executes steps 11–14 of [`tools/device_tests/suites/test_carrier_board_bringup.py`](../tools/device_tests/suites/test_carrier_board_bringup.py).
   - Proximity touch gesture detection accuracy $\ge 98\%$; acoustic alert playback at nominal $65\,\text{dBA}$ verified.
   - BLE sustained telemetry throughput $\ge 24\,\text{kB/s}$ without dropped event frames.
 
@@ -1221,7 +1221,7 @@ flowchart LR
     - `ThermalController`: Silicon junction temperature tracking and throttling.
   - Factory ship mode entry (`host_cli ship-mode`) and USB cable insertion wake asserted via `/PGOOD` without enclosure disassembly.
 - **Verification Gate**:
-  - Executes complete bringup suite (steps 1–16 of [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml)).
+  - Executes complete bringup suite (steps 1–16 of [`tools/device_tests/suites/test_carrier_board_bringup.py`](../tools/device_tests/suites/test_carrier_board_bringup.py)).
   - End-to-end power consumption validated: $\le 185\,\mu\text{A}$ in `PowerDown` (Standby), $< 1.0\,\mu\text{A}$ in `Off` (Ship Mode), and $\le 12.0\,\text{mA}$ in baseline `Active` running mode.
   - Instantaneous capacitive touch wake from `PowerDown` mode $\le 1.8\,\text{ms}$ (target bound: $\le 2.5\,\text{ms}$).
 

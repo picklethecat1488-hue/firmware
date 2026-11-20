@@ -153,9 +153,8 @@ pub async fn run(
                     f.commit().map_err(io::Error::other)?;
                 }
                 EitherFlash::Gdb(f) => {
-                    spinner.set_message(
-                        "Writing updated filesystem back to device via OpenOCD GDB...",
-                    );
+                    spinner
+                        .set_message("Writing updated filesystem back to device via GDB bridge...");
                     f.commit().map_err(io::Error::other)?;
                 }
             }

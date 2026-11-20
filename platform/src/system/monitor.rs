@@ -44,6 +44,20 @@ pub static HEARTBEAT_ACTIVE: AtomicBool = AtomicBool::new(true);
 /// Global atomic storing Core 0's vector table address during boot.
 pub static CORE0_VTOR: AtomicU32 = AtomicU32::new(0);
 
+/// Canonical unmangled secondary-core reset entry trampoline for symbolic GDB / DWARF debugging.
+///
+/// Invoked as the first firmware text frame when Core 1 exits the boot ROM handshake so
+/// debuggers can set `break Core1_Reset_Handler` alongside `break Reset_Handler` on Core 0.
+///
+/// # Safety
+/// Must only be invoked by the secondary core boot trampoline with a valid `noreturn` entry pointer.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn Core1_Reset_Handler(entry: unsafe extern "C" fn() -> !) -> ! {
+    core::hint::black_box(entry)()
+}
+
 /// The heartbeat task that periodically updates the executor progress timestamp.
 #[embassy_executor::task(pool_size = NUM_CORES)]
 pub async fn heartbeat_task(cpu_id: CpuId, interval_ms: u32) -> ! {
