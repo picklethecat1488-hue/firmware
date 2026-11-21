@@ -2,12 +2,13 @@
 
 - **UUID**: `00096b59-c515-43fe-93ce-5dc6c32910fa`
 - **ID**: `WORM-LUBRICATED-FLATWORM-512`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-20 20:14:54 UTC`
 - **Resolved**: `2026-11-21 19:20:47 UTC`
+- **Accepted**: `2026-11-21 19:20:50 UTC`
 
 #### Description
 
