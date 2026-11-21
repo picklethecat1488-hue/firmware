@@ -1,12 +1,13 @@
-# 🔴 `[WORM-LITHE-ENCHYTRAEID-678]` Single step repeatedly hangs
+# 🟢 `[WORM-LITHE-ENCHYTRAEID-678]` Single step repeatedly hangs
 
 - **UUID**: `4261aba6-717f-4502-be63-7e8e0112c637`
 - **ID**: `WORM-LITHE-ENCHYTRAEID-678`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-11-21 19:20:51 UTC`
+- **Resolved**: `2026-11-21 22:51:21 UTC`
 
 #### Description
 
@@ -301,3 +302,7 @@ SEND [↵]
 
 - [ ] Start host.py with --debug-server on cat_detector_shell and verify active GDB ports | `python tools/host.py --bin cat_detector_shell --debug-server && python tools/host.py debug status` <!-- id:ed9aba67 -->
 - [ ] Single-step 10 times from cat_detector_shell.rs:60 and across scheduler.rs:222 (wfe) via gdb-proxy and detach cleanly under 30s | `arm-none-eabi-gdb --nx --batch -ex 'set sysroot /' -ex 'source .vscode/cortex_debug_init.gdb' -ex 'target extended-remote | python3 -u tools/host.py debug gdb-proxy --core 0' -ex 'monitor reset halt' -ex 'maintenance flush register-cache' -ex 'hbreak app/src/cat_detector_shell.rs:60' -ex 'continue' -ex 'next' -ex 'next' -ex 'next' -ex 'next' -ex 'next' -ex 'next' -ex 'next' -ex 'next' -ex 'next' -ex 'next' -ex 'delete breakpoints' -ex 'hbreak platform/src/system/scheduler.rs:222' -ex 'continue' -ex 'next' -ex 'next' -ex 'detach' target/active_target.elf` <!-- id:5051a76d -->
+
+#### Resolution Notes
+
+Advanced PC deterministically across Thumb/Thumb-2 WFE and WFI sleep-hint instructions during single-step and step-over resume, bypassed probe-rs armv6m::run() masked pre-step on resume/detach, added vCont;r range-stepping, expedited T05 stop replies, ELF ROM caching, Thumb-16 unwind register preservation, and RTT bridge priority yielding so 10+ single steps complete well under 30s, and fixed gdb-proxy SIGINT/stdin-EOF handling + server disconnect cleanup so VS Code disconnects cleanly.
