@@ -449,6 +449,17 @@ class DaemonRunner:
             self.sync_logs.clear()
             self.sync_status["console"] = []
         try:
+            # Detach active RTT / GDB probe handles before recompiling target ELF on disk so an outgoing
+            # firmware session cannot decode mismatched defmt string tables or pollute the new trace mode.
+            probe_was_busy = (self.rtt_process is not None and self.rtt_process.poll() is None) or (
+                self.debug_process is not None and self.debug_process.poll() is None
+            )
+            self.stop_rtt_streaming()
+            self.stop_debug_server()
+            self.trace_store.clear()
+            if probe_was_busy:
+                time.sleep(PROBE_RELEASE_SETTLE_SEC)
+
             # 1. Compile target firmware
             if self.is_sync_cancelled:
                 return dict(self.sync_status)
@@ -466,16 +477,9 @@ class DaemonRunner:
             )
             self.build_host_tools()
 
-            # 3. Flash target device (release probe first)
+            # 3. Flash target device
             if self.is_sync_cancelled:
                 return dict(self.sync_status)
-            probe_was_busy = (self.rtt_process is not None and self.rtt_process.poll() is None) or (
-                self.debug_process is not None and self.debug_process.poll() is None
-            )
-            self.stop_rtt_streaming()
-            self.stop_debug_server()
-            if probe_was_busy:
-                time.sleep(PROBE_RELEASE_SETTLE_SEC)
             self._update_sync("flashing_target", 3, 75, "Flashing target device via probe-rs...")
             if not self.flash_target(use_cargo_run=False):
                 raise RuntimeError(self.status_message or "Flash target failed")
@@ -1582,7 +1586,8 @@ class DaemonRunner:
                     with self._lock:
                         self._last_device_ts_sec = float(raw_ts_us) / 1_000_000.0
                         self._last_device_ts_mono = time.monotonic()
-                self.trace_store.ingest_event(ev_obj)
+                if self.should_ingest_trace_event(ev_obj):
+                    self.trace_store.ingest_event(ev_obj)
             elif ev_type == "session_disconnected":
                 self.is_connected = False
 
@@ -1898,9 +1903,30 @@ class DaemonRunner:
                     self.start_rtt_streaming(reset_on_attach=False)
                 self._record_lifecycle("idle", f"Completed host_fs ({subcmd})", mark_recent=False)
 
-    def get_trace_events(self, after_seq: int = 0, limit: int = 10_000) -> Dict[str, Any]:
+    def should_ingest_trace_event(self, ev_obj: Dict[str, Any]) -> bool:
+        """Return `True` when `ev_obj` matches the active `TraceMode`."""
+        cur_mode = self.trace_mode
+        if cur_mode == TraceMode.NONE:
+            return False
+        cat = str(ev_obj.get("category") or "").strip().lower()
+        if cur_mode == TraceMode.PERF and cat == "sensor":
+            return False
+        if cur_mode == TraceMode.SENSOR and cat in ("span", "cpu_usage"):
+            return False
+        return True
+
+    def get_trace_events(
+        self,
+        after_seq: int = 0,
+        limit: int = 10_000,
+        session_epoch: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """Return incremental live trace slices/counters, track summaries, and active viewer metadata."""
-        payload = self.trace_store.get_events(after_seq=after_seq, limit=limit)
+        payload = self.trace_store.get_events(
+            after_seq=after_seq,
+            limit=limit,
+            session_epoch=session_epoch,
+        )
         payload["trace_mode"] = self.trace_mode.value
         payload["external_viewer"] = get_external_trace_viewer(self.trace_mode).value
         payload["chip"] = self.chip

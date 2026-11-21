@@ -218,14 +218,26 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             qs = urllib.parse.parse_qs(raw_qs)
             raw_after = qs.get("after_seq", qs.get("after_id", ["0"]))[0]
             raw_limit = qs.get("limit", ["10000"])[0]
+            raw_epoch = qs.get("session_epoch", [None])[0]
             after_seq = int(raw_after) if str(raw_after).isdigit() else 0
             limit_val = int(raw_limit) if str(raw_limit).isdigit() else 10_000
+            session_epoch = int(raw_epoch) if raw_epoch is not None and str(raw_epoch).isdigit() else None
             if hasattr(runner, "get_trace_events"):
-                self._send_json(runner.get_trace_events(after_seq=after_seq, limit=limit_val))
+                self._send_json(
+                    runner.get_trace_events(
+                        after_seq=after_seq,
+                        limit=limit_val,
+                        session_epoch=session_epoch,
+                    )
+                )
             else:
                 store = _get_trace_store(runner)
                 cur_tmode = _get_runner_trace_mode(runner)
-                data = store.get_events(after_seq=after_seq, limit=limit_val)
+                data = store.get_events(
+                    after_seq=after_seq,
+                    limit=limit_val,
+                    session_epoch=session_epoch,
+                )
                 data["trace_mode"] = cur_tmode.value
                 data["external_viewer"] = get_external_trace_viewer(cur_tmode).value
                 data["chip"] = getattr(runner, "chip", None)

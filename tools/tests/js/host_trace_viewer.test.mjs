@@ -507,4 +507,105 @@ describe("Host Daemon Trace & Telemetry Workstation (TraceViewerController)", ()
 
     viewer.destroy();
   });
+
+  it("purges stale SENSOR tracks and resets cursor when switching to PERF mode (WORM-RADIANT-VINEGARWORM-918)", async () => {
+    let phase = "SENSOR";
+    const ctx = createMockRuntimeContext({
+      fetchHandler: async (url) => {
+        const body =
+          phase === "SENSOR"
+            ? {
+                trace_mode: "SENSOR",
+                session_epoch: 1,
+                recording: true,
+                cursor: 12,
+                total_events: 1,
+                min_ts_us: 57_109_376,
+                max_ts_us: 57_109_376,
+                events: url.includes("after_seq=0")
+                  ? [
+                      {
+                        id: 5,
+                        seq: 12,
+                        ts_us: 57_109_376,
+                        track: "Proximity (West)",
+                        ph: "C",
+                        category: "sensor",
+                        name: "Proximity (West)",
+                        value: 79,
+                        unit: "mm",
+                      },
+                    ]
+                  : [],
+              }
+            : {
+                trace_mode: "PERF",
+                session_epoch: 2,
+                recording: true,
+                cursor: 2,
+                total_events: 2,
+                min_ts_us: 27_632,
+                max_ts_us: 40_887,
+                events: [
+                  {
+                    id: 1,
+                    seq: 1,
+                    ts_us: 27_632,
+                    end_ts_us: 30_750,
+                    dur_us: 3_118,
+                    depth: 0,
+                    track: "CPU Core 0",
+                    ph: "X",
+                    category: "span",
+                    name: "bootstrap_task",
+                  },
+                  {
+                    id: 2,
+                    seq: 2,
+                    ts_us: 40_887,
+                    track: "Core 0 CPU Usage (%)",
+                    ph: "C",
+                    category: "cpu_usage",
+                    name: "Core 0 CPU Usage (%)",
+                    value: 22.4,
+                    unit: "%",
+                  },
+                ],
+              };
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify(body);
+          },
+          async json() {
+            return body;
+          },
+        };
+      },
+    });
+
+    const dom = buildTraceViewerDom(ctx);
+    const viewer = createTraceViewer(ctx, {
+      initialTraceMode: "SENSOR",
+      initialBinName: "cat_detector_app",
+    });
+    viewer.init();
+
+    await viewer.pollEvents();
+    assert.ok(dom.eventsTableBody.textContent.includes("Proximity (West)"));
+    assert.equal(viewer.afterSeq, 12);
+
+    // Switch daemon from SENSOR -> PERF (with non-zero total_events right after sync!)
+    phase = "PERF";
+    await viewer.pollEvents();
+
+    assert.equal(viewer.traceMode, "PERF");
+    assert.ok(!dom.eventsTableBody.textContent.includes("Proximity (West)"));
+    assert.ok(dom.eventsTableBody.textContent.includes("bootstrap_task"));
+    assert.equal(viewer.eventsById.size, 2);
+    assert.equal(viewer.maxTsUs, 40_887);
+
+    viewer.destroy();
+  });
 });

@@ -3086,3 +3086,78 @@ def test_worm_moist_bristle_687_stdlib_sync_symbols_ephemeral_port_isolation_and
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_worm_radiant_vinegarworm_918_trace_mode_switch_clears_tracks_and_stops_stale_rtt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify switching trace modes bumps `session_epoch`, stops RTT before rebuilding ELF, and filters mismatched categories."""
+    from host_daemon.provider.daemon.runner import DaemonRunner
+    from host_daemon.provider.daemon.trace_store import TraceSessionStore
+
+    # 1. TraceSessionStore.clear() bumps session_epoch, resets seq to 0, and returns fresh events even if client sends stale after_seq
+    store = TraceSessionStore()
+    for idx in range(5):
+        store.ingest_event(
+            {
+                "ts_us": 50_000_000 + idx * 1000,
+                "track": "Proximity (West)",
+                "ph": "C",
+                "category": "sensor",
+                "name": "Proximity (West)",
+                "value": 79.0,
+                "unit": "mm",
+            }
+        )
+    snap_sensor = store.get_events(after_seq=0)
+    epoch_1 = snap_sensor.get("session_epoch")
+    assert isinstance(epoch_1, int) and epoch_1 >= 1
+    assert snap_sensor["cursor"] == 5
+
+    store.clear()
+    store.ingest_event(
+        {
+            "ts_us": 27_000,
+            "track": "CPU Core 0",
+            "ph": "B",
+            "category": "span",
+            "name": "bootstrap_task",
+        }
+    )
+    # Client still polling with stale cursor `after_seq=5` and old `session_epoch=epoch_1` must receive new event!
+    snap_perf = store.get_events(after_seq=5, session_epoch=epoch_1)
+    assert snap_perf["session_epoch"] > epoch_1
+    assert len(snap_perf["events"]) == 1
+    assert snap_perf["events"][0]["track"] == "CPU Core 0"
+    assert [t["name"] for t in snap_perf["tracks"]] == ["CPU Core 0"]
+
+    # 2. DaemonRunner.sync() stops active RTT streaming BEFORE build_target() overwrites ELF (preventing defmt log corruption)
+    fake_repo = _copy_resource_tree("fake_workspace", tmp_path / "repo")
+    runner = DaemonRunner(
+        repo_root=fake_repo,
+        package="cat_detector",
+        bin_name="cat_detector_app",
+        target="thumbv6m-none-eabi",
+        chip="rp2040",
+        trace_mode="SENSOR",
+    )
+    call_order: List[str] = []
+    monkeypatch.setattr(runner, "stop_rtt_streaming", lambda: call_order.append("stop_rtt"))
+    monkeypatch.setattr(runner, "stop_debug_server", lambda: call_order.append("stop_debug"))
+    monkeypatch.setattr(runner, "build_target", lambda: call_order.append("build_target"))
+    monkeypatch.setattr(runner, "build_host_tools", lambda: call_order.append("build_host_tools"))
+    monkeypatch.setattr(runner, "flash_target", lambda **_kw: call_order.append("flash_target") or True)
+    monkeypatch.setattr(runner, "start_rtt_streaming", lambda **_kw: call_order.append("start_rtt"))
+
+    runner.update_config(trace_mode="PERF", persist_session=False)
+    res = runner.sync()
+    assert res["step"] == "complete"
+    assert call_order.index("stop_rtt") < call_order.index("build_target"), (
+        f"stop_rtt_streaming must precede build_target to prevent ELF defmt corruption: {call_order}"
+    )
+
+    # 3. Mismatched sensor trace_events are rejected when active trace_mode is PERF
+    assert runner.should_ingest_trace_event({"category": "sensor", "track": "Proximity (West)"}) is False
+    assert runner.should_ingest_trace_event({"category": "span", "track": "CPU Core 0"}) is True
+    assert runner.should_ingest_trace_event({"category": "cpu_usage", "track": "Core 0 CPU Usage (%)"}) is True

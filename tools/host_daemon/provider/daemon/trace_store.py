@@ -40,6 +40,7 @@ class TraceSessionStore:
         self.max_events = max(100, int(max_events))
         self._lock = threading.Lock()
         self._recording: bool = True
+        self._session_epoch: int = 1
         self._next_id: int = 0
         self._next_seq: int = 0
         self._items: Deque[Dict[str, Any]] = deque()
@@ -61,14 +62,16 @@ class TraceSessionStore:
             return self._recording
 
     def clear(self) -> None:
-        """Purge all buffered trace events, open span stacks, and time bounds."""
+        """Purge all buffered trace events, open span stacks, and time bounds, advancing `session_epoch`."""
         with self._lock:
             self._items.clear()
             self._items_by_id.clear()
             self._open_spans_by_track.clear()
             self._min_ts_us = None
             self._max_ts_us = None
-            self._next_seq += 1
+            self._next_id = 0
+            self._next_seq = 0
+            self._session_epoch += 1
 
     def _evict_oldest_unlocked(self) -> None:
         while len(self._items) >= self.max_events:
@@ -177,11 +180,18 @@ class TraceSessionStore:
             self._items_by_id[item_id] = item
             return dict(item)
 
-    def get_events(self, after_seq: int = 0, limit: int = 10_000) -> Dict[str, Any]:
+    def get_events(
+        self,
+        after_seq: int = 0,
+        limit: int = 10_000,
+        session_epoch: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """Return incremental trace events (`seq > after_seq`), track summaries, and session metadata."""
         capped_limit = max(1, min(int(limit), self.max_events))
         with self._lock:
-            changed = [dict(it) for it in self._items if int(it["seq"]) > after_seq]
+            epoch_mismatch = session_epoch is not None and int(session_epoch) != self._session_epoch
+            effective_after_seq = 0 if (epoch_mismatch or after_seq > self._next_seq) else after_seq
+            changed = [dict(it) for it in self._items if int(it["seq"]) > effective_after_seq]
             if len(changed) > capped_limit:
                 changed = changed[-capped_limit:]
 
@@ -212,6 +222,7 @@ class TraceSessionStore:
 
             return {
                 "recording": self._recording,
+                "session_epoch": self._session_epoch,
                 "cursor": self._next_seq,
                 "total_events": len(self._items),
                 "min_ts_us": self._min_ts_us or 0,
