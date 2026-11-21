@@ -74,6 +74,10 @@ When switching trace modes from sensor to perf, I noticed the sensor tracks did 
 [] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
 ```
 
+#### Attached Commits
+
+- `b4bc497c`
+
 #### Review Tasks & Functional Checklist
 
 - [ ] Sync target in SENSOR mode, emit sensor readings, and confirm Proximity/Thermal tracks appear | `python tools/host.py sync --bin cat_detector_shell --trace-mode SENSOR && python tools/host.py cli sensor status && python tools/host.py trace status` <!-- id:fe1bd451 -->
