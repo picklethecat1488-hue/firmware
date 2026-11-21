@@ -76,6 +76,10 @@
 | :--- | :--- | :--- |
 | `log` | [target_system_logs_WORM-DIRT-TUBEWORM-731.log](attachments/WORM-DIRT-TUBEWORM-731/target_system_logs_WORM-DIRT-TUBEWORM-731.log) | Target system and defmt logs from host daemon session |
 
+#### Attached Commits
+
+- `07d2ad02`
+
 #### Review Tasks & Functional Checklist
 
 - [ ] Sync cat_detector_app in PERF mode and verify continuous execution without spinlock deadlock | `python tools/host.py --bin cat_detector_app --trace-mode PERF && sleep 4 && python tools/host.py trace status` <!-- id:372dd545 -->
