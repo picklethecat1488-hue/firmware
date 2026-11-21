@@ -7,7 +7,7 @@
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-20 20:19:09 UTC`
-- **Resolved**: `2026-11-20 22:46:06 UTC`
+- **Resolved**: `2026-11-21 19:20:20 UTC`
 
 #### Description
 
@@ -58,12 +58,6 @@ Use 'maintenance flush register-cache'.
 [] [target] [INFO] 0.001580 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
 [] [target] [INFO] 0.021762 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
 ```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-BRISTLY-ROUNDWORM-431.log](attachments/WORM-BRISTLY-ROUNDWORM-431/target_system_logs_WORM-BRISTLY-ROUNDWORM-431.log) | Target system and defmt logs from host daemon session |
 
 #### Attached Commits
 

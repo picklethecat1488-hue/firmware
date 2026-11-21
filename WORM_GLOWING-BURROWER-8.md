@@ -58,12 +58,6 @@ Also saw a error message trying to disconnect from target.
 [] [debug] [INFO] GDB client gdb_disconnected on Core 0
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `screenshot` | [image.png](attachments/WORM-GLOWING-BURROWER-8/image.png) | Pasted screenshot |
-
 #### Attached Commits
 
 - `60212087b14ed46c15fd6ce77f31ea4866f5d535`

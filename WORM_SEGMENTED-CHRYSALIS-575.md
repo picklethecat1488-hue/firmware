@@ -85,12 +85,6 @@ bt
 [] [debug] [INFO] GDB client gdb_connected on Core 1
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-SEGMENTED-CHRYSALIS-575.log](attachments/WORM-SEGMENTED-CHRYSALIS-575/target_system_logs_WORM-SEGMENTED-CHRYSALIS-575.log) | Target system and defmt logs from host daemon session |
-
 #### Attached Commits
 
 - `8ba3f17ddf411d40fc653109a4fafab63ba9252c`
