@@ -78,3 +78,4 @@
 #### Review Tasks & Functional Checklist
 
 - [ ] Sync cat_detector_app in PERF mode and verify continuous execution without spinlock deadlock | `python tools/host.py --bin cat_detector_app --trace-mode PERF && sleep 4 && python tools/host.py trace status` <!-- id:372dd545 -->
+- [ ] Export captured cat_detector_app PERF trace to CSV and confirm bounded Core 0 and Core 1 spans are recorded | `python tools/host.py trace export -f csv -o recordings/traces/worm_731_verify.csv && head -n 25 recordings/traces/worm_731_verify.csv` <!-- id:6b601897 -->
