@@ -993,9 +993,25 @@ pub mod probe_backend {
             let probe_info = probes
                 .first()
                 .ok_or_else(|| "No debug probes connected".to_string())?;
-            let mut probe = probe_info
-                .open()
-                .map_err(|e| format!("Failed to open debug probe: {:?}", e))?;
+            const PROBE_OPEN_MAX_ATTEMPTS: usize = 4;
+            const PROBE_OPEN_RETRY_DELAY_MS: u64 = 250;
+            let mut last_open_err = String::new();
+            let mut opened_probe = None;
+            for attempt in 0..PROBE_OPEN_MAX_ATTEMPTS {
+                match probe_info.open() {
+                    Ok(p) => {
+                        opened_probe = Some(p);
+                        break;
+                    }
+                    Err(e) => {
+                        last_open_err = format!("Failed to open debug probe: {:?}", e);
+                        if attempt + 1 < PROBE_OPEN_MAX_ATTEMPTS {
+                            thread::sleep(Duration::from_millis(PROBE_OPEN_RETRY_DELAY_MS));
+                        }
+                    }
+                }
+            }
+            let mut probe = opened_probe.ok_or(last_open_err)?;
             let _ = probe.set_speed(speed_khz);
 
             let mut session = probe

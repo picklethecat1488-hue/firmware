@@ -4,20 +4,33 @@ Bare-metal `#![no_std]` Rust firmware powered by the **Embassy** asynchronous ex
 
 ---
 
-## Featured Demo: Interactive Firmware Tools Walkthrough
+## Featured Demos
 
 <div align="center">
-  <a href="https://www.youtube.com/watch?v=-B0owhFyFh4">
-    <img src="https://img.youtube.com/vi/-B0owhFyFh4/maxresdefault.jpg" alt="Watch the Firmware Tools Demo on YouTube" width="840" />
-  </a>
-  <p>
-    <a href="https://www.youtube.com/watch?v=-B0owhFyFh4"><strong>▶ Watch the Firmware Tools Demo on YouTube</strong></a>
-  </p>
+  <table>
+    <tr>
+      <td align="center" width="50%">
+        <a href="https://www.youtube.com/watch?v=P2hhQMJvClM">
+          <img src="https://img.youtube.com/vi/P2hhQMJvClM/maxresdefault.jpg" alt="Watch the Live RP2040 Bench, IDE Single-Stepping & 30fps Tracing Demo on YouTube" width="410" />
+        </a>
+        <br />
+        <a href="https://www.youtube.com/watch?v=P2hhQMJvClM"><strong>▶ Live RP2040 Bench: IDE Single-Stepping &amp; 30fps Tracing</strong></a>
+      </td>
+      <td align="center" width="50%">
+        <a href="https://www.youtube.com/watch?v=-B0owhFyFh4">
+          <img src="https://img.youtube.com/vi/-B0owhFyFh4/maxresdefault.jpg" alt="Watch the Firmware &amp; VCS Workstations Walkthrough on YouTube" width="410" />
+        </a>
+        <br />
+        <a href="https://www.youtube.com/watch?v=-B0owhFyFh4"><strong>▶ Firmware &amp; Forge VCS Workstations Walkthrough</strong></a>
+      </td>
+    </tr>
+  </table>
 </div>
 
-The walkthrough showcases the end-to-end embedded firmware & hardware-in-the-loop bringup workflow:
-- **Xerxes Host Workstation & Daemon (`tools/host.py`)**: One-click target compilation & SWD/JTAG flashing (`⚡ Sync`), real-time Segger RTT `defmt` telemetry streaming, interactive embedded CLI console (`shell>`), sequential-storage flash filesystem & symbolicated crash-dump inspection (`fs>`), automated YAML hardware bringup checklists (`bringup>`), and one-click **Target Bug** (`WORM-*`) diagnostic capture.
-- **Forge Workstation (`tools/forge.py`)**: Unified **Smartlog DAG & Diff Viewer**, inline **Code Review**, and **Worm Defect Matrix** backed by dual-layer SQLite + detached-worktree Markdown synchronization and Git LFS attachments.
+The walkthroughs showcase the end-to-end embedded firmware, live-silicon debugging, and hardware-in-the-loop bringup workflow:
+- **Live Dual-Core GDB Single-Stepping & Unified Probe (`tools/host_debug`)**: Source-level VS Code `Cortex-Debug` single-stepping, hardware breakpoints, live local/register inspection, and RP2040 `TIMER.DBGPAUSE` synchronization on a connected target while `host.py` maintains an active `:50000` Segger RTT console over a single USB debug probe.
+- **30fps Real-Time `PERF` & `SENSOR` Tracing (`tools/host.py`)**: `requestAnimationFrame` multi-track swimlanes with a hovering playback/zoom/filter trackbar, continuous integrated `Core 0` & `Core 1` CPU usage curves (`PERF` → **Perfetto**), live ToF proximity & thermal curves (`SENSOR` → **Rerun**), and an **11-byte** `.program_metadata` flash header with deferred `.elf` string & partition loading.
+- **Xerxes Host & Forge Workstations (`tools/host.py`, `tools/forge.py`)**: One-click target compilation & SWD/JTAG flashing (`⚡ Sync`), stacked `@device_test` hardware test runner, sequential-storage flash filesystem & symbolicated crash-dump inspection (`fs>`), **Target Bug** (`WORM-*`) capture, and **Smartlog DAG / Diff / Code Review / Worm Matrix** views.
 
 ---
 
@@ -51,7 +64,7 @@ For toolchain setup, flashing commands, `cargo nextest`, and full CLI subcommand
 - **[Microcontroller Decoupling & BSPs](docs/mcu_decoupling.md)** — `Board::init` hardware encapsulation, target-agnostic `embedded-hal` drivers, and host mock parity.
 - **[Peripheral Sharing & Concurrency Patterns](docs/peripheral_sharing.md)** — Zero-allocation Embassy actor channels vs diagnostic shell interior mutability.
 - **[Domain Controller Design, Task Runners & Codegen](docs/controller_design.md)** — `#[controller_context]` isolation and Rinja build-time code generation (`controllers.toml` / `shell.toml`).
-- **[Embedded Logging, Tracing & Host Tools](docs/logging_tracing.md)** — Structured `defmt` telemetry, zero-alloc `#[tracing::instrument]` Perfetto spans, `host_cli`, and `host_fs`.
+- **[Embedded Logging, Tracing & Host Tools](docs/logging_tracing.md)** — Structured `defmt` telemetry, `PERF` (Perfetto) & `SENSOR` (Rerun) tracing modes, `host_debug`, `host_cli`, and `host_fs`.
 - **[JavaScript Style, Zero-Globals & Workstation UI Architecture](docs/javascript_style_architecture.md)** — Modular `tools/js/` ES modules for `host.py` & `forge.py`, strict `runtime_context.js` isolation, and parallel `node --test` suites.
 - **[VCS Workstation, Code Review & Xerxes HUD Templates](docs/vcs_code_review.md)** — `tools/forge.py` architecture, Smartlog DAG, dual-layer SQLite/Markdown sync, and Git LFS worm attachments.
 - **[Remote Cloud Runner (`anvil` / Vast.ai)](docs/remote_cloud_runner.md)** — Remote Rust/Python verification, cloud builds, and reverse-proxied local hardware CLI execution.
