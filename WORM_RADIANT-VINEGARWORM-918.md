@@ -2,12 +2,13 @@
 
 - **UUID**: `90a2f829-fb88-49b6-b840-d5ba9f558fbd`
 - **ID**: `WORM-RADIANT-VINEGARWORM-918`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-21 19:25:26 UTC`
 - **Resolved**: `2026-11-21 23:56:27 UTC`
+- **Accepted**: `2026-11-21 23:56:29 UTC`
 
 #### Description
 
