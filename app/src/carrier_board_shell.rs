@@ -33,10 +33,10 @@ controller::declare_active_shell_commands! {
     CarrierBoardCli (CarrierBoardCliProcessor)
 }
 
-/// Main application entry point for the Carrier Board 2.0 bringup shell.
+/// Main asynchronous task driving the Carrier Board 2.0 bringup shell on Core 0.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[embassy_executor::main]
-async fn main(spawner: Spawner) {
+#[embassy_executor::task]
+async fn carrier_shell_main_task(spawner: Spawner) {
     // Initialize board peripherals using the unified Carrier Board 2.0 BSP configuration
     let mut board = app::Board::init().await;
 
@@ -90,6 +90,16 @@ async fn main(spawner: Spawner) {
     let mut local_proc = CarrierBoardCliProcessor::new(&mut processor);
 
     platform::run_rtt_shell_loop!(&mut cli, &mut local_proc, CarrierBoardCli, "\r\nshell> ");
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cortex_m_rt::entry]
+fn main() -> ! {
+    let spawner_c0 = app::spawner_core0();
+    spawner_c0
+        .spawn(carrier_shell_main_task(spawner_c0))
+        .unwrap();
+    app::run_executor(platform::types::CpuId::Core0);
 }
 
 /// Host entry point printing the Carrier Board 2.0 banner during host diagnostics.

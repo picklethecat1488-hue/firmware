@@ -429,7 +429,7 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
     let _ = std::fs::remove_dir_all(&temp_dir);
     std::fs::create_dir_all(&temp_dir).unwrap();
 
-    let rp_writer = platform::types::ProjectMetadata::serialize(
+    let (rp_writer, rp_elf_writer) = platform::types::ProjectMetadata::serialize_pair(
         "rp2040",
         "rp2040_flash_2mb",
         "cat_detector_shell",
@@ -446,6 +446,11 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
         0x101B_0000,
         64 * 1024,
     );
+    assert!(
+        rp_writer.len <= 12,
+        "Compact .program_metadata must be <= 12 bytes, got {}",
+        rp_writer.len
+    );
 
     let src_path = temp_dir.join("dummy_elf.rs");
     let elf_bin_path = temp_dir.join("dummy_elf_bin");
@@ -453,11 +458,17 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
     for i in 0..rp_writer.len {
         bytes_str.push_str(&format!("0x{:02x}, ", rp_writer.buf[i]));
     }
+    let mut elf_bytes_str = String::new();
+    for i in 0..rp_elf_writer.len {
+        elf_bytes_str.push_str(&format!("0x{:02x}, ", rp_elf_writer.buf[i]));
+    }
     std::fs::write(
         &src_path,
         format!(
-            "#[used]\n#[no_mangle]\npub static PROJECT_METADATA: [u8; {}] = [{}];\nfn main() {{}}\n",
-            rp_writer.len, bytes_str
+            "#[used]\n#[no_mangle]\npub static PROJECT_METADATA: [u8; {}] = [{}];\n\
+             #[used]\n#[no_mangle]\npub static PROJECT_METADATA_ELF: [u8; {}] = [{}];\n\
+             fn main() {{}}\n",
+            rp_writer.len, bytes_str, rp_elf_writer.len, elf_bytes_str
         ),
     )
     .unwrap();
@@ -556,9 +567,11 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
     assert!(stdout_override.contains("\"program_metadata_board_type\":\"rp2040_flash_2mb\""));
     assert!(stdout_override.contains("\"source\":\"metadata_partition\""));
 
-    // 4. Verify Carrier Board standalone `.program_metadata` human-readable full section dump
+    // 4. Verify Carrier Board compact `.program_metadata` (`<= 12` bytes) + deferred `.elf` strings
     let carrier_dump_path = temp_dir.join("carrier_prog_meta.bin");
-    let cb_writer = platform::types::ProjectMetadata::serialize(
+    let carrier_src_path = temp_dir.join("carrier_elf.rs");
+    let carrier_elf_path = temp_dir.join("carrier_elf_bin");
+    let (cb_writer, cb_elf_writer) = platform::types::ProjectMetadata::serialize_pair(
         "MCXN947",
         "carrier_board",
         "carrier_board_shell",
@@ -575,10 +588,42 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
         0x001E_0000,
         32 * 1024,
     );
+    assert!(
+        cb_writer.len <= 12,
+        "Carrier Board .program_metadata must be <= 12 bytes, got {}",
+        cb_writer.len
+    );
+    let mut cb_bytes_str = String::new();
+    for i in 0..cb_writer.len {
+        cb_bytes_str.push_str(&format!("0x{:02x}, ", cb_writer.buf[i]));
+    }
+    let mut cb_elf_bytes_str = String::new();
+    for i in 0..cb_elf_writer.len {
+        cb_elf_bytes_str.push_str(&format!("0x{:02x}, ", cb_elf_writer.buf[i]));
+    }
+    std::fs::write(
+        &carrier_src_path,
+        format!(
+            "#[used]\n#[no_mangle]\npub static PROJECT_METADATA: [u8; {}] = [{}];\n\
+             #[used]\n#[no_mangle]\npub static PROJECT_METADATA_ELF: [u8; {}] = [{}];\n\
+             fn main() {{}}\n",
+            cb_writer.len, cb_bytes_str, cb_elf_writer.len, cb_elf_bytes_str
+        ),
+    )
+    .unwrap();
+    let cb_status = Command::new("rustc")
+        .arg(&carrier_src_path)
+        .arg("-o")
+        .arg(&carrier_elf_path)
+        .status()
+        .unwrap();
+    assert!(cb_status.success());
     std::fs::write(&carrier_dump_path, &cb_writer.buf[..cb_writer.len]).unwrap();
 
     let out_cb = Command::new(bin_path)
         .args([
+            "--elf",
+            carrier_elf_path.to_str().unwrap(),
             "--dump",
             carrier_dump_path.to_str().unwrap(),
             "query_metadata",
@@ -592,6 +637,11 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
     assert!(stdout_cb.contains("bin_name: carrier_board_shell"));
     assert!(stdout_cb.contains("release_build: false"));
     assert!(stdout_cb.contains("trace_mode: perf"));
+    assert!(
+        stdout_cb.contains("program_metadata_size: 11")
+            || stdout_cb.contains("program_metadata_size: 10")
+            || stdout_cb.contains("program_metadata_size: 9")
+    );
     assert!(stdout_cb.contains("partition[2] (metadata): address=0x001E0000 size=32768"));
 
     let _ = std::fs::remove_dir_all(&temp_dir);

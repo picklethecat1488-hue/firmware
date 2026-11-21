@@ -499,15 +499,18 @@ fn test_post_process_trace_telemetry() {
 }
 
 #[test]
-fn test_post_process_cpu_usage_step_chart() {
+fn test_post_process_cpu_usage_integrated_curve() {
     use std::io::Write;
     let temp_dir = std::env::temp_dir();
-    let file_path = temp_dir.join("test_cpu_usage_step.json");
+    let file_path = temp_dir.join("test_cpu_usage_integrated.json");
     let path = file_path.to_str().unwrap();
 
+    // Core 0 sleeps [10_000..40_000] (0% busy), works [40_000..70_000] (30ms busy), then sleeps [70_000..120_000] (50ms idle)
     let mock_trace = r#"[
         {"cat": "device_span_enter", "ts": 10000, "pid": 42, "tid": 1, "args": {"span_id": "cpu_idle_c0", "span_name": "Core 0: CPU Idle Core 0"}},
-        {"cat": "device_span_exit", "ts": 15000, "pid": 42, "tid": 1, "args": {"span_id": "cpu_idle_c0"}}
+        {"cat": "device_span_exit", "ts": 40000, "pid": 42, "tid": 1, "args": {"span_id": "cpu_idle_c0"}},
+        {"cat": "device_span_enter", "ts": 70000, "pid": 42, "tid": 1, "args": {"span_id": "cpu_idle_c0", "span_name": "Core 0: CPU Idle Core 0"}},
+        {"cat": "device_span_exit", "ts": 120000, "pid": 42, "tid": 1, "args": {"span_id": "cpu_idle_c0"}}
     ]"#;
 
     {
@@ -515,47 +518,42 @@ fn test_post_process_cpu_usage_step_chart() {
         file.write_all(mock_trace.as_bytes()).unwrap();
     }
 
-    // Run post processor
     host_cli::tracing::post_process_trace(path, None).unwrap();
 
-    // Read and parse output
     let content = std::fs::read_to_string(path).unwrap();
     let events: Vec<serde_json::Value> = serde_json::from_str(&content).unwrap();
-
-    // Clean up temp file
     let _ = std::fs::remove_file(path);
 
-    // Let's filter out Core 0 CPU Usage events
     let usage_events: Vec<&serde_json::Value> = events
         .iter()
         .filter(|e| e.get("name").and_then(|n| n.as_str()) == Some("Core 0 CPU Usage (%)"))
         .collect();
 
-    // We expect exactly 2 counter events: 0% at ts=10000, and 100% at ts=15000
-    assert_eq!(usage_events.len(), 2);
-
-    assert_eq!(
-        usage_events[0].get("ts").and_then(|t| t.as_f64()),
-        Some(10000.0)
+    // Multi-point continuous curve (>= 5 sample points) instead of binary 0/100 step chatter
+    assert!(
+        usage_events.len() >= 5,
+        "Expected continuous integrated CPU Usage curve samples, got {:?}",
+        usage_events
     );
-    assert_eq!(
-        usage_events[0]
-            .get("args")
-            .and_then(|a| a.get("value"))
-            .and_then(|v| v.as_i64()),
-        Some(0)
+    let values: Vec<f64> = usage_events
+        .iter()
+        .map(|e| e["args"]["value"].as_f64().unwrap())
+        .collect();
+    // Starts at 0% during initial sleep, rises into intermediate (0% < v < 100%) usage during busy [40ms..70ms], and decays afterward
+    assert!(
+        (values[0] - 0.0).abs() < 1e-6,
+        "Initial idle usage must be 0.0%, got {:?}",
+        values
     );
-
-    assert_eq!(
-        usage_events[1].get("ts").and_then(|t| t.as_f64()),
-        Some(15000.0)
+    assert!(
+        values.iter().any(|&v| v > 15.0 && v < 85.0),
+        "Integrated curve must produce smooth intermediate utilization percentages (not binary 0/100), got {:?}",
+        values
     );
-    assert_eq!(
-        usage_events[1]
-            .get("args")
-            .and_then(|a| a.get("value"))
-            .and_then(|v| v.as_i64()),
-        Some(100)
+    assert!(
+        *values.last().unwrap() < values.iter().copied().fold(0.0_f64, f64::max),
+        "Usage curve must decay after Core 0 returns to 50ms sleep, got {:?}",
+        values
     );
 }
 
@@ -929,6 +927,24 @@ fn test_live_trace_stream_processor_perf_spans_sensor_reports_and_exports() {
         Some("platform::system"),
         Some(1_200_000.0),
     ));
+    emitted.extend(proc.process_defmt_frame(
+        "1.240000 TRACE [platform::system] cpu_idle_c0 span_exit: Core 0: CPU Idle Core 0 ts=1240000",
+        "cpu_idle_c0 span_exit: Core 0: CPU Idle Core 0 ts=1240000",
+        Some("platform::system"),
+        Some(1_240_000.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "1.260000 TRACE [platform::system] ctx=cpu_idle_c1 parent=0 span_enter: Core 1: CPU Idle Core 1 ts=1260000",
+        "ctx=cpu_idle_c1 parent=0 span_enter: Core 1: CPU Idle Core 1 ts=1260000",
+        Some("platform::system"),
+        Some(1_260_000.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "1.300000 TRACE [platform::system] cpu_idle_c1 span_exit: Core 1: CPU Idle Core 1 ts=1300000",
+        "cpu_idle_c1 span_exit: Core 1: CPU Idle Core 1 ts=1300000",
+        Some("platform::system"),
+        Some(1_300_000.0),
+    ));
 
     // 2. SENSOR CBOR Device Telemetry frames (Proximity North 118 mm, Thermal 25062 mC, Gesture DualLongPress)
     let format_device_telemetry = |ts_us: u64, rec: TelemetryRecord| -> String {
@@ -979,7 +995,27 @@ fn test_live_trace_stream_processor_perf_spans_sensor_reports_and_exports() {
         Some(5_810_220.0),
     ));
 
-    // Verify span B/E events, CPU usage counter, and sensor value events
+    // Verify span B/E events, Core 0 & Core 1 continuous CPU usage curves, and sensor value events
+    assert!(emitted.iter().any(|ev| matches!(
+        ev,
+        HostCliEvent::Trace {
+            track,
+            ph,
+            category,
+            value: Some(_),
+            ..
+        } if track == "Core 0 CPU Usage (%)" && ph == "C" && category == "cpu_usage"
+    )));
+    assert!(emitted.iter().any(|ev| matches!(
+        ev,
+        HostCliEvent::Trace {
+            track,
+            ph,
+            category,
+            value: Some(v),
+            ..
+        } if track == "Core 1 CPU Usage (%)" && ph == "C" && category == "cpu_usage" && *v > 0.0 && *v < 100.0
+    )));
     assert!(emitted.iter().any(|ev| matches!(
         ev,
         HostCliEvent::Trace {

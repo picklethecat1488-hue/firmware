@@ -504,52 +504,88 @@ impl FirmwareTraceMode {
     }
 }
 
-/// Project metadata struct embedded in the `.program_metadata` ELF/flash section
-/// to allow autodetecting chip, board type, and partition layout without scanning flash.
+/// Maximum byte capacity for the compact on-flash `.program_metadata` CBOR header (`<= 12` bytes).
+pub const COMPACT_PROGRAM_METADATA_CAP: usize = 16;
+
+/// Compact on-device `.program_metadata` header (`<= 12` bytes including its 2-byte CRC-16 prefix).
+///
+/// Variable-length strings (`chip`, `board_type`, `bin_name`) and flash partition tables live in
+/// the unallocated `.program_metadata_elf` `(INFO)` section of the `.elf` file and are deferred-loaded
+/// on the host via `elf_meta_crc16` / `board_crc16`.
+#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+pub struct ProgramMetadataCompact {
+    /// 16-bit CRC-16-CCITT digest of the deferred `.program_metadata_elf` CBOR payload.
+    #[n(0)]
+    pub elf_meta_crc16: u16,
+    /// 16-bit CRC-16-CCITT digest of the canonical `board_type` identifier string.
+    #[n(1)]
+    pub board_crc16: u16,
+    /// Whether the firmware was compiled in release profile (`true` = release, `false` = debug).
+    #[n(2)]
+    pub release_build: bool,
+    /// Active compile-time tracing mode (`None`, `Sensor`, `Perf`, `Audio`).
+    #[n(3)]
+    pub trace_mode: FirmwareTraceMode,
+}
+
+impl ProgramMetadataCompact {
+    /// Statically serialize the compact `<= 12`-byte `.program_metadata` header prefixed by its 16-bit CRC-16-CCITT.
+    pub const fn serialize(
+        elf_meta_crc16: u16,
+        board_crc16: u16,
+        release_build: bool,
+        trace_mode: FirmwareTraceMode,
+    ) -> crate::cbor::ConstCborWriter<COMPACT_PROGRAM_METADATA_CAP> {
+        crate::cbor::ConstCborWriter::<COMPACT_PROGRAM_METADATA_CAP>::new()
+            .write_array_header(4)
+            .write_u32(elf_meta_crc16 as u32)
+            .write_u32(board_crc16 as u32)
+            .write_bool(release_build)
+            .write_u32(trace_mode as u32)
+            .prepend_crc16()
+    }
+}
+
+/// Deferred project strings and partition table stored only inside the host `.elf` file
+/// (`.program_metadata_elf` `0 (INFO)` section — zero target flash footprint).
 #[derive(Clone, Encode, Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct ProjectMetadata<'a> {
-    /// Chip name (e.g. "rp2040", "MCXN947")
+    /// Chip name (e.g. "rp2040", "MCXN947").
     #[n(0)]
     pub chip: &'a str,
-    /// Flash write alignment/size in bytes
+    /// Flash write alignment/size in bytes.
     #[n(1)]
     pub flash_write_size: u32,
-    /// Flash erase sector size in bytes
+    /// Flash erase sector size in bytes.
     #[n(2)]
     pub flash_erase_size: u32,
-    /// Stack scan limit in words
+    /// Stack scan limit in words.
     #[n(3)]
     pub stack_scan_limit: u32,
-    /// Flash base address (e.g. 0x1000_0000)
+    /// Flash base address (e.g. `0x1000_0000`).
     #[n(4)]
     pub flash_start: u32,
-    /// Array of partition metadata (0 = fs, 1 = telemetry, 2 = metadata)
+    /// Array of partition metadata (`0 = fs`, `1 = telemetry`, `2 = metadata`).
     #[n(5)]
     pub partitions: [PartitionMetadata; 3],
-    /// Canonical board type identifier (e.g. "rp2040_flash_2mb", "carrier_board")
+    /// Canonical board type identifier (e.g. `"rp2040_flash_2mb"`, `"carrier_board"`).
     #[n(6)]
     pub board_type: &'a str,
-    /// Compiled Cargo binary target name (e.g. "cat_detector_shell", "cat_detector_app")
+    /// Compiled Cargo binary target name (e.g. `"cat_detector_shell"`, `"cat_detector_app"`).
     #[n(7)]
     pub bin_name: Option<&'a str>,
-    /// Whether the firmware was compiled in release profile (`true` = release, `false` = debug)
-    #[n(8)]
-    pub release_build: Option<bool>,
-    /// Optional compile-time tracing mode (`None`, `Sensor`, `Perf`, `Audio`).
-    #[n(9)]
-    pub trace_mode: Option<FirmwareTraceMode>,
 }
 
 impl<'a> ProjectMetadata<'a> {
-    /// Statically serializes CBOR metadata prefixed by its 16-bit CRC-16-CCITT checksum.
+    /// Statically serialize deferred ELF string & partition metadata prefixed by its 16-bit CRC-16-CCITT.
     #[allow(clippy::too_many_arguments)]
-    pub const fn serialize(
+    pub const fn serialize_elf_table(
         chip: &'a str,
         board_type: &'a str,
         bin_name: &'a str,
-        release_build: bool,
-        trace_mode: FirmwareTraceMode,
         flash_write_size: u32,
         flash_erase_size: u32,
         stack_scan_limit: u32,
@@ -562,7 +598,7 @@ impl<'a> ProjectMetadata<'a> {
         metadata_size: u32,
     ) -> crate::cbor::ConstCborWriter<256> {
         crate::cbor::ConstCborWriter::<256>::new()
-            .write_array_header(10)
+            .write_array_header(8)
             .write_str(chip)
             .write_u32(flash_write_size)
             .write_u32(flash_erase_size)
@@ -586,9 +622,56 @@ impl<'a> ProjectMetadata<'a> {
             .write_u32(metadata_size)
             .write_str(board_type)
             .write_str(bin_name)
-            .write_bool(release_build)
-            .write_u32(trace_mode as u32)
             .prepend_crc16()
+    }
+
+    /// Extract the big-endian 16-bit CRC-16-CCITT prefix from a serialized ELF table writer.
+    pub const fn writer_crc16(writer: &crate::cbor::ConstCborWriter<256>) -> u16 {
+        ((writer.buf[0] as u16) << 8) | (writer.buf[1] as u16)
+    }
+
+    /// Build both the deferred `.program_metadata_elf` table and compact `<= 12`-byte `.program_metadata` header.
+    #[allow(clippy::too_many_arguments)]
+    pub const fn serialize_pair(
+        chip: &'a str,
+        board_type: &'a str,
+        bin_name: &'a str,
+        release_build: bool,
+        trace_mode: FirmwareTraceMode,
+        flash_write_size: u32,
+        flash_erase_size: u32,
+        stack_scan_limit: u32,
+        flash_start: u32,
+        fs_address: u32,
+        fs_size: u32,
+        telemetry_address: u32,
+        telemetry_size: u32,
+        metadata_address: u32,
+        metadata_size: u32,
+    ) -> (
+        crate::cbor::ConstCborWriter<COMPACT_PROGRAM_METADATA_CAP>,
+        crate::cbor::ConstCborWriter<256>,
+    ) {
+        let elf_writer = Self::serialize_elf_table(
+            chip,
+            board_type,
+            bin_name,
+            flash_write_size,
+            flash_erase_size,
+            stack_scan_limit,
+            flash_start,
+            fs_address,
+            fs_size,
+            telemetry_address,
+            telemetry_size,
+            metadata_address,
+            metadata_size,
+        );
+        let elf_crc = Self::writer_crc16(&elf_writer);
+        let board_crc = crate::cbor::crc16_ccitt(board_type.as_bytes());
+        let compact_writer =
+            ProgramMetadataCompact::serialize(elf_crc, board_crc, release_build, trace_mode);
+        (compact_writer, elf_writer)
     }
 }
 
@@ -885,16 +968,14 @@ macro_rules! define_project_metadata {
         metadata_start: $metadata_start:expr,
         metadata_end: $metadata_end:expr $(,)?
     ) => {
-        const METADATA_WRITER: $crate::cbor::ConstCborWriter<256> =
-            $crate::types::ProjectMetadata::serialize(
+        const ELF_METADATA_WRITER: $crate::cbor::ConstCborWriter<256> =
+            $crate::types::ProjectMetadata::serialize_elf_table(
                 $chip,
                 $board_type,
                 match option_env!("CARGO_BIN_NAME") {
                     Some(bin) => bin,
                     None => env!("CARGO_PKG_NAME"),
                 },
-                !cfg!(debug_assertions),
-                $crate::types::FirmwareTraceMode::active(),
                 $flash_write_size as u32,
                 $flash_erase_size as u32,
                 $crate::types::STACK_SCAN_LIMIT,
@@ -910,7 +991,16 @@ macro_rules! define_project_metadata {
                 $metadata_end - $metadata_start,
             );
 
-        /// Embedded project metadata placed in the dedicated `.program_metadata` flash section.
+        const METADATA_WRITER: $crate::cbor::ConstCborWriter<
+            { $crate::types::COMPACT_PROGRAM_METADATA_CAP },
+        > = $crate::types::ProgramMetadataCompact::serialize(
+            $crate::types::ProjectMetadata::writer_crc16(&ELF_METADATA_WRITER),
+            $crate::cbor::crc16_ccitt($board_type.as_bytes()),
+            !cfg!(debug_assertions),
+            $crate::types::FirmwareTraceMode::active(),
+        );
+
+        /// Compact `<= 12`-byte project metadata header placed in the `.program_metadata` flash section.
         #[used]
         #[no_mangle]
         #[cfg_attr(
@@ -919,6 +1009,16 @@ macro_rules! define_project_metadata {
         )]
         pub static PROJECT_METADATA: [u8; METADATA_WRITER.len] =
             $crate::cbor::extract_bytes(METADATA_WRITER.buf);
+
+        /// Deferred string & partition table stored only inside the `.elf` file (`.program_metadata_elf` `0 (INFO)`).
+        #[used]
+        #[no_mangle]
+        #[cfg_attr(
+            all(target_arch = "arm", target_os = "none"),
+            link_section = ".program_metadata_elf"
+        )]
+        pub static PROJECT_METADATA_ELF: [u8; ELF_METADATA_WRITER.len] =
+            $crate::cbor::extract_bytes(ELF_METADATA_WRITER.buf);
 
         /// Anchor symbol to statically enforce define_project_metadata invocation.
         #[used]

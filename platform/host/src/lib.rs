@@ -28,7 +28,10 @@ pub fn normalize_rtt_bridge_addr(host_or_addr: &str) -> String {
 }
 
 pub use gdb::GdbClient;
-pub use metadata::{autodetect_project_info, find_symbol_address, ProjectInfo};
+pub use metadata::{
+    autodetect_project_info, discover_sibling_elf_tables, find_symbol_address,
+    read_deferred_elf_table, CompactTargetMetadata, DeferredElfTable, ProjectInfo,
+};
 pub use platform::rtt::{
     decode_rtt_shell_flags, encode_rtt_shell_flags, RTT_CHANNEL_MODE_MASK, RTT_SHELL_EPOCH_SHIFT,
     RTT_SHELL_IDLE_FLAG,

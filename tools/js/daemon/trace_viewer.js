@@ -47,6 +47,13 @@ const POLL_BATCH_LIMIT = 4000;
 const RULER_TICK_COUNT = 6;
 const US_PER_SECOND = 1_000_000;
 const US_PER_MILLISECOND = 1_000;
+const FAST_TRACE_POLL_INTERVAL_MS = 120;
+const MAX_PLAYHEAD_EXTRAPOLATION_US = 1_200_000;
+const AUTO_FOLLOW_LERP_RATE = 11.0;
+const AUTO_FOLLOW_HEADROOM_RATIO = 0.06;
+const CPU_USAGE_MIN_PCT = 0;
+const CPU_USAGE_MAX_PCT = 100;
+const PULSE_PERIOD_MS = 900;
 
 const SPAN_PALETTE = Object.freeze([
   "#00d8ff",
@@ -175,7 +182,13 @@ export function buildTraceTracks(events, filterQuery = "") {
         (track.maxDepth + 1) * SPAN_ROW_HEIGHT_PX + SPAN_TRACK_PADDING_PX * 2;
     } else if (track.kind === "scalar") {
       track.heightPx = SCALAR_TRACK_HEIGHT_PX;
-      if (!Number.isFinite(track.minValue) || !Number.isFinite(track.maxValue)) {
+      if (track.name.includes("CPU Usage")) {
+        track.minValue = CPU_USAGE_MIN_PCT;
+        track.maxValue = CPU_USAGE_MAX_PCT;
+        if (!track.unit) {
+          track.unit = "%";
+        }
+      } else if (!Number.isFinite(track.minValue) || !Number.isFinite(track.maxValue)) {
         track.minValue = 0;
         track.maxValue = 100;
       }
@@ -234,6 +247,13 @@ export class TraceViewerController {
     this._hitBoxes = [];
     this._tracks = [];
     this._dragState = null;
+    this._isActiveView = false;
+    this._pollInFlight = false;
+    this._fastPollTimer = null;
+    this._rafHandle = null;
+    this._lastFrameWallMs = null;
+    this._anchorMaxTsUs = null;
+    this._anchorWallMs = null;
     this._unsubscribers = [];
 
     this.traceView = resolveElement(ctx, options.traceView || "traceView");
@@ -478,6 +498,109 @@ export class TraceViewerController {
     }
 
     this._syncStatusDom();
+    this._syncAnimationLifecycle();
+  }
+
+  /**
+   * Notify the controller whether `#traceView` is the currently visible workstation tab.
+   *
+   * When active and recording (`traceMode !== "NONE"`), drives a `120ms` incremental poll
+   * alongside a smooth 30–60fps `requestAnimationFrame` swimlane & playhead loop.
+   *
+   * @param {boolean} isActive - True when `TRACE` tab is active.
+   */
+  setActiveView(isActive) {
+    this._isActiveView = Boolean(isActive);
+    this._syncAnimationLifecycle();
+    if (this._isActiveView) {
+      this.render();
+    }
+  }
+
+  /**
+   * Return the smoothly extrapolated live device playhead timestamp in microseconds.
+   *
+   * @param {number} [wallNowMs] - Optional monotonic host clock in milliseconds.
+   * @returns {number|null}
+   */
+  getLivePlayheadUs(wallNowMs = this.ctx.nowMs()) {
+    if (this.maxTsUs === null) {
+      return null;
+    }
+    if (!this.recording || this._anchorMaxTsUs === null || this._anchorWallMs === null) {
+      return this.maxTsUs;
+    }
+    const elapsedUs = Math.max(0, (wallNowMs - this._anchorWallMs) * US_PER_MILLISECOND);
+    const extrapolated = this._anchorMaxTsUs + Math.min(MAX_PLAYHEAD_EXTRAPOLATION_US, elapsedUs);
+    return Math.max(this.maxTsUs, extrapolated);
+  }
+
+  /**
+   * Start or stop the `120ms` fast poll timer and `requestAnimationFrame` loop based on view/recording state.
+   */
+  _syncAnimationLifecycle() {
+    const shouldAnimate =
+      this._isActiveView && this.recording && this.traceMode !== TRACE_MODES.NONE;
+
+    if (shouldAnimate) {
+      if (this._fastPollTimer === null) {
+        this._fastPollTimer = this.ctx.setInterval(() => {
+          this.pollEvents();
+        }, FAST_TRACE_POLL_INTERVAL_MS);
+      }
+      if (this._rafHandle === null) {
+        this._lastFrameWallMs = this.ctx.nowMs();
+        const stepFrame = (frameNowMs) => {
+          this._rafHandle = null;
+          if (!this._isActiveView || !this.recording || this.traceMode === TRACE_MODES.NONE) {
+            return;
+          }
+          const nowMs = typeof frameNowMs === "number" ? frameNowMs : this.ctx.nowMs();
+          const dtSec =
+            this._lastFrameWallMs !== null
+              ? Math.max(0.001, Math.min(0.25, (nowMs - this._lastFrameWallMs) / 1000))
+              : 1 / 30;
+          this._lastFrameWallMs = nowMs;
+          this._advanceSmoothViewport(nowMs, dtSec);
+          this._syncStatusDom();
+          this._renderCanvas(nowMs);
+          this._rafHandle = this.ctx.requestAnimationFrame(stepFrame);
+        };
+        this._rafHandle = this.ctx.requestAnimationFrame(stepFrame);
+      }
+    } else {
+      if (this._fastPollTimer !== null) {
+        this.ctx.clearInterval(this._fastPollTimer);
+        this._fastPollTimer = null;
+      }
+      if (this._rafHandle !== null) {
+        this.ctx.cancelAnimationFrame(this._rafHandle);
+        this._rafHandle = null;
+      }
+      this._lastFrameWallMs = null;
+    }
+  }
+
+  /**
+   * Smoothly glide `[viewStartUs, viewEndUs]` toward the live playhead at 30–60fps when `autoFollow` is enabled.
+   *
+   * @param {number} nowMs - Monotonic host clock in ms.
+   * @param {number} dtSec - Frame delta in seconds.
+   */
+  _advanceSmoothViewport(nowMs, dtSec) {
+    if (!this.autoFollow || !this.recording || this._dragState) {
+      return;
+    }
+    const playheadUs = this.getLivePlayheadUs(nowMs);
+    if (playheadUs === null) {
+      return;
+    }
+    const currentSpan = Math.max(MIN_VIEWPORT_SPAN_US, this.viewEndUs - this.viewStartUs);
+    const targetEndUs = playheadUs + currentSpan * AUTO_FOLLOW_HEADROOM_RATIO;
+    const targetStartUs = Math.max(0, targetEndUs - currentSpan);
+    const alpha = 1 - Math.exp(-dtSec * AUTO_FOLLOW_LERP_RATE);
+    this.viewStartUs += (targetStartUs - this.viewStartUs) * alpha;
+    this.viewEndUs = this.viewStartUs + currentSpan;
   }
 
   /**
@@ -486,6 +609,10 @@ export class TraceViewerController {
    * @returns {Promise<object|null>}
    */
   async pollEvents() {
+    if (this._pollInFlight) {
+      return null;
+    }
+    this._pollInFlight = true;
     try {
       const data = await this.ctx.fetchJson(
         `/api/trace/events?after_seq=${this.afterSeq}&limit=${POLL_BATCH_LIMIT}`,
@@ -531,7 +658,12 @@ export class TraceViewerController {
           this.minTsUs = data.min_ts_us;
         }
         if (typeof data.max_ts_us === "number") {
+          const prevMax = this.maxTsUs;
           this.maxTsUs = data.max_ts_us;
+          if (prevMax === null || data.max_ts_us > prevMax || incoming.length > 0) {
+            this._anchorMaxTsUs = data.max_ts_us;
+            this._anchorWallMs = this.ctx.nowMs();
+          }
         }
       }
 
@@ -542,15 +674,17 @@ export class TraceViewerController {
         );
         if (this.eventsById.size <= incoming.length && this.minTsUs !== null) {
           const totalSpan = Math.max(MIN_VIEWPORT_SPAN_US, this.maxTsUs - this.minTsUs);
-          const span = Math.max(totalSpan * 1.1, 100_000);
-          this.viewStartUs = Math.max(0, this.minTsUs - span * 0.05);
+          const span = Math.max(totalSpan * 1.1, DEFAULT_VIEWPORT_SPAN_US);
+          const rightEdge = this.maxTsUs + span * AUTO_FOLLOW_HEADROOM_RATIO;
+          this.viewStartUs = Math.max(0, rightEdge - span);
           this.viewEndUs = this.viewStartUs + span;
-        } else if (this.maxTsUs > this.viewEndUs) {
-          this.viewEndUs = this.maxTsUs + currentSpan * 0.05;
+        } else if (!this._isActiveView && this.maxTsUs > this.viewEndUs) {
+          this.viewEndUs = this.maxTsUs + currentSpan * AUTO_FOLLOW_HEADROOM_RATIO;
           this.viewStartUs = Math.max(0, this.viewEndUs - currentSpan);
         }
       }
 
+      this._syncAnimationLifecycle();
       if (incoming.length > 0 || data.total_events === 0) {
         this.render();
       } else {
@@ -559,6 +693,8 @@ export class TraceViewerController {
       return data;
     } catch {
       return null;
+    } finally {
+      this._pollInFlight = false;
     }
   }
 
@@ -573,13 +709,19 @@ export class TraceViewerController {
     this.recording = nextRecording;
     if (nextRecording) {
       this.autoFollow = true;
+      if (this.maxTsUs !== null) {
+        this._anchorMaxTsUs = this.maxTsUs;
+        this._anchorWallMs = this.ctx.nowMs();
+      }
     }
     this._syncStatusDom();
+    this._syncAnimationLifecycle();
     try {
       const res = await this.ctx.postJson("/api/trace/control", { action });
       if (res && typeof res.recording === "boolean") {
         this.recording = res.recording;
         this._syncStatusDom();
+        this._syncAnimationLifecycle();
       }
     } catch {
       // Keep optimistic local toggle when server is unreachable in offline mode.
@@ -611,6 +753,8 @@ export class TraceViewerController {
     this.afterSeq = 0;
     this.minTsUs = null;
     this.maxTsUs = null;
+    this._anchorMaxTsUs = null;
+    this._anchorWallMs = null;
     this.selectedEventId = null;
     this.autoFollow = true;
     this.viewStartUs = 0;
@@ -906,9 +1050,11 @@ export class TraceViewerController {
   }
 
   /**
-   * Draw the time ruler, swimlane backgrounds, span bars, and scalar curves onto `#traceTimelineCanvas`.
+   * Draw the time ruler, swimlane backgrounds, span bars, continuous curves, and 30fps live playhead onto `#traceTimelineCanvas`.
+   *
+   * @param {number} [wallNowMs] - Optional monotonic host clock in milliseconds.
    */
-  _renderCanvas() {
+  _renderCanvas(wallNowMs = this.ctx.nowMs()) {
     if (!this.canvas) {
       return;
     }
@@ -916,6 +1062,10 @@ export class TraceViewerController {
     if (!g) {
       return;
     }
+
+    const playheadUs = this.getLivePlayheadUs(wallNowMs);
+    const pulsePhase =
+      0.5 + 0.5 * Math.sin(((wallNowMs % PULSE_PERIOD_MS) / PULSE_PERIOD_MS) * Math.PI * 2);
 
     const scrollerRect = this.canvasScroller
       ? this.canvasScroller.getBoundingClientRect()
@@ -1011,15 +1161,27 @@ export class TraceViewerController {
 
       g.fillStyle = "#7aa5b0";
       g.font = "9px monospace";
-      const subLabel =
-        track.kind === "spans"
-          ? `Depth: ${track.maxDepth + 1} • ${track.items.length} spans`
-          : track.kind === "scalar"
-            ? `${Math.round(track.minValue)}..${Math.round(track.maxValue)} ${track.unit}`
-            : `${track.items.length} events`;
+      let subLabel = "";
+      if (track.kind === "spans") {
+        subLabel = `Depth: ${track.maxDepth + 1} • ${track.items.length} spans`;
+      } else if (track.kind === "scalar") {
+        const lastScalar = track.items.length > 0 ? track.items[track.items.length - 1] : null;
+        const curVal =
+          lastScalar && Number.isFinite(Number(lastScalar.value))
+            ? Number(lastScalar.value)
+            : null;
+        if (track.name.includes("CPU Usage") && curVal !== null) {
+          subLabel = `Cur: ${curVal.toFixed(1)}% • 0..100 %`;
+        } else {
+          subLabel = `${Math.round(track.minValue)}..${Math.round(track.maxValue)} ${track.unit}`;
+        }
+      } else {
+        subLabel = `${track.items.length} events`;
+      }
       g.fillText(subLabel.slice(0, 27), 8, track.topPx + 30);
 
       if (track.kind === "spans") {
+        const openEdgeUs = playheadUs !== null ? playheadUs : this.maxTsUs || 0;
         for (const ev of track.items) {
           const startUs = Number(ev.ts_us) || 0;
           const rawEnd =
@@ -1031,7 +1193,7 @@ export class TraceViewerController {
           const endUs =
             rawEnd !== null
               ? rawEnd
-              : Math.max(startUs + 20, this.maxTsUs || startUs + 20);
+              : Math.max(startUs + 20, openEdgeUs || startUs + 20);
           if (endUs < this.viewStartUs || startUs > this.viewEndUs) {
             continue;
           }
@@ -1062,23 +1224,32 @@ export class TraceViewerController {
           this._hitBoxes.push({ x: x0, y, w, h, eventId: ev.id });
         }
       } else if (track.kind === "scalar") {
+        const isCpuUsage = track.name.includes("CPU Usage");
+        const isThermal = track.name.includes("Thermal");
         const range = Math.max(1e-6, track.maxValue - track.minValue);
         const padY = 8;
         const innerH = Math.max(12, track.heightPx - padY * 2);
+        const baselineY = track.topPx + padY + innerH;
         const valToY = (val) =>
           track.topPx + padY + innerH * (1 - (val - track.minValue) / range);
 
         const curvePoints = [];
+        let leftCarryPoint = null;
         for (const ev of track.items) {
           const ts = Number(ev.ts_us) || 0;
-          if (ts < this.viewStartUs || ts > this.viewEndUs) {
-            continue;
-          }
-          const x = tsToX(ts);
           if (ev.ph === "C" && Number.isFinite(Number(ev.value))) {
             const y = valToY(Number(ev.value));
-            curvePoints.push({ x, y, ev });
-          } else {
+            const x = tsToX(ts);
+            if (ts < this.viewStartUs) {
+              leftCarryPoint = { x: plotLeft, y, ev, synthetic: true };
+              continue;
+            }
+            if (ts > this.viewEndUs) {
+              continue;
+            }
+            curvePoints.push({ x, y, ev, synthetic: false });
+          } else if (ts >= this.viewStartUs && ts <= this.viewEndUs) {
+            const x = tsToX(ts);
             const midY = track.topPx + track.heightPx * 0.5;
             g.fillStyle = "#ff2a4b";
             g.fillRect(x - 4, midY - 6, 8, 12);
@@ -1092,11 +1263,49 @@ export class TraceViewerController {
           }
         }
 
-        if (curvePoints.length > 0) {
-          g.strokeStyle = track.name.includes("Thermal") ? "#ffb000" : "#00ffb4";
-          g.lineWidth = 1.6;
+        const renderPts =
+          leftCarryPoint && curvePoints.length > 0
+            ? [leftCarryPoint, ...curvePoints]
+            : leftCarryPoint && this.recording
+              ? [leftCarryPoint]
+              : curvePoints;
+
+        if (renderPts.length > 0) {
+          const lastPt = renderPts[renderPts.length - 1];
+          const liveEndX =
+            this.recording &&
+            playheadUs !== null &&
+            playheadUs <= this.viewEndUs &&
+            tsToX(playheadUs) > lastPt.x
+              ? Math.min(plotLeft + plotWidth, tsToX(playheadUs))
+              : lastPt.x;
+
+          if (isCpuUsage) {
+            g.fillStyle = track.name.includes("Core 0")
+              ? "rgba(0, 216, 255, 0.16)"
+              : "rgba(0, 255, 180, 0.16)";
+            g.beginPath();
+            g.moveTo(renderPts[0].x, baselineY);
+            for (const pt of renderPts) {
+              g.lineTo(pt.x, pt.y);
+            }
+            if (liveEndX > lastPt.x) {
+              g.lineTo(liveEndX, lastPt.y);
+            }
+            g.lineTo(liveEndX, baselineY);
+            g.closePath();
+            g.fill();
+          }
+
+          const lineHex = isThermal
+            ? "#ffb000"
+            : isCpuUsage && track.name.includes("Core 0")
+              ? "#00d8ff"
+              : "#00ffb4";
+          g.strokeStyle = lineHex;
+          g.lineWidth = 1.8;
           g.beginPath();
-          curvePoints.forEach((pt, idx) => {
+          renderPts.forEach((pt, idx) => {
             if (idx === 0) {
               g.moveTo(pt.x, pt.y);
             } else {
@@ -1104,13 +1313,34 @@ export class TraceViewerController {
             }
           });
           g.stroke();
+
+          if (liveEndX > lastPt.x) {
+            g.save();
+            g.strokeStyle = lineHex;
+            g.globalAlpha = 0.65;
+            g.setLineDash([4, 3]);
+            g.beginPath();
+            g.moveTo(lastPt.x, lastPt.y);
+            g.lineTo(liveEndX, lastPt.y);
+            g.stroke();
+            g.setLineDash([]);
+            g.globalAlpha = 0.35 + 0.55 * pulsePhase;
+            g.fillStyle = lineHex;
+            g.beginPath();
+            g.arc(liveEndX, lastPt.y, 3.4 + 1.4 * pulsePhase, 0, Math.PI * 2);
+            g.fill();
+            g.restore();
+          }
           g.lineWidth = 1;
 
           for (const pt of curvePoints) {
             const isSel = pt.ev.id === this.selectedEventId;
+            if (isCpuUsage && curvePoints.length > 28 && !isSel) {
+              continue;
+            }
             g.fillStyle = isSel ? "#ffffff" : "#00f0ff";
             g.beginPath();
-            g.arc(pt.x, pt.y, isSel ? 4.5 : 3, 0, Math.PI * 2);
+            g.arc(pt.x, pt.y, isSel ? 4.5 : 2.8, 0, Math.PI * 2);
             g.fill();
             this._hitBoxes.push({
               x: pt.x - HIT_TEST_RADIUS_PX,
@@ -1141,6 +1371,29 @@ export class TraceViewerController {
           });
         }
       }
+    }
+
+    // Smooth 30fps live playhead sweep line
+    if (
+      this.recording &&
+      playheadUs !== null &&
+      playheadUs >= this.viewStartUs &&
+      playheadUs <= this.viewEndUs
+    ) {
+      const headX = tsToX(playheadUs);
+      g.save();
+      g.strokeStyle = "rgba(0, 240, 255, 0.55)";
+      g.lineWidth = 1.4;
+      g.beginPath();
+      g.moveTo(headX, RULER_HEIGHT_PX);
+      g.lineTo(headX, cssHeight);
+      g.stroke();
+      g.fillStyle = "#00ffb4";
+      g.globalAlpha = 0.55 + 0.45 * pulsePhase;
+      g.beginPath();
+      g.arc(headX, RULER_HEIGHT_PX - 5, 3.2, 0, Math.PI * 2);
+      g.fill();
+      g.restore();
     }
 
     // Selected timestamp vertical cursor
@@ -1276,9 +1529,11 @@ export class TraceViewerController {
   }
 
   /**
-   * Unbind all DOM and viewport listeners.
+   * Unbind all DOM, fast-poll, animation-frame, and viewport listeners.
    */
   destroy() {
+    this._isActiveView = false;
+    this._syncAnimationLifecycle();
     for (const unsub of this._unsubscribers) {
       unsub();
     }

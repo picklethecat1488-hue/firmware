@@ -176,6 +176,10 @@ unsafe impl defmt::Logger for HostLogger {
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 defmt::timestamp!("{=u64}", 0);
 
+/// Minimum `wfe()` sleep duration in milliseconds emitted as a `CPU Idle` span (`2 ms`).
+#[cfg(all(target_arch = "arm", target_os = "none", feature = "trace-perf"))]
+const MIN_IDLE_SPAN_DURATION_MS: u64 = 2;
+
 /// Trait for executing the scheduler loop on a CPU core.
 pub trait CpuScheduler {
     /// Runs the infinite scheduler loop for the given CPU core.
@@ -206,7 +210,7 @@ impl CpuScheduler for embassy_executor::raw::Executor {
                 let exit_time = embassy_time::Instant::now();
 
                 let idle_duration = exit_time - enter_time;
-                if idle_duration >= embassy_time::Duration::from_millis(10) {
+                if idle_duration >= embassy_time::Duration::from_millis(MIN_IDLE_SPAN_DURATION_MS) {
                     let enter_us = enter_time.as_micros();
                     let exit_us = exit_time.as_micros();
                     defmt::trace!("ctx={} parent=0 span_enter: {} ts={}", ctx, name, enter_us);

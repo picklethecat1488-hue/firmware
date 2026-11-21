@@ -197,6 +197,40 @@ mod target {
         }
     }
 
+    struct SyncExecutor(embassy_executor::raw::Executor);
+    unsafe impl Sync for SyncExecutor {}
+
+    static mut EXECUTOR_CORE0: Option<SyncExecutor> = None;
+
+    /// Obtain the Core 0 Embassy spawner, initializing the raw executor if needed.
+    ///
+    /// # Safety
+    ///
+    /// Must only be invoked on Core 0 prior to or within `run_executor`.
+    pub unsafe fn spawner_core0() -> embassy_executor::Spawner {
+        let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE0);
+        if (*ptr).is_none() {
+            *ptr = Some(SyncExecutor(embassy_executor::raw::Executor::new(
+                usize::MAX as *mut (),
+            )));
+        }
+        let executor_static: &'static embassy_executor::raw::Executor = &(*ptr).as_ref().unwrap().0;
+        executor_static.spawner()
+    }
+
+    /// Run the Core 0 scheduler loop (`CpuScheduler::run_loop`) emitting `CPU Idle Core 0` spans under `trace-perf`.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the main thread entry of Core 0.
+    pub unsafe fn run_executor(cpu_id: platform::types::CpuId) -> ! {
+        use platform::system::CpuScheduler as _;
+        let _ = spawner_core0();
+        let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE0);
+        let executor_static: &'static embassy_executor::raw::Executor = &(*ptr).as_ref().unwrap().0;
+        executor_static.run_loop(cpu_id)
+    }
+
     /// Read the MCX N947 CMC reset status register to determine boot cause.
     pub fn get_boot_reason() -> model::types::BootReason {
         model::types::BootReason::PowerOn

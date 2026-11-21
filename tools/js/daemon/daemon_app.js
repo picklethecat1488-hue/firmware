@@ -70,7 +70,9 @@ export class DaemonApp {
       initialMode,
       onModeChange: async (mode) => {
         await this._syncLeftPanelForMode(mode);
-        if (mode === WORKSTATION_MODES.TRACE) {
+        const isTrace = mode === WORKSTATION_MODES.TRACE;
+        this.traceViewer.setActiveView(isTrace);
+        if (isTrace) {
           await this.traceViewer.pollEvents();
         }
       },
@@ -144,6 +146,7 @@ export class DaemonApp {
     this.testRunner.init();
     this.traceViewer.init();
     await this.cliConsole.init();
+    this.traceViewer.setActiveView(this.cliConsole.getMode() === WORKSTATION_MODES.TRACE);
     await this._syncLeftPanelForMode(this.cliConsole.getMode());
     await this.targetConfig.init();
 

@@ -8,9 +8,9 @@ use std::io;
 use std::path::Path;
 use tool_common::metadata::PartitionInfo;
 use tool_common::{
-    autodetect_project_info, normalize_rtt_bridge_addr, EnumeratedInterfaceDevice,
-    InterfaceAvailability, InterfaceStatusReport, ProjectInfo, TargetInterfaceKind,
-    DEFAULT_SWD_SPEED_KHZ,
+    autodetect_project_info, discover_sibling_elf_tables, normalize_rtt_bridge_addr,
+    DeferredElfTable, EnumeratedInterfaceDevice, InterfaceAvailability, InterfaceStatusReport,
+    ProjectInfo, TargetInterfaceKind, DEFAULT_SWD_SPEED_KHZ,
 };
 
 /// Map key inside the `metadata` partition that can override compiled `board_type`.
@@ -25,8 +25,8 @@ const TELEMETRY_PARTITION_KIND: u32 = 1;
 /// Partition kind discriminant for the `metadata` (`sequential_storage::map`) partition.
 const METADATA_PARTITION_KIND: u32 = 2;
 
-/// Maximum serialized `.program_metadata` descriptor read window in bytes within its 4 KB flash sector.
-const MAX_PROGRAM_METADATA_READ_LEN: usize = 256;
+/// Maximum serialized compact `.program_metadata` read window in bytes (`16` bytes = 4 AHB-AP words).
+const MAX_PROGRAM_METADATA_READ_LEN: usize = platform::types::COMPACT_PROGRAM_METADATA_CAP;
 
 /// Complete decoded `.program_metadata` dump returned by `host_fs query_metadata`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -214,28 +214,25 @@ async fn read_board_type_from_metadata_slice(slice: &[u8], erase_size: usize) ->
 pub async fn query_from_dump_bytes(
     dump: &[u8],
     elf_info: Option<&ProjectInfo>,
+    sibling_tables: &[DeferredElfTable],
 ) -> Result<QueriedProgramMetadata, String> {
-    // 1. Standalone `.program_metadata` section dump starting at byte 0
-    if let Ok(info) = ProjectInfo::decode_bytes(
-        dump,
-        elf_info.map(|e| e.program_metadata_addr).unwrap_or(0),
-        elf_info
-            .map(|e| e.program_metadata_size)
-            .unwrap_or(dump.len()),
-    ) {
-        let board_type = info.board_type.clone();
-        return Ok(QueriedProgramMetadata {
-            info,
-            effective_board_type: board_type,
-            provisioned_board_type: None,
-            source: "program_metadata",
-        });
-    }
-
     let spec = elf_info.ok_or_else(|| {
-        "Dump is not a standalone .program_metadata section; pass --elf to supply ELF section/partition offsets"
+        "Offline dump query_metadata requires --elf to deferred-load .program_metadata_elf strings and partition offsets"
             .to_string()
     })?;
+
+    // 1. Standalone compact `.program_metadata` section dump starting at byte 0 (`<= 16` bytes)
+    if dump.len() <= MAX_PROGRAM_METADATA_READ_LEN {
+        if let Ok(info) = spec.decode_target_bytes(dump, sibling_tables) {
+            let board_type = info.board_type.clone();
+            return Ok(QueriedProgramMetadata {
+                info,
+                effective_board_type: board_type,
+                provisioned_board_type: None,
+                source: "program_metadata",
+            });
+        }
+    }
 
     // 2. Standalone `metadata` partition dump matching the ELF's `metadata` partition size
     if let Some(meta_part) = spec.metadata_partition() {
@@ -269,10 +266,9 @@ pub async fn query_from_dump_bytes(
     let dump_window = prog_size
         .max(MAX_PROGRAM_METADATA_READ_LEN)
         .min(dump.len().saturating_sub(prog_offset));
-    let decoded_info = ProjectInfo::decode_bytes(
+    let decoded_info = spec.decode_target_bytes(
         &dump[prog_offset..prog_offset + dump_window],
-        spec.program_metadata_addr,
-        0,
+        sibling_tables,
     )?;
 
     if let Some(meta_part) = spec.metadata_partition() {
@@ -311,9 +307,11 @@ pub struct TargetQueryFailure {
     pub message: String,
 }
 
-/// Read and decode `.program_metadata` (and optional `metadata` override) from a live target using ELF geometry.
+/// Read and decode compact `.program_metadata` (and optional `metadata` override) from a live target,
+/// deferred-loading strings & partition geometry from `elf_info` / `sibling_tables`.
 pub async fn query_from_target(
     elf_info: &ProjectInfo,
+    sibling_tables: &[DeferredElfTable],
     gdb_bridge: Option<&str>,
 ) -> Result<QueriedProgramMetadata, TargetQueryFailure> {
     if elf_info.program_metadata_size == 0 {
@@ -354,7 +352,8 @@ pub async fn query_from_target(
                 },
                 message: msg,
             })?;
-        let decoded = ProjectInfo::decode_bytes(&meta_buf, elf_info.program_metadata_addr, 0)
+        let decoded = elf_info
+            .decode_target_bytes(&meta_buf, sibling_tables)
             .map_err(|e| {
                 let msg = format!("AttachedTargetMetadataInvalid ({}): {}", elf_info.chip, e);
                 TargetQueryFailure {
@@ -467,44 +466,38 @@ pub async fn query_from_target(
             }
         })?;
 
-        let decoded =
-            match ProjectInfo::decode_bytes(&prog_meta_buf, elf_info.program_metadata_addr, 0) {
-                Ok(info) => info,
-                Err(_) => {
-                    // An active SRAM NOR-flash transaction (e.g. `sequential_storage` during boot)
-                    // temporarily disables XIP on RP2040 (`0x00` reads) for a few milliseconds.
-                    // Poll non-destructively first before falling back to a brief reset + boot2 XIP init.
-                    let mut recovered: Option<ProjectInfo> = None;
-                    for attempt in 0..6 {
-                        if attempt == 3 {
-                            let _ = core.reset();
-                            let _ = core.run();
-                        }
-                        std::thread::sleep(std::time::Duration::from_millis(25));
-                        if read_probe_memory_fast(
-                            &mut core,
-                            elf_info.program_metadata_addr,
-                            &mut prog_meta_buf,
-                        )
-                        .is_ok()
+        let decoded = match elf_info.decode_target_bytes(&prog_meta_buf, sibling_tables) {
+            Ok(info) => info,
+            Err(_) => {
+                // An active SRAM NOR-flash transaction (e.g. `sequential_storage` during boot)
+                // temporarily disables XIP on RP2040 (`0x00` reads) for a few milliseconds.
+                // Poll non-destructively first before falling back to a brief reset + boot2 XIP init.
+                let mut recovered: Option<ProjectInfo> = None;
+                for attempt in 0..6 {
+                    if attempt == 3 {
+                        let _ = core.reset();
+                        let _ = core.run();
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                    if read_probe_memory_fast(
+                        &mut core,
+                        elf_info.program_metadata_addr,
+                        &mut prog_meta_buf,
+                    )
+                    .is_ok()
+                    {
+                        if let Ok(info) =
+                            elf_info.decode_target_bytes(&prog_meta_buf, sibling_tables)
                         {
-                            if let Ok(info) = ProjectInfo::decode_bytes(
-                                &prog_meta_buf,
-                                elf_info.program_metadata_addr,
-                                0,
-                            ) {
-                                recovered = Some(info);
-                                break;
-                            }
+                            recovered = Some(info);
+                            break;
                         }
                     }
-                    match recovered {
-                        Some(info) => info,
-                        None => ProjectInfo::decode_bytes(
-                            &prog_meta_buf,
-                            elf_info.program_metadata_addr,
-                            0,
-                        )
+                }
+                match recovered {
+                    Some(info) => info,
+                    None => elf_info
+                        .decode_target_bytes(&prog_meta_buf, sibling_tables)
                         .map_err(|e| {
                             let msg =
                                 format!("AttachedTargetMetadataInvalid ({}): {}", elf_info.chip, e);
@@ -518,9 +511,9 @@ pub async fn query_from_target(
                                 message: msg,
                             }
                         })?,
-                    }
                 }
-            };
+            }
+        };
 
         let r2 = if let Some(ref mp) = meta_part_spec {
             let erase_sz = (elf_info.flash_erase_size as usize).max(4096);
@@ -591,6 +584,10 @@ pub async fn run(
         None => None,
     };
 
+    let sibling_tables = explicit_elf
+        .map(discover_sibling_elf_tables)
+        .unwrap_or_default();
+
     let result = if elf_only {
         let info = elf_info.ok_or_else(|| {
             spinner.finish_and_clear();
@@ -608,7 +605,7 @@ pub async fn run(
         })
     } else if let Some(dump_file) = dump_path {
         let bytes = std::fs::read(dump_file)?;
-        query_from_dump_bytes(&bytes, elf_info.as_ref())
+        query_from_dump_bytes(&bytes, elf_info.as_ref(), &sibling_tables)
             .await
             .map_err(|msg| TargetQueryFailure {
                 status: InterfaceStatusReport {
@@ -627,7 +624,7 @@ pub async fn run(
                 "Direct target query_metadata requires --elf to resolve .program_metadata address and size.",
             )
         })?;
-        query_from_target(info, gdb_bridge).await
+        query_from_target(info, &sibling_tables, gdb_bridge).await
     };
 
     spinner.finish_and_clear();

@@ -94,7 +94,10 @@ async def test_host_fs_transfer_and_metadata_checksum(host: AsyncHostSessionClie
     """Verify 16-bit checksummed `.program_metadata` dump and `host_fs` `cp`/`ls`/`cat`/`rm` round-trip."""
     meta_out = await host.fs("query_metadata", ["--json"])
     assert re.search(r'"board_type"\s*:\s*"rp2040', meta_out), meta_out
+    assert re.search(r'"bin_name"\s*:\s*"cat_detector_shell"', meta_out), meta_out
     assert re.search(r'"checksum"\s*:\s*"0x[0-9A-Fa-f]{4}"', meta_out), meta_out
+    size_match = re.search(r'"program_metadata_size"\s*:\s*(\d+)', meta_out)
+    assert size_match is not None and int(size_match.group(1)) <= 12, meta_out
 
     board_info = await host.query_metadata(force_refresh=True)
     assert board_info is not None and board_info.matches_target
@@ -150,7 +153,7 @@ async def test_system_activity_async_log_watcher(host: AsyncHostSessionClient) -
 )
 async def test_dual_core_gdb_reset_handler_to_loc(host: AsyncHostSessionClient) -> None:
     """Verify breaking at `Reset_Handler` -> Rust LOC on Core 0 and `Core1_Reset_Handler` -> Rust LOC on Core 1 via `host_debug`."""
-    core0_loc_spec = "app/src/cat_detector_shell.rs:102"
+    core0_loc_spec = "app/src/cat_detector_shell.rs:100"
     core1_loc_spec = "app/src/cat_detector.rs:181"
 
     prior_status = await host.get_status()
@@ -186,7 +189,7 @@ async def test_dual_core_gdb_reset_handler_to_loc(host: AsyncHostSessionClient) 
             assert gdb1.command("?") == "S05"
             assert gdb0.read_pc() == reset_handler_addr
 
-            # Set Core 0 breakpoint at `cat_detector_shell.rs:102` and Core 1 at `Core1_Reset_Handler`.
+            # Set Core 0 breakpoint at `cat_detector_shell.rs:100` and Core 1 at `Core1_Reset_Handler`.
             # Leave Core 1 halted in Mask Boot ROM while Core 0 runs through `Board::init(p).await`
             # (verifying RP2040 `TIMER.DBGPAUSE = DBG0` never freezes Core 0 `.await` timers when Core 1 is halted!).
             assert gdb0.command(f"Z1,{core0_loc_addr:x},2") == "OK"
@@ -194,7 +197,7 @@ async def test_dual_core_gdb_reset_handler_to_loc(host: AsyncHostSessionClient) 
 
             gdb0.send_continue()
 
-            # Core 0 hits `cat_detector_shell.rs:102` before `bootstrap_core1()`.
+            # Core 0 hits `cat_detector_shell.rs:100` before `bootstrap_core1()`.
             assert gdb0.read_reply() == "S05"
             assert gdb0.read_pc() == core0_loc_addr
 
@@ -310,16 +313,27 @@ async def test_trace_mode_perf_emits_spans_and_excludes_sensors(
     await host.cli("thermal status")
 
     events = []
-    for _ in range(25):
+    for _ in range(30):
         snap = await host.get_trace_events(after_seq=0, limit=5000)
         events = list(snap.get("events") or [])
-        if any(e.get("category") == "span" for e in events):
+        has_span = any(e.get("category") == "span" for e in events)
+        has_c0_usage = any(e.get("track") == "Core 0 CPU Usage (%)" for e in events)
+        has_c1_usage = any(e.get("track") == "Core 1 CPU Usage (%)" for e in events)
+        if has_span and has_c0_usage and has_c1_usage:
             break
         await asyncio.sleep(0.12)
 
     span_events = [e for e in events if e.get("category") == "span"]
     sensor_events = [e for e in events if e.get("category") == "sensor"]
+    c0_usage_events = [e for e in events if e.get("track") == "Core 0 CPU Usage (%)"]
+    c1_usage_events = [e for e in events if e.get("track") == "Core 1 CPU Usage (%)"]
     assert len(span_events) >= 1, f"Expected >= 1 span in PERF mode, got: {events[:10]}"
+    assert len(c0_usage_events) >= 1, (
+        f"Expected Core 0 CPU Usage (%) track in PERF mode, got tracks: { {e.get('track') for e in events} }"
+    )
+    assert len(c1_usage_events) >= 1, (
+        f"Expected Core 1 CPU Usage (%) track in PERF mode, got tracks: { {e.get('track') for e in events} }"
+    )
     assert len(sensor_events) == 0, f"PERF mode must exclude sensor reports, got: {sensor_events[:5]}"
 
     csv_res = await host.export_trace("csv", str(csv_out))

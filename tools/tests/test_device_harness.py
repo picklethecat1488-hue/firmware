@@ -627,13 +627,25 @@ class SimulatedTargetRunner:
                 self.trace_store.ingest_event(
                     {
                         "ts_us": self._trace_ts_us,
-                        "track": "Core 0 CPU Usage",
+                        "track": "Core 0 CPU Usage (%)",
                         "ph": "C",
                         "category": "cpu_usage",
                         "name": "Core 0 CPU Usage (%)",
                         "value": 34.5,
                         "unit": "%",
                         "args": {"core": 0},
+                    }
+                )
+                self.trace_store.ingest_event(
+                    {
+                        "ts_us": self._trace_ts_us,
+                        "track": "Core 1 CPU Usage (%)",
+                        "ph": "C",
+                        "category": "cpu_usage",
+                        "name": "Core 1 CPU Usage (%)",
+                        "value": 28.2,
+                        "unit": "%",
+                        "args": {"core": 1},
                     }
                 )
         elif self.trace_mode == "SENSOR":
@@ -699,12 +711,14 @@ class SimulatedTargetRunner:
                     f'{{"checksum":"{crc}","chip":"{self.connected_chip}",'
                     f'"board_type":"{self.connected_board_type}",'
                     f'"program_metadata_board_type":"{self.connected_board_type}",'
+                    f'"bin_name":"{self.bin_name}","program_metadata_size":11,'
                     f'"trace_mode":"{self.trace_mode}",'
                     f'"source":"program_metadata"}}'
                 )
             return (
                 f"checksum: {crc}\nchip: {self.connected_chip}\n"
-                f"board_type: {self.connected_board_type}\ntrace_mode: {self.trace_mode}\nsource: program_metadata"
+                f"board_type: {self.connected_board_type}\nbin_name: {self.bin_name}\n"
+                f"program_metadata_size: 11\ntrace_mode: {self.trace_mode}\nsource: program_metadata"
             )
 
         if subcmd == "cp" and len(rest) == 2:

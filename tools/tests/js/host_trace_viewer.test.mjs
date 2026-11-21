@@ -161,6 +161,8 @@ describe("Host Daemon Trace & Telemetry Workstation (TraceViewerController)", ()
     assert.equal(tracks.length, 2);
     assert.equal(tracks[0].name, "Core 0 CPU Usage");
     assert.equal(tracks[0].kind, "scalar");
+    assert.equal(tracks[0].minValue, 0);
+    assert.equal(tracks[0].maxValue, 100);
     assert.equal(tracks[1].name, "CPU Core 0");
     assert.equal(tracks[1].kind, "spans");
     assert.equal(tracks[1].maxDepth, 1);
@@ -402,6 +404,106 @@ describe("Host Daemon Trace & Telemetry Workstation (TraceViewerController)", ()
     // AUDIO mode also maps to Rerun Viewer
     viewer.setTraceMode("AUDIO");
     assert.equal(dom.openExternalBtn.textContent, "🚀 Open in Rerun");
+
+    viewer.destroy();
+  });
+
+  it("animates swimlanes smoothly at 30fps+ via requestAnimationFrame and 120ms fast polling while active", async () => {
+    let pollCount = 0;
+    const ctx = createMockRuntimeContext({
+      fetchRoutes: {
+        "GET /api/trace/events?after_seq=0&limit=4000": () => {
+          pollCount += 1;
+          return {
+            status: 200,
+            body: {
+              trace_mode: "PERF",
+              recording: true,
+              events: [
+                {
+                  id: 1,
+                  seq: 1,
+                  ts_us: 2_000_000,
+                  track: "Core 0 CPU Usage (%)",
+                  ph: "C",
+                  category: "cpu_usage",
+                  name: "Core 0 CPU Usage (%)",
+                  value: 18.5,
+                  unit: "%",
+                },
+                {
+                  id: 2,
+                  seq: 2,
+                  ts_us: 2_050_000,
+                  track: "Core 1 CPU Usage (%)",
+                  ph: "C",
+                  category: "cpu_usage",
+                  name: "Core 1 CPU Usage (%)",
+                  value: 44.2,
+                  unit: "%",
+                },
+              ],
+              cursor: 2,
+              total_events: 2,
+              min_ts_us: 2_000_000,
+              max_ts_us: 2_050_000,
+            },
+          };
+        },
+        "GET /api/trace/events?after_seq=2&limit=4000": () => {
+          pollCount += 1;
+          return {
+            status: 200,
+            body: {
+              trace_mode: "PERF",
+              recording: true,
+              events: [],
+              cursor: 2,
+              total_events: 2,
+              min_ts_us: 2_000_000,
+              max_ts_us: 2_050_000,
+            },
+          };
+        },
+        "POST /api/trace/control": { status: 200, body: { success: true, recording: false } },
+      },
+    });
+
+    const dom = buildTraceViewerDom(ctx);
+    const viewer = createTraceViewer(ctx, {
+      initialTraceMode: "PERF",
+      initialBinName: "cat_detector_shell",
+    });
+    viewer.init();
+    viewer.setActiveView(true);
+
+    // Initial poll anchors live playhead at 2,050,000 µs and schedules rAF loop
+    await viewer.pollEvents();
+    assert.equal(pollCount, 1);
+    assert.equal(ctx.rafQueue.size, 1);
+    const initialPlayhead = viewer.getLivePlayheadUs();
+    const initialViewEnd = viewer.viewEndUs;
+    const initialBadgeText = dom.viewportBadge.textContent;
+    assert.equal(initialPlayhead, 2_050_000);
+
+    // Advance 6 animation frames (~200ms @ 30fps) -> playhead, viewport & badge glide smoothly forward without waiting 1s!
+    for (let i = 0; i < 6; i += 1) {
+      ctx.flushAnimationFrames(33);
+    }
+    const advancedPlayhead = viewer.getLivePlayheadUs();
+    assert.ok(advancedPlayhead > initialPlayhead + 150_000);
+    assert.ok(viewer.viewEndUs > initialViewEnd);
+    assert.notEqual(dom.viewportBadge.textContent, initialBadgeText);
+    assert.equal(ctx.rafQueue.size, 1);
+
+    // Fast 120ms poll timer triggers incremental fetch automatically
+    ctx.advanceTime(130);
+    await Promise.resolve();
+    assert.ok(pollCount >= 2);
+
+    // Pausing recording stops rAF loop and fast polling immediately
+    await viewer.toggleRecording();
+    assert.equal(ctx.rafQueue.size, 0);
 
     viewer.destroy();
   });

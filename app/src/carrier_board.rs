@@ -15,6 +15,18 @@ pub use board::carrier_board::{
 pub use board::carrier_board::handle_panic;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Obtain the Core 0 Embassy task spawner for Carrier Board 2.0.
+pub fn spawner_core0() -> embassy_executor::Spawner {
+    unsafe { board::carrier_board::spawner_core0() }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Run the Carrier Board 2.0 scheduler loop for `cpu_id`.
+pub fn run_executor(cpu_id: platform::types::CpuId) -> ! {
+    unsafe { board::carrier_board::run_executor(cpu_id) }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global `OnceLock` static holding the initialized Carrier Board 2.0 BSP.
 pub static BOARD: platform::OnceLock<Board<'static>> = platform::OnceLock::new();
 

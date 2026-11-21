@@ -1420,8 +1420,168 @@ fn normalize_value_quotes(val: &mut serde_json::Value) {
     }
 }
 
-/// Pipeline stage that converts CPU Idle span events into a continuous
-/// CPU Usage (%) counter track, removing the idle spans from the thread slice timeline.
+/// Sliding window width in microseconds (`50,000 µs` = 50 ms) for integrating `CPU Idle` duty cycle.
+const CPU_USAGE_WINDOW_US: u64 = 50_000;
+
+/// Step spacing in microseconds (`25,000 µs` = 25 ms = 40 Hz) for continuous CPU Usage (%) curve emission.
+const CPU_USAGE_SAMPLE_STEP_US: u64 = 25_000;
+
+/// Causal exponential smoothing factor (`0.45`) applied to windowed CPU utilization samples.
+const CPU_USAGE_EMA_ALPHA: f64 = 0.45;
+
+/// Minimum spacing (`2,000 µs`) between forced transition samples on a core's CPU Usage (%) curve.
+const CPU_USAGE_MIN_FORCE_GAP_US: u64 = 2_000;
+
+/// Per-core sliding-window integrator converting discrete `(idle_enter_us, idle_exit_us)` spans
+/// into a smooth, continuous `0.0%..100.0%` CPU Usage (%) curve.
+#[derive(Default, Clone)]
+pub struct CoreCpuUsageIntegrator {
+    first_ts_us: Option<u64>,
+    last_sample_ts_us: Option<u64>,
+    smoothed_pct: Option<f64>,
+    open_idle_start_us: Option<u64>,
+    has_seen_idle: bool,
+    idle_intervals: std::collections::VecDeque<(u64, u64)>,
+}
+
+impl CoreCpuUsageIntegrator {
+    fn touch_first_ts(&mut self, ts_us: u64) {
+        match self.first_ts_us {
+            None => self.first_ts_us = Some(ts_us),
+            Some(cur) if ts_us < cur => self.first_ts_us = Some(ts_us),
+            _ => {}
+        }
+    }
+
+    fn compute_raw_window_pct(&self, sample_ts_us: u64) -> f64 {
+        let first = self.first_ts_us.unwrap_or(sample_ts_us);
+        let w_start = sample_ts_us.saturating_sub(CPU_USAGE_WINDOW_US).max(first);
+        if sample_ts_us <= w_start {
+            let in_idle = self
+                .open_idle_start_us
+                .map(|s| s <= sample_ts_us)
+                .unwrap_or(false)
+                || self
+                    .idle_intervals
+                    .iter()
+                    .any(|&(s, e)| s <= sample_ts_us && sample_ts_us <= e);
+            return if in_idle { 0.0 } else { 100.0 };
+        }
+
+        let window_len = sample_ts_us - w_start;
+        let mut idle_overlap = 0u64;
+        for &(s, e) in &self.idle_intervals {
+            let ov_start = s.max(w_start);
+            let ov_end = e.min(sample_ts_us);
+            if ov_end > ov_start {
+                idle_overlap = idle_overlap.saturating_add(ov_end - ov_start);
+            }
+        }
+        if let Some(open_s) = self.open_idle_start_us {
+            let ov_start = open_s.max(w_start);
+            if sample_ts_us > ov_start {
+                idle_overlap = idle_overlap.saturating_add(sample_ts_us - ov_start);
+            }
+        }
+
+        let clamped_idle = idle_overlap.min(window_len);
+        (((window_len - clamped_idle) as f64 / window_len as f64) * 100.0).clamp(0.0, 100.0)
+    }
+
+    fn emit_sample_at(&mut self, ts_us: u64) -> (u64, f64) {
+        let raw_pct = self.compute_raw_window_pct(ts_us);
+        let smoothed = match self.smoothed_pct {
+            None => raw_pct,
+            Some(prev) => prev * (1.0 - CPU_USAGE_EMA_ALPHA) + raw_pct * CPU_USAGE_EMA_ALPHA,
+        };
+        let rounded = ((smoothed * 10.0).round() / 10.0).clamp(0.0, 100.0);
+        self.smoothed_pct = Some(rounded);
+        self.last_sample_ts_us = Some(ts_us);
+        (ts_us, rounded)
+    }
+
+    fn prune_old_intervals(&mut self, horizon_us: u64) {
+        let keep_after = horizon_us.saturating_sub(CPU_USAGE_WINDOW_US * 2);
+        while let Some(&(_, end_us)) = self.idle_intervals.front() {
+            if end_us < keep_after {
+                self.idle_intervals.pop_front();
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn advance_samples_to(&mut self, target_ts_us: u64, force_at_target: bool) -> Vec<(u64, f64)> {
+        let mut samples = Vec::new();
+        let start_cursor = match self.last_sample_ts_us {
+            None => {
+                let anchor = self.first_ts_us.unwrap_or(target_ts_us);
+                samples.push(self.emit_sample_at(anchor));
+                anchor
+            }
+            Some(last) => last,
+        };
+
+        if target_ts_us > start_cursor {
+            let mut next_step = start_cursor.saturating_add(CPU_USAGE_SAMPLE_STEP_US);
+            while next_step <= target_ts_us {
+                samples.push(self.emit_sample_at(next_step));
+                next_step = next_step.saturating_add(CPU_USAGE_SAMPLE_STEP_US);
+            }
+            let last_emitted = self.last_sample_ts_us.unwrap_or(start_cursor);
+            if force_at_target
+                && target_ts_us > last_emitted
+                && (target_ts_us - last_emitted >= CPU_USAGE_MIN_FORCE_GAP_US || samples.is_empty())
+            {
+                samples.push(self.emit_sample_at(target_ts_us));
+            }
+        }
+
+        self.prune_old_intervals(target_ts_us);
+        samples
+    }
+
+    /// Record a non-idle activity timestamp on this core, advancing integrated curve samples if active.
+    pub fn record_busy_activity(&mut self, ts_us: u64) -> Vec<(u64, f64)> {
+        self.touch_first_ts(ts_us);
+        if !self.has_seen_idle {
+            return Vec::new();
+        }
+        self.advance_samples_to(ts_us, false)
+    }
+
+    /// Record a `CPU Idle` `span_enter` event at `enter_us` and emit any due integrated curve samples.
+    pub fn record_idle_enter(&mut self, enter_us: u64) -> Vec<(u64, f64)> {
+        self.touch_first_ts(enter_us);
+        self.has_seen_idle = true;
+        // Integrate any preceding busy interval up to `enter_us` BEFORE marking the core idle
+        let mut samples = if self.first_ts_us.unwrap_or(enter_us) < enter_us {
+            self.advance_samples_to(enter_us, true)
+        } else {
+            Vec::new()
+        };
+        self.open_idle_start_us = Some(enter_us);
+        if self.last_sample_ts_us.is_none() {
+            samples.push(self.emit_sample_at(enter_us));
+        }
+        samples
+    }
+
+    /// Record a `CPU Idle` `span_exit` event at `exit_us`, closing the idle interval and integrating usage.
+    pub fn record_idle_exit(&mut self, exit_us: u64) -> Vec<(u64, f64)> {
+        self.touch_first_ts(exit_us);
+        self.has_seen_idle = true;
+        if let Some(enter_us) = self.open_idle_start_us.take() {
+            if exit_us > enter_us {
+                self.idle_intervals.push_back((enter_us, exit_us));
+            }
+        }
+        self.advance_samples_to(exit_us, true)
+    }
+}
+
+/// Pipeline stage that integrates `CPU Idle` span events into a continuous
+/// `Core N CPU Usage (%)` curve (`0.0%..100.0%`), removing raw idle spans from thread slices.
 pub struct CpuUsageGenerator;
 
 impl TraceStage for CpuUsageGenerator {
@@ -1430,67 +1590,63 @@ impl TraceStage for CpuUsageGenerator {
         events: Vec<serde_json::Value>,
     ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
         let mut final_events = Vec::new();
-        let mut cores_seen = std::collections::HashSet::new();
+        let mut integrators: std::collections::BTreeMap<i64, CoreCpuUsageIntegrator> =
+            std::collections::BTreeMap::new();
 
-        // 1. Find min_ts
-        let mut min_ts = f64::MAX;
+        // Seed earliest observed timestamp across trace so busy pre-idle intervals integrate accurately
+        let mut global_min_ts: Option<u64> = None;
         for event in &events {
             if let Some(ts) = event.get("ts").and_then(|t| t.as_f64()) {
-                if ts < min_ts {
-                    min_ts = ts;
-                }
+                let ts_u64 = ts.max(0.0).round() as u64;
+                global_min_ts = Some(match global_min_ts {
+                    None => ts_u64,
+                    Some(cur) => cur.min(ts_u64),
+                });
             }
         }
-        if min_ts == f64::MAX {
-            min_ts = 0.0;
-        }
 
-        // 2. Process events
         for event in events {
             if let Some(obj) = event.as_object() {
                 let name = obj.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 let ph = obj.get("ph").and_then(|p| p.as_str()).unwrap_or("");
-                let ts = obj.get("ts").and_then(|t| t.as_f64()).unwrap_or(0.0);
+                let ts_us = obj
+                    .get("ts")
+                    .and_then(|t| t.as_f64())
+                    .unwrap_or(0.0)
+                    .max(0.0)
+                    .round() as u64;
 
                 if name == "CPU Idle Core 0" || name == "CPU Idle Core 1" {
                     let core = if name == "CPU Idle Core 0" { 0 } else { 1 };
-
-                    // On the first idle event for a core, emit an initial 100% usage event at min_ts
-                    if cores_seen.insert(core) && min_ts < ts {
-                        let initial_event = serde_json::json!({
+                    let integ = integrators.entry(core).or_default();
+                    if let Some(min_ts) = global_min_ts {
+                        if min_ts < ts_us {
+                            integ.touch_first_ts(min_ts);
+                        }
+                    }
+                    let samples = if ph == "B" {
+                        integ.record_idle_enter(ts_us)
+                    } else {
+                        integ.record_idle_exit(ts_us)
+                    };
+                    for (s_ts, pct) in samples {
+                        final_events.push(serde_json::json!({
                             "cat": "cpu_usage",
                             "name": format!("Core {} CPU Usage (%)", core),
                             "ph": "C",
                             "pid": 1,
-                            "ts": min_ts,
+                            "ts": s_ts as f64,
                             "args": {
-                                "value": 100
+                                "value": pct
                             }
-                        });
-                        final_events.push(initial_event);
+                        }));
                     }
-
-                    let val = if ph == "B" { 0 } else { 100 };
-                    let counter_event = serde_json::json!({
-                        "cat": "cpu_usage",
-                        "name": format!("Core {} CPU Usage (%)", core),
-                        "ph": "C",
-                        "pid": 1,
-                        "ts": ts,
-                        "args": {
-                            "value": val
-                        }
-                    });
-                    final_events.push(counter_event);
-
-                    // Filter out the CPU Idle event itself
                     continue;
                 }
             }
             final_events.push(event);
         }
 
-        // Resort events by ts to ensure counter events are correctly ordered
         final_events.sort_by(|a, b| {
             let ts_a = a.get("ts").and_then(|t| t.as_f64()).unwrap_or(0.0);
             let ts_b = b.get("ts").and_then(|t| t.as_f64()).unwrap_or(0.0);
@@ -1845,7 +2001,7 @@ pub fn format_target_namespace(raw: &str) -> String {
 #[derive(Default)]
 pub struct LiveTraceStreamProcessor {
     span_cores: std::collections::HashMap<String, i64>,
-    cores_seen_idle: std::collections::HashSet<i64>,
+    cpu_integrators: std::collections::HashMap<i64, CoreCpuUsageIntegrator>,
 }
 
 impl LiveTraceStreamProcessor {
@@ -1911,11 +2067,17 @@ impl LiveTraceStreamProcessor {
         }
 
         if meta.is_idle {
-            let mut out = Vec::new();
             let track = format!("Core {} CPU Usage (%)", resolved_core);
-            if self.cores_seen_idle.insert(resolved_core) && ts_us > 0 {
-                out.push(crate::HostCliEvent::Trace {
-                    ts_us: 0,
+            let integ = self.cpu_integrators.entry(resolved_core).or_default();
+            let samples = if parsed.is_enter() {
+                integ.record_idle_enter(ts_us)
+            } else {
+                integ.record_idle_exit(ts_us)
+            };
+            return samples
+                .into_iter()
+                .map(|(sample_ts, usage_pct)| crate::HostCliEvent::Trace {
+                    ts_us: sample_ts,
                     track: track.clone(),
                     ph: "C".to_string(),
                     category: "cpu_usage".to_string(),
@@ -1923,26 +2085,34 @@ impl LiveTraceStreamProcessor {
                     span_id: None,
                     parent_id: None,
                     module: None,
-                    value: Some(100.0),
+                    value: Some(usage_pct),
                     unit: Some("%".to_string()),
-                    args: serde_json::json!({ "core": resolved_core, "value": 100 }),
-                });
-            }
-            let usage_pct = if parsed.is_enter() { 0.0 } else { 100.0 };
-            out.push(crate::HostCliEvent::Trace {
-                ts_us,
-                track: track.clone(),
+                    args: serde_json::json!({ "core": resolved_core, "value": usage_pct }),
+                })
+                .collect();
+        }
+
+        let mut out_events = Vec::new();
+        let usage_track = format!("Core {} CPU Usage (%)", resolved_core);
+        let busy_samples = self
+            .cpu_integrators
+            .entry(resolved_core)
+            .or_default()
+            .record_busy_activity(ts_us);
+        for (sample_ts, usage_pct) in busy_samples {
+            out_events.push(crate::HostCliEvent::Trace {
+                ts_us: sample_ts,
+                track: usage_track.clone(),
                 ph: "C".to_string(),
                 category: "cpu_usage".to_string(),
-                name: track,
+                name: usage_track.clone(),
                 span_id: None,
                 parent_id: None,
                 module: None,
                 value: Some(usage_pct),
                 unit: Some("%".to_string()),
-                args: serde_json::json!({ "core": resolved_core, "value": usage_pct as i64 }),
+                args: serde_json::json!({ "core": resolved_core, "value": usage_pct }),
             });
-            return out;
         }
 
         let mut cleaned_name = meta.name;
@@ -1954,7 +2124,7 @@ impl LiveTraceStreamProcessor {
             }
         }
 
-        vec![crate::HostCliEvent::Trace {
+        out_events.push(crate::HostCliEvent::Trace {
             ts_us,
             track: format!("CPU Core {}", resolved_core),
             ph: if parsed.is_enter() {
@@ -1978,7 +2148,8 @@ impl LiveTraceStreamProcessor {
             value: None,
             unit: None,
             args: serde_json::json!({ "core": resolved_core }),
-        }]
+        });
+        out_events
     }
 
     fn process_device_telemetry(
