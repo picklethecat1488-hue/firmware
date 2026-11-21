@@ -296,3 +296,7 @@ Target CLI is not available (RTT console is not connected). Please synchronize t
 shell>
 SEND [↵]
 ```
+
+#### Review Tasks & Functional Checklist
+
+- [ ] Start host.py with --debug-server on cat_detector_shell and verify active GDB ports | `python tools/host.py --bin cat_detector_shell --debug-server && python tools/host.py debug status` <!-- id:ed9aba67 -->
