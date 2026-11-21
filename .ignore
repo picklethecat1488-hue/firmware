@@ -1,0 +1,4 @@
+# Exclude test resource and fixture directories from CLI code searches (ag / rg) by default
+tools/tests/resources/
+tests/resources/
+**/tests/resources/

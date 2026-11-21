@@ -9,6 +9,7 @@
 
 pub mod arch;
 pub mod arm;
+pub mod probe_status;
 pub mod rsp;
 pub mod server;
 

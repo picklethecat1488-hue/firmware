@@ -795,8 +795,20 @@ def _add_test_subparser(subparsers: Any) -> None:
         action="store_false",
         help="Disable symbolic target GDB server and stream RTT directly over USB probe throughout the test run.",
     )
+    test_parser.add_argument(
+        "--trace-mode",
+        dest="test_trace_mode",
+        type=str.upper,
+        choices=["NONE", "SENSOR", "PERF", "AUDIO", "ALL"],
+        default=None,
+        help=(
+            "Default firmware tracing mode for tests without an explicit @device_test(trace_mode=...): "
+            "'NONE', 'SENSOR', 'PERF', 'AUDIO', or 'ALL' to iterate across NONE -> SENSOR -> PERF."
+        ),
+    )
 
 
+ACTIVE_STRESS_TRACE_MODES: tuple[str, ...] = ("NONE", "SENSOR", "PERF")
 DEFAULT_GDB_CORE0_PORT: int = 3333
 DEFAULT_GDB_CORE1_PORT: int = 3334
 GDB_PROXY_BUFFER_BYTES: int = 4096
@@ -1523,6 +1535,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.junit_xml:
             pytest_cmd.extend(["--junitxml", args.junit_xml])
 
+        effective_trace_mode: Optional[str] = getattr(args, "test_trace_mode", None) or getattr(
+            args, "trace_mode", None
+        )
+        trace_modes_to_run: List[Optional[str]] = (
+            list(ACTIVE_STRESS_TRACE_MODES) if effective_trace_mode == "ALL" else [effective_trace_mode]
+        )
+
         env = dict(os.environ)
         env["XERXES_REQUIRE_CONNECTED_TARGET"] = "1"
         py_paths = [
@@ -1535,41 +1554,69 @@ def main(argv: Optional[List[str]] = None) -> int:
             py_paths.append(env["PYTHONPATH"])
         env["PYTHONPATH"] = os.pathsep.join(py_paths)
 
-        if stress_runs == 1:
-            proc = subprocess.run(pytest_cmd, cwd=str(repo_root), env=env, check=False)
+        def _cmd_for_mode(mode_override: Optional[str]) -> List[str]:
+            cmd_out = list(pytest_cmd)
+            if mode_override:
+                cmd_out.extend(["--trace-mode", mode_override])
+            return cmd_out
+
+        total_planned_runs = stress_runs * len(trace_modes_to_run)
+        if total_planned_runs == 1:
+            proc = subprocess.run(_cmd_for_mode(trace_modes_to_run[0]), cwd=str(repo_root), env=env, check=False)
             return 0 if proc.returncode in (0, 5) else proc.returncode
 
         stress_start = time.monotonic()
         passed_runs = 0
-        for run_idx in range(1, stress_runs + 1):
-            print(
-                f"\n{'━' * 70}\n"
-                f"🔁 Stress Run [{run_idx}/{stress_runs}] — board '{detected_board.board_type}' ({detected_board.chip})\n"
-                f"{'━' * 70}",
-                flush=True,
-            )
-            iter_start = time.monotonic()
-            proc = subprocess.run(pytest_cmd, cwd=str(repo_root), env=env, check=False)
-            iter_elapsed = time.monotonic() - iter_start
-            if proc.returncode not in (0, 5):
-                total_elapsed = time.monotonic() - stress_start
+        per_mode_stats: Dict[str, List[float]] = {}
+        run_counter = 0
+        for cycle_idx in range(1, stress_runs + 1):
+            for mode_override in trace_modes_to_run:
+                run_counter += 1
+                mode_label = mode_override or "DEFAULT(NONE)"
+                cycle_suffix = (
+                    f" [cycle {cycle_idx}/{stress_runs}, trace_mode={mode_label}]"
+                    if effective_trace_mode is not None
+                    else ""
+                )
                 print(
-                    f"\n❌ Stress Run [{run_idx}/{stress_runs}] FAILED after {iter_elapsed:.1f}s "
-                    f"(exit code {proc.returncode}; {passed_runs}/{stress_runs} runs passed in {total_elapsed:.1f}s).",
-                    file=sys.stderr,
+                    f"\n{'━' * 70}\n"
+                    f"🔁 Stress Run [{run_counter}/{total_planned_runs}]{cycle_suffix} — "
+                    f"board '{detected_board.board_type}' ({detected_board.chip})\n"
+                    f"{'━' * 70}",
                     flush=True,
                 )
-                return proc.returncode
-            passed_runs += 1
-            print(
-                f"✅ Stress Run [{run_idx}/{stress_runs}] PASSED in {iter_elapsed:.1f}s.",
-                flush=True,
-            )
+                iter_start = time.monotonic()
+                proc = subprocess.run(_cmd_for_mode(mode_override), cwd=str(repo_root), env=env, check=False)
+                iter_elapsed = time.monotonic() - iter_start
+                if proc.returncode not in (0, 5):
+                    total_elapsed = time.monotonic() - stress_start
+                    print(
+                        f"\n❌ Stress Run [{run_counter}/{total_planned_runs}]{cycle_suffix} FAILED after {iter_elapsed:.1f}s "
+                        f"(exit code {proc.returncode}; {passed_runs}/{total_planned_runs} runs passed in {total_elapsed:.1f}s).",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    return proc.returncode
+                passed_runs += 1
+                per_mode_stats.setdefault(mode_label, []).append(iter_elapsed)
+                print(
+                    f"✅ Stress Run [{run_counter}/{total_planned_runs}]{cycle_suffix} PASSED in {iter_elapsed:.1f}s.",
+                    flush=True,
+                )
 
         total_elapsed = time.monotonic() - stress_start
+        mode_breakdown = ""
+        if effective_trace_mode is not None and per_mode_stats:
+            breakdown_lines = [
+                f"  • trace_mode={m}: {len(times)}/{stress_runs} PASSED "
+                f"(total {sum(times):.1f}s, avg {sum(times) / len(times):.1f}s)"
+                for m, times in per_mode_stats.items()
+            ]
+            mode_breakdown = "\n" + "\n".join(breakdown_lines)
         print(
             f"\n{'━' * 70}\n"
-            f"✅ Stress Test Summary: {passed_runs}/{stress_runs} runs PASSED in {total_elapsed:.1f}s\n"
+            f"✅ Stress Test Summary: {passed_runs}/{total_planned_runs} runs PASSED in {total_elapsed:.1f}s"
+            f"{mode_breakdown}\n"
             f"{'━' * 70}",
             flush=True,
         )

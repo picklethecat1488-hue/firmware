@@ -48,6 +48,8 @@ def load_last_session(repo_root: Path) -> Optional[Dict[str, Any]]:
 
 def save_last_session(repo_root: Path, session: Dict[str, Any]) -> None:
     """Persist target selection from the active connected session."""
+    if os.environ.get("XERXES_EPHEMERAL_TEST_SESSION") == "1":
+        return
     if "PYTEST_CURRENT_TEST" in os.environ and repo_root.resolve() == Path(__file__).resolve().parents[4]:
         return
     session_path = get_session_file(repo_root)

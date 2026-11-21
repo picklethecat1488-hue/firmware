@@ -255,6 +255,8 @@ pub struct RspCoreHandler {
     pub arch_profile: TargetRegisterLayout,
     /// Optional absolute target ELF executable path served over `qXfer:exec-file:read`.
     pub exec_file_path: Option<String>,
+    /// Normalized `PC` at the most recent halt reported to this GDB client (`None` while running).
+    pub last_reported_stop_pc: Option<u32>,
 }
 
 impl RspCoreHandler {
@@ -269,6 +271,16 @@ impl RspCoreHandler {
             no_ack_mode: false,
             arch_profile,
             exec_file_path,
+            last_reported_stop_pc: None,
+        }
+    }
+
+    /// Snapshot the current halted normalized `PC` on `core_idx` as reported to the GDB client.
+    pub fn record_stop_pc<B: DebugBackend + ?Sized>(&mut self, backend: &mut B) {
+        if let Some(pc_desc) = self.arch_profile.pc_register().cloned() {
+            if let Ok(raw_pc) = backend.read_core_reg(self.core_idx, pc_desc.hw_reg_id) {
+                self.last_reported_stop_pc = Some(self.arch_profile.normalize_pc(raw_pc));
+            }
         }
     }
 
@@ -366,19 +378,28 @@ impl RspCoreHandler {
             if !backend.core_halted(self.core_idx).unwrap_or(true) {
                 let _ = backend.halt_core(self.core_idx);
             }
+            self.record_stop_pc(backend);
             return RspAction::status(RspReplyCode::SigTrap);
         }
         if cmd == "g" {
             return RspAction::Reply(self.handle_read_all_regs(backend));
         }
         if let Some(hex_regs) = cmd.strip_prefix('G') {
-            return RspAction::status(self.handle_write_all_regs(hex_regs, backend));
+            let status = self.handle_write_all_regs(hex_regs, backend);
+            if status == RspReplyCode::Ok {
+                self.record_stop_pc(backend);
+            }
+            return RspAction::status(status);
         }
         if let Some(reg_hex) = cmd.strip_prefix('p') {
             return RspAction::Reply(self.handle_read_single_reg(reg_hex, backend));
         }
         if let Some(assign) = cmd.strip_prefix('P') {
-            return RspAction::status(self.handle_write_single_reg(assign, backend));
+            let status = self.handle_write_single_reg(assign, backend);
+            if status == RspReplyCode::Ok {
+                self.record_stop_pc(backend);
+            }
+            return RspAction::status(status);
         }
         if let Some(mem_args) = cmd.strip_prefix('m') {
             return RspAction::Reply(self.handle_read_mem(mem_args, backend));
@@ -410,7 +431,10 @@ impl RspCoreHandler {
                 }
             }
             return match backend.step_core(self.core_idx) {
-                Ok(_) => RspAction::status(RspReplyCode::SigTrap),
+                Ok(_) => {
+                    self.record_stop_pc(backend);
+                    RspAction::status(RspReplyCode::SigTrap)
+                }
                 Err(_) => RspAction::status(RspReplyCode::ErrTargetState),
             };
         }
@@ -419,12 +443,16 @@ impl RspCoreHandler {
             match action_char {
                 's' | 'S' => {
                     return match backend.step_core(self.core_idx) {
-                        Ok(_) => RspAction::status(RspReplyCode::SigTrap),
+                        Ok(_) => {
+                            self.record_stop_pc(backend);
+                            RspAction::status(RspReplyCode::SigTrap)
+                        }
                         Err(_) => RspAction::status(RspReplyCode::ErrTargetState),
                     };
                 }
                 't' => {
                     let _ = backend.halt_core(self.core_idx);
+                    self.record_stop_pc(backend);
                     return RspAction::status(RspReplyCode::SigTrap);
                 }
                 _ => return self.resume_core_execution(None, backend),
@@ -710,14 +738,34 @@ impl RspCoreHandler {
     }
 
     fn resume_core_execution<B: DebugBackend + ?Sized>(
-        &self,
+        &mut self,
         opt_addr: Option<u32>,
         backend: &mut B,
     ) -> RspAction {
         if let (Some(addr), Some(pc_desc)) = (opt_addr, self.arch_profile.pc_register().cloned()) {
             let norm = self.arch_profile.normalize_pc(addr);
             let _ = backend.write_core_reg(self.core_idx, pc_desc.hw_reg_id, norm);
+        } else if let (Some(prev_pc), Some(pc_desc)) = (
+            self.last_reported_stop_pc,
+            self.arch_profile.pc_register().cloned(),
+        ) {
+            // In dual-core sessions, Core 0 resuming can boot Core 1 out of Mask Boot ROM so Core 1
+            // advances and halts at an armed breakpoint (e.g. `Core1_Reset_Handler`) milliseconds
+            // before Core 1's own `$c` packet acquires the backend mutex. Report that pending trap
+            // immediately instead of resuming past the newly hit breakpoint!
+            if backend.core_halted(self.core_idx).unwrap_or(false) {
+                if let Ok(raw_pc) = backend.read_core_reg(self.core_idx, pc_desc.hw_reg_id) {
+                    let cur_pc = self.arch_profile.normalize_pc(raw_pc);
+                    if cur_pc != prev_pc
+                        && backend.has_active_breakpoint_at(self.core_idx, cur_pc as u64)
+                    {
+                        self.last_reported_stop_pc = Some(cur_pc);
+                        return RspAction::status(RspReplyCode::SigTrap);
+                    }
+                }
+            }
         }
+        self.last_reported_stop_pc = None;
         match backend.resume_core(self.core_idx) {
             Ok(()) => RspAction::WaitForHalt,
             Err(_) => RspAction::status(RspReplyCode::ErrTargetState),
@@ -725,7 +773,7 @@ impl RspCoreHandler {
     }
 
     fn handle_monitor_command<B: DebugBackend + ?Sized>(
-        &self,
+        &mut self,
         rcmd_hex: &str,
         backend: &mut B,
     ) -> RspAction {
@@ -741,6 +789,7 @@ impl RspCoreHandler {
                 if backend.reset_and_halt_core(0).is_err() {
                     return RspAction::status(RspReplyCode::ErrTargetState);
                 }
+                self.record_stop_pc(backend);
                 let out_pkt = format!(
                     "O{}",
                     encode_hex(b"Target reset and halted at Reset_Handler\n")
@@ -751,11 +800,15 @@ impl RspCoreHandler {
                 if backend.reset_and_run_core(0).is_err() {
                     return RspAction::status(RspReplyCode::ErrTargetState);
                 }
+                self.last_reported_stop_pc = None;
                 let out_pkt = format!("O{}", encode_hex(b"Target reset and running\n"));
                 RspAction::ReplyPackets(vec![out_pkt, RspReplyCode::Ok.as_reply_string()])
             }
             "halt" => match backend.halt_core(self.core_idx) {
-                Ok(_) => RspAction::status(RspReplyCode::Ok),
+                Ok(_) => {
+                    self.record_stop_pc(backend);
+                    RspAction::status(RspReplyCode::Ok)
+                }
                 Err(_) => RspAction::status(RspReplyCode::ErrTargetState),
             },
             _ => RspAction::status(RspReplyCode::Ok),

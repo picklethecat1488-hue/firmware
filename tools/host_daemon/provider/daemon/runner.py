@@ -881,17 +881,14 @@ class DaemonRunner:
         raise RuntimeError(err_msg)
 
     def _should_retry_probe_operation(self, output: str) -> bool:
-        """Query USB/transport interface status (`host_fs probe-status --json`) to decide whether a failed probe op is retryable."""
+        """Query USB/transport interface status (`host_debug probe-status --json`) to decide whether a failed probe op is retryable."""
         parsed = parse_interface_status_output(output, default_interface=TargetInterfaceType.SWD_USB)
         if parsed is not None:
             return parsed.is_retryable
-        host_fs_prefix = (
-            [str(self.host_fs_path)] if self.host_fs_path and self.host_fs_path.exists() else ["cargo", "host-fs"]
-        )
         status = query_target_interface_status(
             self.repo_root,
             interface=TargetInterfaceType.SWD_USB,
-            host_fs_cmd_prefix=host_fs_prefix,
+            host_debug_cmd_prefix=self._resolve_host_debug_cmd_prefix(),
             probe_selector=self.probe_selector,
         )
         return status.availability != InterfaceAvailability.DISCONNECTED or status.is_retryable
@@ -1226,6 +1223,7 @@ class DaemonRunner:
         effective_halt = self.halt_on_reset if halt_on_reset is None else bool(halt_on_reset)
         cmd = [
             *self._resolve_host_debug_cmd_prefix(),
+            "serve",
             "--elf",
             str(self.elf_path),
             "--speed",
@@ -1335,15 +1333,19 @@ class DaemonRunner:
             self.elf_path = self.resolve_current_elf_path()
         if not self.elf_path or not self.elf_path.exists():
             raise RuntimeError("Target ELF is not built yet; run sync before resolving breakpoints.")
-        cmd = [*self._resolve_host_debug_cmd_prefix(), "--elf", str(self.elf_path)]
-        for spec in specs:
-            cmd.extend(["--resolve", str(spec)])
+        cmd = [
+            *self._resolve_host_debug_cmd_prefix(),
+            "resolve",
+            "--elf",
+            str(self.elf_path),
+            *(str(spec) for spec in specs),
+        ]
         run_env = os.environ.copy()
         run_env.pop("CARGO_BUILD_TARGET", None)
         run_env.pop("CARGO_ENCODED_RUSTFLAGS", None)
         res = subprocess.run(cmd, cwd=str(self.repo_root), env=run_env, capture_output=True, text=True, check=False)
         if res.returncode != 0:
-            raise RuntimeError(f"host_debug --resolve failed ({res.returncode}): {res.stderr or res.stdout}")
+            raise RuntimeError(f"host_debug resolve failed ({res.returncode}): {res.stderr or res.stdout}")
         raw = json.loads(res.stdout.strip().splitlines()[-1])
         return {str(spec): int(addr) for spec, addr in raw.items()}
 

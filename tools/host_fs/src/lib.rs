@@ -134,14 +134,4 @@ pub enum Commands {
         #[arg(long)]
         json: bool,
     },
-    /// Inspect USB debug probe enumeration and exclusive-claim (`in_use`) status via `probe-rs` without resetting the target
-    #[command(name = "probe-status", alias = "probe_status")]
-    ProbeStatus {
-        /// Optional probe selector (`VID:PID[:SERIAL]`)
-        #[arg(long)]
-        probe: Option<String>,
-        /// Output structured JSON instead of key-value text
-        #[arg(long)]
-        json: bool,
-    },
 }

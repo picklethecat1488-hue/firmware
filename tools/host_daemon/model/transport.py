@@ -1,7 +1,7 @@
 """Multi-transport target interface availability probing (`SWD_USB`, `USB_UART`, `BLE`) for `host.py`.
 
 Replaces fragile stderr substring matching with structured USB/OS interface availability checks:
-- `SWD_USB`: Queries `host_fs probe-status --json` (using `probe_rs::probe::list::Lister` +
+- `SWD_USB`: Queries `host_debug probe-status --json` (using `probe_rs::probe::list::Lister` +
   non-attaching USB claim `DebugProbeInfo::open()`) or parses structured JSON availability envelopes
   returned by `host_fs query_metadata --json`.
 - `USB_UART`: Checks OS device node presence (`/dev/cu.*`, `/dev/ttyACM*`, `COM*`) and performs a
@@ -84,7 +84,7 @@ def parse_interface_status_output(
     *,
     default_interface: TargetInterfaceType = TargetInterfaceType.SWD_USB,
 ) -> Optional[InterfaceStatus]:
-    """Parse a structured JSON `InterfaceStatusReport` line emitted by `host_fs`."""
+    """Parse a structured JSON `InterfaceStatusReport` line emitted by `host_debug` or `host_fs`."""
     cleaned = raw_output.strip()
     if not cleaned:
         return None
@@ -123,12 +123,12 @@ def parse_interface_status_output(
 def query_swd_usb_probe_status(
     repo_root: Path,
     *,
-    host_fs_cmd_prefix: List[str],
+    host_debug_cmd_prefix: List[str],
     probe_selector: Optional[str] = None,
     timeout: float = DEFAULT_PROBE_STATUS_TIMEOUT_SEC,
 ) -> InterfaceStatus:
-    """Issue USB-side `host_fs probe-status --json` (`probe-rs` Lister + USB claim test) without resetting the MCU."""
-    cmd = [*host_fs_cmd_prefix, "probe-status", "--json"]
+    """Issue USB-side `host_debug probe-status --json` (`probe-rs` Lister + USB claim test) without resetting the MCU."""
+    cmd = [*host_debug_cmd_prefix, "probe-status", "--json"]
     if probe_selector:
         cmd.extend(["--probe", probe_selector])
 
@@ -275,7 +275,7 @@ def query_target_interface_status(
     repo_root: Path,
     *,
     interface: TargetInterfaceType = TargetInterfaceType.SWD_USB,
-    host_fs_cmd_prefix: Optional[List[str]] = None,
+    host_debug_cmd_prefix: Optional[List[str]] = None,
     probe_selector: Optional[str] = None,
     serial_port: Optional[Path] = None,
     ble_address: Optional[str] = None,
@@ -283,10 +283,10 @@ def query_target_interface_status(
 ) -> InterfaceStatus:
     """Unified multi-transport entry point querying `SWD_USB`, `USB_UART`, or `BLE` availability."""
     if interface == TargetInterfaceType.SWD_USB:
-        prefix = host_fs_cmd_prefix or ["cargo", "run", "--quiet", "--package", "host_fs", "--"]
+        prefix = host_debug_cmd_prefix or ["cargo", "run", "--quiet", "--package", "host_debug", "--"]
         return query_swd_usb_probe_status(
             repo_root,
-            host_fs_cmd_prefix=prefix,
+            host_debug_cmd_prefix=prefix,
             probe_selector=probe_selector,
         )
     if interface == TargetInterfaceType.USB_UART:

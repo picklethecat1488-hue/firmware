@@ -66,20 +66,22 @@ def check_metadata_transport_status(
     raw_output: str,
     *,
     interface: TargetInterfaceType = TargetInterfaceType.SWD_USB,
-    host_fs_path: Optional[Path] = None,
+    host_debug_path: Optional[Path] = None,
     probe_selector: Optional[str] = None,
     serial_port: Optional[Path] = None,
     ble_address: Optional[str] = None,
 ) -> InterfaceStatus:
-    """Resolve structured target interface availability from `host_fs --json` or a direct USB/OS probe query."""
+    """Resolve structured target interface availability from JSON output or `host_debug probe-status --json`."""
     parsed = parse_interface_status_output(raw_output, default_interface=interface)
     if parsed is not None:
         return parsed
-    prefix = _resolve_host_fs_cmd_prefix(repo_root, host_fs_path) if interface == TargetInterfaceType.SWD_USB else None
+    prefix = (
+        _resolve_host_debug_cmd_prefix(repo_root, host_debug_path) if interface == TargetInterfaceType.SWD_USB else None
+    )
     return query_target_interface_status(
         repo_root,
         interface=interface,
-        host_fs_cmd_prefix=prefix,
+        host_debug_cmd_prefix=prefix,
         probe_selector=probe_selector,
         serial_port=serial_port,
         ble_address=ble_address,
@@ -276,6 +278,24 @@ def _resolve_host_fs_cmd_prefix(repo_root: Path, host_fs_path: Optional[Path] = 
     return ["cargo", "run", "--quiet", "--package", "host_fs", "--"]
 
 
+def _resolve_host_debug_cmd_prefix(repo_root: Path, host_debug_path: Optional[Path] = None) -> List[str]:
+    """Return direct `host_debug` binary command prefix from Cargo's output directory."""
+    candidates: List[Path] = []
+    if host_debug_path is not None:
+        candidates.append(host_debug_path)
+
+    target_dir = get_cargo_target_directory(repo_root)
+    for profile in BUILD_PROFILES:
+        candidates.append(target_dir / profile / "host_debug")
+    if sys.platform in ("win32", "win64"):
+        candidates = [p.with_suffix(".exe") for p in candidates]
+
+    found = next((p for p in candidates if p.exists()), None)
+    if found is not None:
+        return [str(found)]
+    return ["cargo", "run", "--quiet", "--package", "host_debug", "--"]
+
+
 def run_host_fs_query_metadata(
     repo_root: Path,
     elf_path: Path,
@@ -325,7 +345,6 @@ def run_host_fs_query_metadata(
         status = check_metadata_transport_status(
             repo_root,
             combined_last,
-            host_fs_path=host_fs_path,
         )
         if not status.is_retryable:
             break

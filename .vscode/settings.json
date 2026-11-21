@@ -4,6 +4,19 @@
   "OcpCadViewer.advanced.autostart": false,
   "rust-analyzer.cargo.buildScripts.enable": true,
   "rust-analyzer.procMacro.enable": true,
+  "rust-analyzer.files.excludeDirs": [
+    "tools/tests/resources"
+  ],
+  "search.exclude": {
+    "**/tests/resources": true,
+    "**/tests/resources/**": true
+  },
+  "files.watcherExclude": {
+    "**/tests/resources/**": true
+  },
+  "python.analysis.exclude": [
+    "**/tests/resources/**"
+  ],
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,
   "python.testing.pytestArgs": [

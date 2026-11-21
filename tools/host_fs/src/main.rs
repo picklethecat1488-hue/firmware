@@ -20,11 +20,6 @@ fn main() -> io::Result<()> {
     );
     spinner.enable_steady_tick(std::time::Duration::from_millis(80));
 
-    // Handle non-intrusive USB probe enumeration & `in_use` claim status check
-    if let Commands::ProbeStatus { probe, json } = &cli.command {
-        return host_fs::commands::probe_status::run(probe.as_deref(), *json, &spinner);
-    }
-
     // Handle `query_metadata` using ELF-derived `.program_metadata` and `metadata` partition geometry
     if let Commands::QueryMetadata { elf_only, json } = &cli.command {
         let explicit_elf = cli.elf.as_deref().map(std::path::Path::new);
@@ -334,8 +329,8 @@ fn main() -> io::Result<()> {
                 )
                 .await?;
             }
-            Commands::QueryMetadata { .. } | Commands::ProbeStatus { .. } => {
-                unreachable!("QueryMetadata and ProbeStatus are handled before partition setup")
+            Commands::QueryMetadata { .. } => {
+                unreachable!("QueryMetadata is handled before partition setup")
             }
         }
         Ok::<(), io::Error>(())

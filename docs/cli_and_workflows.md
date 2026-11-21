@@ -70,7 +70,7 @@ python tools/host.py cli battery status
 python tools/host.py fs ls
 python tools/host.py fs cat metadata
 python tools/host.py fs crash-log
-cargo host-fs probe-status --json    # Non-resetting USB probe enumeration & in-use lock check
+cargo host-debug probe-status --json    # Non-resetting USB probe enumeration & in-use lock check
 
 # Auto-discover board_type via host_fs and run async pytest device suites
 python tools/host.py fs board-type
@@ -79,6 +79,8 @@ python tools/host.py test --scenario smoke
 python tools/host.py test --scenario integration
 python tools/host.py test -k "tof_proximity or battery"
 python tools/host.py test --stress-runs 10
+python tools/host.py test --trace-mode PERF --stress-runs 10
+python tools/host.py test --trace-mode ALL --stress-runs 10   # Iterates NONE -> SENSOR -> PERF across 10 cycles
 python tools/host.py test -k tof_proximity --debug    # Wait for VS Code debugpy attach on 127.0.0.1:5678
 python tools/host.py test tools/device_tests/suites/test_cat_detector_bringup.py --manual
 python tools/host.py test --script tools/device_tests/suites/test_carrier_board_bringup.py --manual
@@ -168,7 +170,7 @@ Host Python test suites (`tools/tests/`) keep dummy Cargo workspaces, sample `@d
 
 1. **Directory & Manifest Fixtures (`tools/tests/resources/fake_workspace/`, `tools/tests/resources/suites/`)**: Add static `Cargo.toml` manifests or sample `@device_test` Python modules under `tools/tests/resources/` and materialize an isolated per-test copy in `tmp_path` via `_copy_resource_tree("<subdir>", tmp_path / "...")`.
 2. **Executable Mock Tool Scripts (`tools/tests/resources/mock_*.py`, `mock_*.sh`)**: Place mock RTT/CLI/debug tool scripts in `tools/tests/resources/` and wrap them into `tmp_path` via `_make_resource_launcher(tmp_path / "mock_bin", "mock_<name>.py", env_overrides={"XERXES_MOCK_...": str(tmp_path / "out.json")})` so `pytest -n auto` workers remain completely isolated.
-3. **Multi-Transport Target Interface Probing (`tools/host_daemon/model/transport.py`)**: `host.py` determines target availability without brittle stderr substring checks across `SWD_USB` (`cargo host-fs probe-status --json`), `USB_UART` (non-blocking POSIX `flock`), and `BLE` (GATT adapter lease callbacks).
+3. **Multi-Transport Target Interface Probing (`tools/host_daemon/model/transport.py`)**: `host.py` determines target availability without brittle stderr substring checks across `SWD_USB` (`cargo host-debug probe-status --json`), `USB_UART` (non-blocking POSIX `flock`), and `BLE` (GATT adapter lease callbacks). Test resource directories (`**/tests/resources/`) are excluded by default from CLI searches (`.ignore` for `ag`/`rg`), `pytest` discovery (`norecursedirs`), and IDE search/indexing (`.vscode/settings.json`).
 
 See [Remote Cloud Runner (`anvil` / Vast.ai)](remote_cloud_runner.md) for remote provisioning and reverse-proxied hardware CLI execution (`tools/anvil cli ...`).
 

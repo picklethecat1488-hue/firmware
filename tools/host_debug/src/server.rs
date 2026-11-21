@@ -85,6 +85,11 @@ pub trait DebugBackend: Send {
     /// Clear all active hardware and software breakpoints on `core_idx`.
     fn clear_all_breakpoints(&mut self, core_idx: usize) -> Result<(), String>;
 
+    /// Return `true` if `core_idx` currently has an active user breakpoint registered at `addr`.
+    fn has_active_breakpoint_at(&self, _core_idx: usize, _addr: u64) -> bool {
+        false
+    }
+
     /// Run periodic background breakpoint/reset maintenance on `core_idx`.
     ///
     /// Returns `true` if `core_idx` hit an internal maintenance trap and was transparently resumed.
@@ -468,6 +473,7 @@ fn serve_core_gdb_client<B: DebugBackend>(
                 RspFrame::CtrlC => {
                     if let Ok(mut guard) = backend.lock() {
                         let _ = guard.halt_core(core_idx);
+                        handler.record_stop_pc(&mut *guard);
                     }
                     let sig = RspReplyCode::SigInt.as_str();
                     last_sent_reply = Some(sig.to_string());
@@ -537,7 +543,7 @@ fn serve_core_gdb_client<B: DebugBackend>(
                             match wait_until_halted_or_interrupted(
                                 &mut stream,
                                 &mut rx_buf,
-                                &handler,
+                                &mut handler,
                                 &mut last_unacked_rx_payload,
                                 &mut last_sent_reply,
                                 core_idx,
@@ -577,7 +583,7 @@ fn serve_core_gdb_client<B: DebugBackend>(
 fn drain_running_rx_frames<B: DebugBackend>(
     stream: &mut TcpStream,
     rx_buf: &mut Vec<u8>,
-    handler: &RspCoreHandler,
+    handler: &mut RspCoreHandler,
     last_unacked_rx_payload: &mut Option<Vec<u8>>,
     last_sent_reply: &mut Option<String>,
     core_idx: usize,
@@ -600,6 +606,7 @@ fn drain_running_rx_frames<B: DebugBackend>(
             RspFrame::CtrlC => {
                 if let Ok(mut back_guard) = backend.lock() {
                     let _ = back_guard.halt_core(core_idx);
+                    handler.record_stop_pc(&mut *back_guard);
                 }
                 let sig = RspReplyCode::SigInt.as_str();
                 *last_sent_reply = Some(sig.to_string());
@@ -654,6 +661,7 @@ fn drain_running_rx_frames<B: DebugBackend>(
 
                 if let Ok(mut back_guard) = backend.lock() {
                     let _ = back_guard.halt_core(core_idx);
+                    handler.record_stop_pc(&mut *back_guard);
                 }
                 let trap = RspReplyCode::SigTrap.as_str();
                 *last_sent_reply = Some(trap.to_string());
@@ -672,7 +680,7 @@ fn drain_running_rx_frames<B: DebugBackend>(
 fn wait_until_halted_or_interrupted<B: DebugBackend>(
     stream: &mut TcpStream,
     rx_buf: &mut Vec<u8>,
-    handler: &RspCoreHandler,
+    handler: &mut RspCoreHandler,
     last_unacked_rx_payload: &mut Option<Vec<u8>>,
     last_sent_reply: &mut Option<String>,
     core_idx: usize,
@@ -710,7 +718,11 @@ fn wait_until_halted_or_interrupted<B: DebugBackend>(
             if back_guard.poll_background_core_maintenance(core_idx) {
                 false
             } else {
-                back_guard.core_halted(core_idx).unwrap_or(false)
+                let is_halted = back_guard.core_halted(core_idx).unwrap_or(false);
+                if is_halted {
+                    handler.record_stop_pc(&mut *back_guard);
+                }
+                is_halted
             }
         };
 

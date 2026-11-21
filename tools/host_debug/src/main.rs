@@ -1,12 +1,13 @@
-//! CLI entry point for `host_debug` (`probe-rs` dual-core GDB RSP + non-halting RTT bridge).
+//! Subcommand CLI entry point for `host_debug` (`serve`, `resolve`, `probe-status`).
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 fn main() {}
 
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 mod host_main {
-    use clap::Parser;
+    use clap::{Args, Parser, Subcommand};
     use host_debug::arm::probe_backend::ArmProbeDebugBackend;
+    use host_debug::probe_status::run_probe_status;
     use host_debug::server::{run_debug_server_with_backend, DebugServerConfig};
     use std::io::Read;
     use std::path::PathBuf;
@@ -17,10 +18,44 @@ mod host_main {
         DEFAULT_SWD_SPEED_KHZ,
     };
 
-    /// `probe-rs` dual-core GDB RSP debug server and non-intrusive RTT memory bridge.
+    /// `probe-rs` dual-core GDB RSP debug server, symbol resolver, and USB probe status inspector.
     #[derive(Parser, Debug)]
     #[command(author, version, about, long_about = None)]
-    pub struct CliArgs {
+    pub struct Cli {
+        /// Subcommand to execute (`serve`, `resolve`, or `probe-status`).
+        #[command(subcommand)]
+        pub command: Commands,
+    }
+
+    /// Supported `host_debug` subcommands.
+    #[derive(Subcommand, Debug)]
+    pub enum Commands {
+        /// Start the dual-core GDB RSP debug server and non-halting `:50000` RTT memory bridge.
+        Serve(ServeArgs),
+        /// Resolve one or more symbol or `file:line` breakpoint specs in `--elf` to JSON addresses.
+        Resolve {
+            /// Path to the compiled target ELF binary containing DWARF debug info and `.symtab`.
+            #[arg(short, long)]
+            elf: PathBuf,
+            /// Symbol names or `file:line` specifications to resolve.
+            #[arg(required = true)]
+            specs: Vec<String>,
+        },
+        /// Inspect USB debug probe enumeration and exclusive-claim (`in_use`) status without resetting the MCU.
+        #[command(name = "probe-status")]
+        ProbeStatus {
+            /// Optional debug probe selector (`VID:PID` or `VID:PID:SERIAL`).
+            #[arg(short, long)]
+            probe: Option<String>,
+            /// Output structured JSON instead of key-value text.
+            #[arg(long)]
+            json: bool,
+        },
+    }
+
+    /// Arguments for `host_debug serve`.
+    #[derive(Args, Debug)]
+    pub struct ServeArgs {
         /// Path to the compiled target ELF binary (used to infer chip identity and symbol addresses).
         #[arg(short, long)]
         pub elf: Option<PathBuf>,
@@ -76,13 +111,9 @@ mod host_main {
         /// Terminate cleanly and release the USB probe session when stdin reaches EOF.
         #[arg(long)]
         pub exit_on_stdin_eof: bool,
-
-        /// Resolve one or more symbol or `file:line` breakpoint specifications in `--elf` to JSON addresses and exit.
-        #[arg(long = "resolve")]
-        pub resolve_specs: Vec<String>,
     }
 
-    fn resolve_target_chip(args: &CliArgs) -> Result<String, String> {
+    fn resolve_target_chip(args: &ServeArgs) -> Result<String, String> {
         if let Some(ref explicit) = args.chip {
             let trimmed = explicit.trim();
             if !trimmed.is_empty() {
@@ -107,24 +138,7 @@ mod host_main {
         Ok(chip)
     }
 
-    pub fn run() -> Result<(), String> {
-        let args = CliArgs::parse();
-        if !args.resolve_specs.is_empty() {
-            let Some(ref elf_path) = args.elf else {
-                return Err("--resolve requires --elf <ELF_PATH>".to_string());
-            };
-            let mut map = serde_json::Map::new();
-            for spec in &args.resolve_specs {
-                let addr = tool_common::resolve_breakpoint_target(elf_path, spec)?;
-                map.insert(spec.clone(), serde_json::Value::Number(addr.into()));
-            }
-            println!(
-                "{}",
-                serde_json::to_string(&serde_json::Value::Object(map)).map_err(|e| e.to_string())?
-            );
-            return Ok(());
-        }
-
+    fn run_serve(args: ServeArgs) -> Result<(), String> {
         let chip = resolve_target_chip(&args)?;
 
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -197,12 +211,36 @@ mod host_main {
 
         run_debug_server_with_backend(backend, &config, shutdown)
     }
+
+    pub fn run() -> Result<(), String> {
+        let cli = Cli::parse();
+        match cli.command {
+            Commands::Serve(args) => run_serve(args),
+            Commands::Resolve { elf, specs } => {
+                let mut map = serde_json::Map::new();
+                for spec in &specs {
+                    let addr = tool_common::resolve_breakpoint_target(&elf, spec)?;
+                    map.insert(spec.clone(), serde_json::Value::Number(addr.into()));
+                }
+                println!(
+                    "{}",
+                    serde_json::to_string(&serde_json::Value::Object(map))
+                        .map_err(|e| e.to_string())?
+                );
+                Ok(())
+            }
+            Commands::ProbeStatus { probe, json } => {
+                run_probe_status(probe.as_deref(), json);
+                Ok(())
+            }
+        }
+    }
 }
 
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 fn main() {
     if let Err(err) = host_main::run() {
-        eprintln!("Error: {}", err);
+        eprintln!("host_debug error: {}", err);
         std::process::exit(1);
     }
 }

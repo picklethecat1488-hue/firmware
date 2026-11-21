@@ -3,6 +3,7 @@
 import asyncio
 from dataclasses import dataclass, field
 import json
+import os
 from pathlib import Path
 import socket
 import subprocess
@@ -316,9 +317,12 @@ class AsyncHostSessionClient:
         elif enable_debug_server is False:
             spawn_cmd.append("--no-debug-server")
 
+        spawn_env = dict(os.environ)
+        spawn_env["XERXES_EPHEMERAL_TEST_SESSION"] = "1"
         proc = subprocess.Popen(
             spawn_cmd,
             cwd=str(repo_root),
+            env=spawn_env,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

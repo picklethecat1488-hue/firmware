@@ -1,4 +1,4 @@
-"""Mock `host_debug` executable fixture recording CLI argv and emitting structured `ready`/`stopped` JSON events."""
+"""Mock `host_debug` executable fixture handling `serve`, `resolve`, and `probe-status` subcommands."""
 
 import json
 import os
@@ -7,15 +7,40 @@ import sys
 
 
 def main() -> None:
-    """Record `sys.argv[1:]` to `XERXES_MOCK_DEBUG_ARGV_LOG` (if set) and block on stdin until EOF."""
+    """Record `sys.argv[1:]` to `XERXES_MOCK_DEBUG_ARGV_LOG` (if set) and simulate `host_debug` subcommands."""
+    args = sys.argv[1:]
     argv_log = os.environ.get("XERXES_MOCK_DEBUG_ARGV_LOG")
     if argv_log:
-        Path(argv_log).write_text(json.dumps(sys.argv[1:]), encoding="utf-8")
+        Path(argv_log).write_text(json.dumps(args), encoding="utf-8")
 
-    c0 = int(sys.argv[sys.argv.index("--gdb-core0-port") + 1])
-    c1 = int(sys.argv[sys.argv.index("--gdb-core1-port") + 1])
-    rtt = int(sys.argv[sys.argv.index("--rtt-bridge-port") + 1])
-    halted = "--halt-on-reset" in sys.argv
+    subcmd = args[0] if args else "serve"
+    if subcmd == "probe-status":
+        print(
+            json.dumps(
+                {
+                    "interface": "swd_usb",
+                    "availability": "available",
+                    "in_use": False,
+                    "device_count": 1,
+                    "devices": [{"identifier": "Mock Probe"}],
+                    "error": None,
+                }
+            ),
+            flush=True,
+        )
+        return
+
+    if subcmd == "resolve":
+        elf_idx = args.index("--elf")
+        specs = args[elf_idx + 2 :]
+        print(json.dumps({spec: 0x100001C0 + idx * 4 for idx, spec in enumerate(specs)}), flush=True)
+        return
+
+    assert subcmd == "serve", f"Expected host_debug subcommand 'serve', got {args!r}"
+    c0 = int(args[args.index("--gdb-core0-port") + 1])
+    c1 = int(args[args.index("--gdb-core1-port") + 1])
+    rtt = int(args[args.index("--rtt-bridge-port") + 1])
+    halted = "--halt-on-reset" in args
     print(
         json.dumps(
             {

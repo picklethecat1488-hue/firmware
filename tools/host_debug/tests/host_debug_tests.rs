@@ -413,6 +413,10 @@ impl DebugBackend for MockDualCoreBackend {
         self.bp_mgr.clear_all(&mut hw, core_idx)
     }
 
+    fn has_active_breakpoint_at(&self, core_idx: usize, addr: u64) -> bool {
+        self.bp_mgr.has_breakpoint_at(core_idx, addr)
+    }
+
     fn poll_background_core_maintenance(&mut self, core_idx: usize) -> bool {
         let mut hw = SharedHwAdapter { state: &self.state };
         self.bp_mgr.poll_maintenance(&mut hw, core_idx)
@@ -1247,4 +1251,81 @@ fn test_worm_lubricated_flatworm_512_masked_single_step_past_hw_bp_and_vcont_cla
             combined
         );
     }
+}
+
+#[test]
+fn test_dual_core_boot_race_core1_already_halted_at_breakpoint_before_continue() {
+    let (mut backend, shared) = MockDualCoreBackend::new();
+    let layout1 = backend.core_register_layout(1);
+    let mut rsp1 = RspCoreHandler::new(1, layout1, None);
+
+    // Core 1 starts halted in Mask Boot ROM (`0x0000_0178`) when Dual-Core GDB attaches (`?`)
+    {
+        let mut guard = shared.lock().unwrap();
+        guard.cores[1].regs.insert(15, 0x0000_0178);
+        guard.cores[1].halted = true;
+    }
+    assert_eq!(
+        rsp1.handle_packet(b"?", &mut backend),
+        RspAction::Reply("S05".to_string())
+    );
+    assert_eq!(
+        rsp1.handle_packet(
+            format!("Z1,{:x},2", CORE1_RESET_HANDLER_ADDR | 1).as_bytes(),
+            &mut backend
+        ),
+        RspAction::Reply("OK".to_string())
+    );
+
+    // Simulate Core 0 resuming first, releasing Boot-ROM Core 1, and Core 1 hitting `Core1_Reset_Handler`
+    // BEFORE Core 1's own `$c` packet acquires the backend lock (exact race caught under `trace_mode=PERF`)!
+    {
+        let mut guard = shared.lock().unwrap();
+        guard.cores[1]
+            .regs
+            .insert(15, CORE1_RESET_HANDLER_ADDR & !1);
+        guard.cores[1].halted = true;
+    }
+
+    // Core 1's `$c` must immediately report `S05` at `Core1_Reset_Handler` rather than calling `resume_core(1)`
+    // and skipping past the newly hit breakpoint!
+    assert_eq!(
+        rsp1.handle_packet(b"c", &mut backend),
+        RspAction::Reply("S05".to_string())
+    );
+    assert!(
+        shared.lock().unwrap().cores[1].halted,
+        "Core 1 must remain halted at Core1_Reset_Handler"
+    );
+
+    // A subsequent `$c` after removing the breakpoint (`z1`) when PC has not changed must resume normally!
+    assert_eq!(
+        rsp1.handle_packet(
+            format!("z1,{:x},2", CORE1_RESET_HANDLER_ADDR | 1).as_bytes(),
+            &mut backend
+        ),
+        RspAction::Reply("OK".to_string())
+    );
+    assert_eq!(
+        rsp1.handle_packet(b"c", &mut backend),
+        RspAction::WaitForHalt
+    );
+}
+
+#[test]
+fn test_host_debug_subcommand_probe_status_json() {
+    let bin_path = env!("CARGO_BIN_EXE_host_debug");
+    let out = Command::new(bin_path)
+        .args(["probe-status", "--probe", "ffff:ffff:nonexistent", "--json"])
+        .output()
+        .expect("invoke host_debug probe-status --json");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let probe_json = String::from_utf8(out.stdout).expect("utf8 stdout");
+    assert!(probe_json.contains("\"interface\":\"swd_usb\""));
+    assert!(probe_json.contains("\"availability\":\"disconnected\""));
+    assert!(probe_json.contains("\"in_use\":false"));
 }

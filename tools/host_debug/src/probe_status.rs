@@ -1,14 +1,17 @@
 //! Non-intrusive USB debug probe enumeration and exclusive-claim (`in_use`) status check via `probe-rs`.
 
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
 use probe_rs::probe::list::Lister;
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
 use probe_rs::probe::DebugProbeSelector;
-use std::io;
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
 use tool_common::{
     EnumeratedInterfaceDevice, InterfaceAvailability, InterfaceStatusReport, TargetInterfaceKind,
 };
 
 /// Query the OS USB bus via `probe-rs` (`Lister` + non-attaching `DebugProbeInfo::open()`) to determine
 /// whether a debug probe is `Disconnected`, `InUse` (claimed by another process), or `Available`.
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
 pub fn inspect_swd_usb_probe_status(selector_str: Option<&str>) -> InterfaceStatusReport {
     let lister = Lister::new();
     let probes = match selector_str {
@@ -69,12 +72,8 @@ pub fn inspect_swd_usb_probe_status(selector_str: Option<&str>) -> InterfaceStat
 }
 
 /// Execute the `probe-status` subcommand and print structured availability to stdout.
-pub fn run(
-    probe_selector: Option<&str>,
-    json: bool,
-    spinner: &indicatif::ProgressBar,
-) -> io::Result<()> {
-    spinner.finish_and_clear();
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+pub fn run_probe_status(probe_selector: Option<&str>, json: bool) {
     let report = inspect_swd_usb_probe_status(probe_selector);
     if json {
         println!("{}", report.to_json());
@@ -95,5 +94,4 @@ pub fn run(
             println!("detail: {}", err);
         }
     }
-    Ok(())
 }

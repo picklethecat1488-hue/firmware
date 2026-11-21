@@ -260,6 +260,9 @@ pub trait ArmHardwareOps {
         core_idx: usize,
         slots: &[Option<u64>],
     ) -> Result<bool, String>;
+
+    /// Release secondary core from Mask Boot ROM (`PC < 0x1000_0000`) if halted after `PSM.frce_off`.
+    fn release_secondary_bootrom_if_halted(&mut self) {}
 }
 
 /// Per-core ARM Cortex-M hardware FPB comparator and SRAM `BKPT #0` software breakpoint table.
@@ -448,6 +451,15 @@ impl ArmBreakpointManager {
         Ok(())
     }
 
+    /// Return `true` if `core_idx` has a registered hardware or SRAM software breakpoint at `raw_addr`.
+    pub fn has_breakpoint_at(&self, core_idx: usize, raw_addr: u64) -> bool {
+        let addr = raw_addr & !1;
+        let Some(table) = self.cores.get(core_idx) else {
+            return false;
+        };
+        table.hw_slots.contains(&Some(addr)) || table.sw_ram_patches.contains_key(&addr)
+    }
+
     /// Re-arm hardware FPB comparators on `core_idx` if cleared by an MCU or subsystem reset.
     pub fn ensure_armed<H: ArmHardwareOps + ?Sized>(
         &mut self,
@@ -620,6 +632,7 @@ impl ArmBreakpointManager {
             let c1_slots = self.cores[1].hw_slots.clone();
             let _ = hw.ensure_hw_breakpoints_active(1, &c1_slots);
         }
+        hw.release_secondary_bootrom_if_halted();
         let _ = hw.clear_hw_breakpoint_slot(0, slot_idx, trap_addr);
         self.armed_core0_trap_slot = None;
         let _ = hw.raw_resume_core(0);
@@ -655,6 +668,7 @@ pub mod probe_backend {
     struct SessionHwAccess<'a> {
         session: &'a mut Session,
         core_archs: &'a [ProcessorArch],
+        is_rp2040: bool,
     }
 
     impl ArmHardwareOps for SessionHwAccess<'_> {
@@ -840,6 +854,33 @@ pub mod probe_backend {
                 }
                 Ok(true)
             })
+        }
+
+        fn release_secondary_bootrom_if_halted(&mut self) {
+            if !self.is_rp2040 || self.core_archs.len() < 2 {
+                return;
+            }
+            let _ = with_session_core(self.session, 1, |core1| {
+                if core1.core_halted().unwrap_or(false) {
+                    let c1_pc = core1
+                        .read_core_reg::<u32>(RegisterId(DCRSR_PC))
+                        .unwrap_or(0)
+                        & !1;
+                    if c1_pc < RP2040_FLASH_BASE_ADDR {
+                        if let Ok(demcr) = core1.read_word_32(CORTEX_M_DEMCR_ADDR) {
+                            if (demcr & CORTEX_M_DEMCR_VC_CORERESET_MASK) != 0 {
+                                let _ = core1.write_word_32(
+                                    CORTEX_M_DEMCR_ADDR,
+                                    demcr & !CORTEX_M_DEMCR_VC_CORERESET_MASK,
+                                );
+                            }
+                        }
+                        let _ = core1.run();
+                    }
+                }
+                Ok(())
+            });
+            let _ = self.session.core(0);
         }
     }
 
@@ -1086,9 +1127,11 @@ pub mod probe_backend {
         }
 
         fn core_halted(&mut self, core_idx: usize) -> Result<bool, String> {
+            let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
             let mut hw = SessionHwAccess {
                 session: &mut self.session,
                 core_archs: &self.core_archs,
+                is_rp2040,
             };
             hw.raw_core_halted(core_idx)
         }
@@ -1106,39 +1149,18 @@ pub mod probe_backend {
 
         fn resume_core(&mut self, core_idx: usize) -> Result<(), String> {
             self.configure_target_debug_peripherals();
-            if core_idx == 0
-                && self.chip.eq_ignore_ascii_case("rp2040")
-                && self.core_archs.len() > 1
-            {
-                // If Core 1 was halted in Mask Boot ROM (`PC < 0x1000_0000`) by a Dual-Core GDB attach
-                // before Core 0 calls `spawn_core1`, release Core 1's Boot ROM FIFO loop (and clear
-                // `DEMCR.VC_CORERESET`) so Core 0's `bootstrap_core1` handshake never deadlocks!
-                let _ = with_session_core(&mut self.session, 1, |core1| {
-                    if core1.core_halted().unwrap_or(false) {
-                        let c1_pc = core1
-                            .read_core_reg::<u32>(RegisterId(DCRSR_PC))
-                            .unwrap_or(0)
-                            & !1;
-                        if c1_pc < RP2040_FLASH_BASE_ADDR {
-                            if let Ok(demcr) = core1.read_word_32(CORTEX_M_DEMCR_ADDR) {
-                                if (demcr & CORTEX_M_DEMCR_VC_CORERESET_MASK) != 0 {
-                                    let _ = core1.write_word_32(
-                                        CORTEX_M_DEMCR_ADDR,
-                                        demcr & !CORTEX_M_DEMCR_VC_CORERESET_MASK,
-                                    );
-                                }
-                            }
-                            let _ = core1.run();
-                        }
-                    }
-                    Ok(())
-                });
-                let _ = self.session.core(0);
-            }
+            let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
             let mut hw = SessionHwAccess {
                 session: &mut self.session,
                 core_archs: &self.core_archs,
+                is_rp2040,
             };
+            if core_idx == 0 {
+                // If Core 1 was halted in Mask Boot ROM (`PC < 0x1000_0000`) by a Dual-Core GDB attach
+                // before Core 0 calls `spawn_core1`, release Core 1's Boot ROM FIFO loop (and clear
+                // `DEMCR.VC_CORERESET`) so Core 0's `bootstrap_core1` handshake never deadlocks!
+                hw.release_secondary_bootrom_if_halted();
+            }
             if hw.raw_core_halted(core_idx).unwrap_or(false) {
                 let _ = self.bp_mgr.step_over_sw_bkpt_if_needed(&mut hw, core_idx);
             }
@@ -1155,9 +1177,11 @@ pub mod probe_backend {
                 let _ = self.halt_core(core_idx);
             }
             self.configure_target_debug_peripherals();
+            let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
             let mut hw = SessionHwAccess {
                 session: &mut self.session,
                 core_archs: &self.core_archs,
+                is_rp2040,
             };
             self.bp_mgr.step_core(&mut hw, core_idx)
         }
@@ -1170,9 +1194,11 @@ pub mod probe_backend {
             };
             let pc = Self::halt_core_at_entry(&mut self.session, core_idx, entry)?;
             self.configure_target_debug_peripherals();
+            let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
             let mut hw = SessionHwAccess {
                 session: &mut self.session,
                 core_archs: &self.core_archs,
+                is_rp2040,
             };
             let _ = self.bp_mgr.ensure_armed(&mut hw, core_idx);
             Ok(pc)
@@ -1188,9 +1214,11 @@ pub mod probe_backend {
                 core.run().map_err(|e| format!("{:?}", e))?;
             }
             self.configure_target_debug_peripherals();
+            let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
             let mut hw = SessionHwAccess {
                 session: &mut self.session,
                 core_archs: &self.core_archs,
+                is_rp2040,
             };
             let _ = self.bp_mgr.ensure_armed(&mut hw, core_idx);
             Ok(())
@@ -1221,9 +1249,11 @@ pub mod probe_backend {
             addr: u64,
             buf: &mut [u8],
         ) -> Result<(), String> {
+            let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
             let mut hw = SessionHwAccess {
                 session: &mut self.session,
                 core_archs: &self.core_archs,
+                is_rp2040,
             };
             hw.raw_read_memory(core_idx, addr, buf)
         }
@@ -1242,9 +1272,11 @@ pub mod probe_backend {
         }
 
         fn write_memory(&mut self, core_idx: usize, addr: u64, data: &[u8]) -> Result<(), String> {
+            let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
             let mut hw = SessionHwAccess {
                 session: &mut self.session,
                 core_archs: &self.core_archs,
+                is_rp2040,
             };
             hw.raw_write_memory(core_idx, addr, data)
         }
@@ -1255,34 +1287,46 @@ pub mod probe_backend {
             addr: u64,
             allow_sw_ram: bool,
         ) -> Result<bool, String> {
+            let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
             let mut hw = SessionHwAccess {
                 session: &mut self.session,
                 core_archs: &self.core_archs,
+                is_rp2040,
             };
             self.bp_mgr
                 .insert_breakpoint(&mut hw, core_idx, addr, allow_sw_ram)
         }
 
         fn remove_breakpoint(&mut self, core_idx: usize, addr: u64) -> Result<(), String> {
+            let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
             let mut hw = SessionHwAccess {
                 session: &mut self.session,
                 core_archs: &self.core_archs,
+                is_rp2040,
             };
             self.bp_mgr.remove_breakpoint(&mut hw, core_idx, addr)
         }
 
         fn clear_all_breakpoints(&mut self, core_idx: usize) -> Result<(), String> {
+            let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
             let mut hw = SessionHwAccess {
                 session: &mut self.session,
                 core_archs: &self.core_archs,
+                is_rp2040,
             };
             self.bp_mgr.clear_all(&mut hw, core_idx)
         }
 
+        fn has_active_breakpoint_at(&self, core_idx: usize, addr: u64) -> bool {
+            self.bp_mgr.has_breakpoint_at(core_idx, addr)
+        }
+
         fn poll_background_core_maintenance(&mut self, core_idx: usize) -> bool {
+            let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
             let mut hw = SessionHwAccess {
                 session: &mut self.session,
                 core_archs: &self.core_archs,
+                is_rp2040,
             };
             self.bp_mgr.poll_maintenance(&mut hw, core_idx)
         }

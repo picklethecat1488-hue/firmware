@@ -594,16 +594,5 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
     assert!(stdout_cb.contains("trace_mode: perf"));
     assert!(stdout_cb.contains("partition[2] (metadata): address=0x001E0000 size=32768"));
 
-    // 5. Verify `probe-status --json` emits structured interface availability JSON without resetting target
-    let out_probe_status = Command::new(bin_path)
-        .args(["probe-status", "--probe", "ffff:ffff:nonexistent", "--json"])
-        .output()
-        .unwrap();
-    assert!(out_probe_status.status.success());
-    let probe_json = String::from_utf8(out_probe_status.stdout).unwrap();
-    assert!(probe_json.contains("\"interface\":\"swd_usb\""));
-    assert!(probe_json.contains("\"availability\":\"disconnected\""));
-    assert!(probe_json.contains("\"in_use\":false"));
-
     let _ = std::fs::remove_dir_all(&temp_dir);
 }

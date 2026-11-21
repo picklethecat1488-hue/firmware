@@ -75,6 +75,15 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         action="store_false",
         help="Disable symbolic target GDB server and use direct probe-rs RTT streaming on the session daemon.",
     )
+    group.addoption(
+        "--trace-mode",
+        dest="trace_mode",
+        action="store",
+        type=str.upper,
+        choices=("NONE", "SENSOR", "PERF", "AUDIO"),
+        default=None,
+        help="Default firmware tracing mode ('NONE', 'SENSOR', 'PERF', 'AUDIO') for @device_test cases.",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -251,7 +260,12 @@ async def _prepare_device_test(
             bin_spec = resolve_target_binary(bin_marker.args[0], repo_root=REPO_ROOT)
 
     if bin_spec is not None:
-        desired_trace_mode = meta.trace_mode if (meta and meta.trace_mode) else "NONE"
+        cli_trace_mode = pytestconfig.getoption("trace_mode")
+        desired_trace_mode = (
+            meta.trace_mode
+            if (meta and meta.trace_mode)
+            else (str(cli_trace_mode).strip().upper() if cli_trace_mode else "NONE")
+        )
         await host.ensure_target_binary(bin_spec, trace_mode=desired_trace_mode)
 
     yield

@@ -2212,9 +2212,38 @@ def test_host_py_debug_server_cli_and_single_reset_sync(
         assert flash_cargo_flags == [False], "Sync with debug server must use probe-rs download (zero extra reset)"
 
         dbg_args = json.loads(dbg_argv_log.read_text(encoding="utf-8"))
+        assert dbg_args[0] == "serve"
         assert "--halt-on-reset" in dbg_args
         assert dbg_args[dbg_args.index("--gdb-core0-port") + 1] == "4333"
         assert dbg_args[dbg_args.index("--gdb-core1-port") + 1] == "4334"
+
+        # Verify `host_debug resolve` and `host_debug probe-status` subcommands
+        resolved_map = runner.resolve_elf_breakpoints(["Reset_Handler", "app/src/cat_detector_shell.rs:102"])
+        assert "Reset_Handler" in resolved_map
+        resolve_args = json.loads(dbg_argv_log.read_text(encoding="utf-8"))
+        assert resolve_args[:2] == ["resolve", "--elf"]
+
+        from host_daemon.model.transport import InterfaceAvailability, query_swd_usb_probe_status
+
+        probe_st = query_swd_usb_probe_status(tmp_path, host_debug_cmd_prefix=[str(fake_dbg)])
+        assert probe_st.availability == InterfaceAvailability.AVAILABLE
+        probe_args = json.loads(dbg_argv_log.read_text(encoding="utf-8"))
+        assert probe_args == ["probe-status", "--json"]
+
+        # Verify `.ignore` and `.vscode/settings.json` exclude `tools/tests/resources` by default
+        vscode_settings = json.loads((WORKSPACE_ROOT / ".vscode" / "settings.json").read_text(encoding="utf-8"))
+        assert vscode_settings.get("search.exclude", {}).get("**/tests/resources/**") is True
+        ag_bin = shutil.which("ag")
+        if ag_bin:
+            ag_res = subprocess.run(
+                [ag_bin, "-l", "XERXES_MOCK_CLI_ARGV_LOG"],
+                cwd=str(WORKSPACE_ROOT),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            ag_files = [line.strip() for line in ag_res.stdout.splitlines() if line.strip()]
+            assert all("resources/" not in f for f in ag_files), ag_files
 
         for _ in range(40):
             if cli_argv_log.is_file() and cli_argv_log.stat().st_size > 0:
@@ -2475,6 +2504,22 @@ def test_host_py_test_explicit_debug_server_and_no_debug_server_flags(
     assert host_cli_mod.main(["test", "--no-debug-server"]) == 0
     assert "--no-debug-server" in captured_cmds[-1]
     assert "--debug-server" not in captured_cmds[-1]
+
+    # Verify `--trace-mode` single-mode forwarding and `--trace-mode ALL` stress iteration across NONE -> SENSOR -> PERF
+    assert host_cli_mod.main(["test", "--trace-mode", "perf"]) == 0
+    assert captured_cmds[-1][-2:] == ["--trace-mode", "PERF"]
+
+    captured_cmds.clear()
+    assert host_cli_mod.main(["test", "--trace-mode", "all", "--stress-runs", "2"]) == 0
+    assert len(captured_cmds) == 6
+    assert [c[c.index("--trace-mode") + 1] for c in captured_cmds] == [
+        "NONE",
+        "SENSOR",
+        "PERF",
+        "NONE",
+        "SENSOR",
+        "PERF",
+    ]
 
     from host_daemon.model.transport import (
         InterfaceAvailability,

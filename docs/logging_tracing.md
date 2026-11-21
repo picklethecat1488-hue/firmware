@@ -37,9 +37,11 @@ To provide deterministic, zero-allocation structured telemetry on embedded targe
   # Attach concurrently to active host_debug non-halting RTT memory bridge (:50000):
   cargo host-cli --gdb-bridge 127.0.0.1:50000 --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
   ```
-* **Target GDB Server & RTT Memory Bridge (`tools/host_debug` / `cargo host-debug`)**: Dual-core `probe-rs` GDB RSP server (`:3333` Core 0, `:3334` Core 1) and `:50000` non-halting RTT bridge managed automatically by `tools/host.py --debug-server` (or `python tools/host.py debug start`):
+* **Target GDB Server, Symbol Resolver & USB Probe Status (`tools/host_debug` / `cargo host-debug`)**: Subcommand CLI (`serve`, `resolve`, `probe-status`) providing the dual-core `probe-rs` GDB RSP server (`:3333` Core 0, `:3334` Core 1), `:50000` non-halting RTT bridge, DWARF breakpoint resolution, and non-resetting USB probe availability inspection managed by `tools/host.py`:
   ```bash
-  cargo host-debug --elf target/thumbv6m-none-eabi/debug/cat_detector_shell --gdb-core0-port 3333 --gdb-core1-port 3334
+  cargo host-debug serve --elf target/thumbv6m-none-eabi/debug/cat_detector_shell --gdb-core0-port 3333 --gdb-core1-port 3334
+  cargo host-debug resolve --elf target/thumbv6m-none-eabi/debug/cat_detector_shell Reset_Handler app/src/cat_detector_shell.rs:102
+  cargo host-debug probe-status --json
   ```
 * **Host Daemon & Live Target Synchronization (`tools/host.py`)**:
   ```bash
