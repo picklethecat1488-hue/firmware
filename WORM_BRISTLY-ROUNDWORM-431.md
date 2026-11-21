@@ -2,12 +2,13 @@
 
 - **UUID**: `fe7d1a81-6a36-4e65-8526-3284d9b1f281`
 - **ID**: `WORM-BRISTLY-ROUNDWORM-431`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-20 20:19:09 UTC`
 - **Resolved**: `2026-11-21 19:20:20 UTC`
+- **Accepted**: `2026-11-21 19:20:23 UTC`
 
 #### Description
 
