@@ -2,12 +2,13 @@
 
 - **UUID**: `f41aed47-84ea-4145-8070-f64b63da97d8`
 - **ID**: `WORM-MOIST-BRISTLE-687`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-20 20:12:07 UTC`
 - **Resolved**: `2026-11-21 19:20:26 UTC`
+- **Accepted**: `2026-11-21 19:20:29 UTC`
 
 #### Description
 
