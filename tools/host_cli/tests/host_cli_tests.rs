@@ -1182,3 +1182,148 @@ fn test_worm_dirt_tubeworm_731_live_processor_suspends_long_lived_tasks_across_i
         telemetry_ch_ends, emitted
     );
 }
+
+#[test]
+fn test_live_task_span_stack_and_core_state_accessors() {
+    use host_cli::{HostCliEvent, LiveCoreSpanState, LiveSpanEntry, LiveTaskSpanStack};
+
+    let mut stack = LiveTaskSpanStack::default();
+    assert!(stack.is_empty());
+
+    let root = LiveSpanEntry::new(
+        "10".to_string(),
+        None,
+        "battery_controller".to_string(),
+        Some("controller::battery_controller".to_string()),
+        "10".to_string(),
+    );
+    let child = LiveSpanEntry::new(
+        "11".to_string(),
+        Some("10".to_string()),
+        "battery_controller::read_soc".to_string(),
+        Some("controller::battery_controller".to_string()),
+        "10".to_string(),
+    );
+    assert!(stack.push_dedup("10".to_string(), root.clone()).is_empty());
+    assert!(stack.push_dedup("11".to_string(), child.clone()).is_empty());
+    assert_eq!(stack.len(), 2);
+    assert!(stack.contains_id("10"));
+    assert_eq!(stack.find_matching_id_rev("read_soc"), Some("11"));
+
+    // Re-entering `battery_controller` without closing `read_soc` unwinds both in LIFO order
+    let unwound = stack.push_dedup("10".to_string(), root.clone());
+    assert_eq!(unwound.len(), 2);
+    assert_eq!(unwound[0].name(), "battery_controller::read_soc");
+    assert_eq!(unwound[1].name(), "battery_controller");
+    assert_eq!(stack.len(), 1);
+
+    let mut core_state = LiveCoreSpanState::default();
+    let mut events = Vec::new();
+    core_state.enter_span(
+        0,
+        1_000,
+        true,
+        "20".to_string(),
+        "0".to_string(),
+        "thermal_controller".to_string(),
+        Some("controller::thermal_controller"),
+        &mut events,
+    );
+    assert_eq!(core_state.running_task(), Some("20"));
+    assert_eq!(core_state.task_key_for_span("20"), Some("20"));
+    assert_eq!(
+        core_state.resolve_task_key(false, "21", "20", "poll_temp"),
+        "20"
+    );
+
+    core_state.enter_span(
+        0,
+        1_050,
+        false,
+        "21".to_string(),
+        "20".to_string(),
+        "poll_temp".to_string(),
+        Some("controller::thermal_controller"),
+        &mut events,
+    );
+    assert!(core_state.is_span_on_task_stack("20", "21"));
+    assert_eq!(
+        core_state.find_open_span_id("", "poll_temp"),
+        Some("21".to_string())
+    );
+    assert_eq!(
+        core_state.span_entry("21").and_then(LiveSpanEntry::module),
+        Some("controller::thermal_controller")
+    );
+
+    // Exiting root span `20` implicitly unwinds `21` (`poll_temp`) and closes `20`
+    core_state.exit_span(
+        0,
+        1_200,
+        "20",
+        "0",
+        "thermal_controller".to_string(),
+        Some("controller::thermal_controller"),
+        &mut events,
+    );
+    assert_eq!(core_state.running_task(), None);
+    assert!(core_state.task_stack("20").is_none());
+    let end_names: Vec<&str> = events
+        .iter()
+        .filter_map(|ev| match ev {
+            HostCliEvent::Trace { ph, name, .. } if ph == "E" => Some(name.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(end_names, vec!["poll_temp", "thermal_controller"]);
+}
+
+#[test]
+fn test_target_boot_status_flags_and_poller_across_binaries() {
+    use host_cli::{BootStatusPoller, HostCliEvent, TargetBootStatusReport};
+    use tool_common::{
+        decode_rtt_boot_state, encode_rtt_status_flags, TargetBootState, RTT_CHANNEL_MODE_MASK,
+    };
+
+    let booting_flags = encode_rtt_status_flags(1, TargetBootState::Booting, false, 0);
+    assert_eq!(booting_flags & RTT_CHANNEL_MODE_MASK, 1);
+    assert_eq!(
+        decode_rtt_boot_state(booting_flags),
+        TargetBootState::Booting
+    );
+
+    let app_ready_flags = encode_rtt_status_flags(1, TargetBootState::Ready, false, 0);
+    let app_report = TargetBootStatusReport::from_rtt_flags("rp2040", app_ready_flags);
+    assert_eq!(app_report.state, TargetBootState::Ready);
+    assert!(app_report.boot_ready);
+    assert!(!app_report.shell_idle);
+
+    let shell_ready_flags = encode_rtt_status_flags(1, TargetBootState::Ready, true, 7);
+    let shell_report = TargetBootStatusReport::from_rtt_flags("rp2040", shell_ready_flags);
+    assert_eq!(shell_report.state, TargetBootState::Ready);
+    assert!(shell_report.boot_ready);
+    assert!(shell_report.shell_idle);
+    assert_eq!(shell_report.epoch, 7);
+
+    let mut poller = BootStatusPoller::new();
+    assert_eq!(
+        poller.poll(booting_flags),
+        Some(HostCliEvent::BootStatus {
+            state: "booting".to_string(),
+            boot_ready: false,
+            shell_idle: false,
+            epoch: 0,
+        })
+    );
+    // Duplicate state is suppressed until boot state transitions
+    assert_eq!(poller.poll(booting_flags), None);
+    assert_eq!(
+        poller.poll(app_ready_flags),
+        Some(HostCliEvent::BootStatus {
+            state: "ready".to_string(),
+            boot_ready: true,
+            shell_idle: false,
+            epoch: 0,
+        })
+    );
+}

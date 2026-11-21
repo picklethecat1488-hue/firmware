@@ -54,6 +54,7 @@ async fn led_task(led_ctrl: controller::led_controller::LedController<app::LedDe
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::task]
 async fn shell_main_task(spawner: Spawner, p: embassy_rp::Peripherals) {
+    platform::rtt::set_rtt_boot_state(platform::rtt::TargetBootState::Booting);
     // Initialize board peripherals using the unified board configuration
     let mut board = app::Board::init(p).await;
 
@@ -116,6 +117,7 @@ async fn shell_main_task(spawner: Spawner, p: embassy_rp::Peripherals) {
 
     let mut local_proc = CatDetectorCliProcessor::new(&mut processor);
 
+    platform::rtt::set_rtt_boot_state(platform::rtt::TargetBootState::Ready);
     platform::run_rtt_shell_loop!(&mut cli, &mut local_proc, CatDetectorCli, "\r\nshell> ");
 }
 

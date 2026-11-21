@@ -477,3 +477,7 @@ async def test_standalone_app_binary_boot_lifecycle(host: AsyncHostSessionClient
     assert len(closed_spans) >= 4, (
         f"Expected multiple bounded PERF spans on cat_detector_app (WORM-DIRT-TUBEWORM-731), got {len(closed_spans)}: {closed_spans}"
     )
+
+    boot_info = await host.get_boot_status()
+    assert boot_info.get("state") == "ready", boot_info
+    assert boot_info.get("boot_ready") is True, boot_info

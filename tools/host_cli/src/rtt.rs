@@ -426,6 +426,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut is_reconnecting = false;
     let mut shell_idle_poller = host_cli::ShellIdlePoller::new();
+    let mut boot_status_poller = host_cli::BootStatusPoller::new();
     let mut live_trace_processor = host_cli::LiveTraceStreamProcessor::new();
     let mut pending_stdin = std::collections::VecDeque::<Vec<u8>>::new();
     loop {
@@ -478,6 +479,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                         format!("Failed to reset target CPU: {:?}", e)
                                     })?;
                                     shell_idle_poller = host_cli::ShellIdlePoller::new();
+                                    boot_status_poller = host_cli::BootStatusPoller::new();
                                     std::thread::sleep(Duration::from_millis(50));
                                     let _ = core.run();
                                     std::thread::sleep(Duration::from_millis(50));
@@ -1014,16 +1016,24 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            // 4. Poll RTT shell-idle control flag on `cli_down` once input/output buffers are quiet
+            // 4. Poll RTT boot-state and shell-idle control flags on `down_channels[0]`
             if json_events && !dump {
-                if let (Some(cli_up), Some(cli_down)) = (cli_up_channel, cli_down_channel) {
-                    if let (Ok(flags), Ok(up_empty), Ok(down_empty)) = (
-                        cli_down.read_flags(target.as_mut()),
-                        cli_up.is_empty(target.as_mut()),
-                        cli_down.is_empty(target.as_mut()),
-                    ) {
-                        if let Some(epoch) = shell_idle_poller.poll(flags, up_empty, down_empty) {
-                            emit_json(&cli_chunk_parser.on_shell_idle(epoch));
+                if let Some(status_down) = down_channels.first() {
+                    if let Ok(flags) = status_down.read_flags(target.as_mut()) {
+                        if let Some(boot_ev) = boot_status_poller.poll(flags) {
+                            emit_json(&boot_ev);
+                        }
+                        if let (Some(cli_up), Some(cli_down)) = (cli_up_channel, cli_down_channel) {
+                            if let (Ok(up_empty), Ok(down_empty)) = (
+                                cli_up.is_empty(target.as_mut()),
+                                cli_down.is_empty(target.as_mut()),
+                            ) {
+                                if let Some(epoch) =
+                                    shell_idle_poller.poll(flags, up_empty, down_empty)
+                                {
+                                    emit_json(&cli_chunk_parser.on_shell_idle(epoch));
+                                }
+                            }
                         }
                     }
                 }
@@ -1097,6 +1107,80 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    Ok(())
+}
+
+/// Inspect `_SEGGER_RTT.down_channels[0].flags` over a [`TargetAccess`] handle and build a [`host_cli::TargetBootStatusReport`].
+pub fn inspect_target_boot_status<T: TargetAccess + ?Sized>(
+    target: &mut T,
+    chip: &str,
+    rtt_symbol_addr: u64,
+    elf_file: Option<&object::File>,
+) -> host_cli::TargetBootStatusReport {
+    match parse_rtt_channels(target, rtt_symbol_addr, elf_file) {
+        Ok((_, down_channels)) => match down_channels
+            .first()
+            .and_then(|ch| ch.read_flags(target).ok())
+        {
+            Some(flags) => host_cli::TargetBootStatusReport::from_rtt_flags(chip, flags),
+            None => host_cli::TargetBootStatusReport::reset_pending(chip),
+        },
+        Err(_) => host_cli::TargetBootStatusReport::reset_pending(chip),
+    }
+}
+
+/// Connect non-intrusively (via `--gdb-bridge` or direct SWD `probe-rs` without resetting) and print target boot status.
+pub fn run_boot_status(
+    chip: &str,
+    elf_path: &std::path::Path,
+    gdb_bridge: Option<&str>,
+    speed: u32,
+    json: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let rtt_symbol_addr = match tool_common::find_symbol_address(elf_path, "_SEGGER_RTT") {
+        Ok(Some(addr)) => addr,
+        _ => return Err("Could not locate symbol address of _SEGGER_RTT in ELF".into()),
+    };
+    let elf_data = std::fs::read(elf_path)?;
+    let object_file = object::File::parse(&*elf_data).ok();
+
+    let report = if let Some(host) = gdb_bridge {
+        let addr = tool_common::normalize_rtt_bridge_addr(host);
+        let mut client = GdbClient::connect(&addr)
+            .map_err(|e| format!("Failed to connect to GDB bridge '{}': {}", addr, e))?;
+        let mut wrapper = ProbeRsTargetWrapper {
+            client: &mut client,
+        };
+        inspect_target_boot_status(&mut wrapper, chip, rtt_symbol_addr, object_file.as_ref())
+    } else {
+        let lister = Lister::new();
+        let probes = lister.list_all();
+        let probe_info = probes
+            .first()
+            .ok_or_else(|| "No debug probes connected".to_string())?;
+        let mut probe = probe_info
+            .open()
+            .map_err(|e| format!("Failed to open debug probe: {:?}", e))?;
+        let _ = probe.set_speed(speed);
+        let mut session = probe
+            .attach(chip, probe_rs::Permissions::default())
+            .map_err(|e| format!("Failed to attach probe to '{}': {:?}", chip, e))?;
+        let core = session
+            .core(0)
+            .map_err(|e| format!("Failed to access Core 0: {:?}", e))?;
+        let mut wrapper = ProbeRsWrapper::new(core);
+        inspect_target_boot_status(&mut wrapper, chip, rtt_symbol_addr, object_file.as_ref())
+    };
+
+    if json {
+        println!("{}", report.to_json());
+    } else {
+        println!("chip: {}", report.chip);
+        println!("state: {}", report.state.as_str());
+        println!("boot_ready: {}", report.boot_ready);
+        println!("shell_idle: {}", report.shell_idle);
+        println!("epoch: {}", report.epoch);
+    }
     Ok(())
 }
 

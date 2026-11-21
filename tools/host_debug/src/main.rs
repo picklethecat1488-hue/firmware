@@ -7,6 +7,7 @@ fn main() {}
 mod host_main {
     use clap::{Args, Parser, Subcommand};
     use host_debug::arm::probe_backend::ArmProbeDebugBackend;
+    use host_debug::open_probe_session_with_retry;
     use host_debug::probe_status::run_probe_status;
     use host_debug::server::{run_debug_server_with_backend, DebugServerConfig};
     use std::io::Read;
@@ -180,10 +181,10 @@ mod host_main {
             .and_then(|p| std::fs::canonicalize(p).ok().or_else(|| Some(p.clone())))
             .map(|p| p.display().to_string());
 
-        let backend = ArmProbeDebugBackend::attach(
+        let session = open_probe_session_with_retry(&chip, args.probe.as_deref(), args.speed)?;
+        let backend = ArmProbeDebugBackend::from_session(
+            session,
             &chip,
-            args.probe.as_deref(),
-            args.speed,
             args.reset,
             args.halt_on_reset,
             core0_reset_addr,

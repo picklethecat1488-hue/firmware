@@ -1,7 +1,7 @@
 //! Structured NDJSON event protocol, RTT shell-idle flag poller, and CLI chunk parser for `host_cli --json-events`.
 
 use serde_json::json;
-use tool_common::decode_rtt_shell_flags;
+use tool_common::{decode_rtt_boot_state, decode_rtt_shell_flags, TargetBootState};
 
 /// ANSI erase-line control sequence emitted by `embedded-cli` when redrawing its input/prompt line.
 pub const ANSI_CLEAR_LINE: &str = "\x1b[2K";
@@ -40,6 +40,17 @@ pub enum HostCliEvent {
     },
     /// Emitted when the target's RTT control flag (`RTT_SHELL_IDLE_FLAG`) indicates the shell is idle.
     ShellIdle {
+        /// Wrapping 16-bit idle-transition epoch read from `_SEGGER_RTT.down_channels[0].flags`.
+        epoch: u16,
+    },
+    /// Emitted when the target's RTT boot-state field (`TargetBootState`) changes across any firmware binary.
+    BootStatus {
+        /// Canonical boot state (`"reset"`, `"booting"`, `"ready"`, `"faulted"`).
+        state: String,
+        /// `true` once `TargetBootState::Ready` is asserted.
+        boot_ready: bool,
+        /// `true` when `RTT_SHELL_IDLE_FLAG` is also asserted.
+        shell_idle: bool,
         /// Wrapping 16-bit idle-transition epoch read from `_SEGGER_RTT.down_channels[0].flags`.
         epoch: u16,
     },
@@ -120,6 +131,18 @@ impl HostCliEvent {
             }),
             Self::ShellIdle { epoch } => json!({
                 "event": "shell_idle",
+                "epoch": epoch,
+            }),
+            Self::BootStatus {
+                state,
+                boot_ready,
+                shell_idle,
+                epoch,
+            } => json!({
+                "event": "boot_status",
+                "state": state,
+                "boot_ready": boot_ready,
+                "shell_idle": shell_idle,
                 "epoch": epoch,
             }),
             Self::CommandCompleted {
@@ -241,6 +264,90 @@ impl ShellIdlePoller {
         }
         self.last_emitted_epoch = Some(epoch);
         Some(epoch)
+    }
+}
+
+/// Snapshot of target firmware boot status decoded from `_SEGGER_RTT.down_channels[0].flags`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TargetBootStatusReport {
+    /// Target chip identifier (e.g. `"rp2040"` or `"MCXN947"`).
+    pub chip: String,
+    /// Decoded [`TargetBootState`] variant.
+    pub state: TargetBootState,
+    /// `true` once `state` is [`TargetBootState::Ready`].
+    pub boot_ready: bool,
+    /// `true` when `RTT_SHELL_IDLE_FLAG` is asserted.
+    pub shell_idle: bool,
+    /// Wrapping 16-bit shell idle epoch.
+    pub epoch: u16,
+}
+
+impl TargetBootStatusReport {
+    /// Construct a [`TargetBootStatusReport`] from a raw 32-bit `_SEGGER_RTT.down_channels[0].flags` word.
+    pub fn from_rtt_flags(chip: &str, down_flags: u32) -> Self {
+        let state = decode_rtt_boot_state(down_flags);
+        let (shell_idle, epoch) = decode_rtt_shell_flags(down_flags);
+        Self {
+            chip: chip.to_string(),
+            state,
+            boot_ready: state.is_ready(),
+            shell_idle,
+            epoch,
+        }
+    }
+
+    /// Construct an uninitialized [`TargetBootState::Reset`] report when `_SEGGER_RTT` has not yet been populated.
+    pub fn reset_pending(chip: &str) -> Self {
+        Self {
+            chip: chip.to_string(),
+            state: TargetBootState::Reset,
+            boot_ready: false,
+            shell_idle: false,
+            epoch: 0,
+        }
+    }
+
+    /// Serialize this report to single-line JSON for `host_cli boot-status --json` and `host.py`.
+    pub fn to_json(&self) -> String {
+        json!({
+            "chip": self.chip,
+            "state": self.state.as_str(),
+            "boot_ready": self.boot_ready,
+            "shell_idle": self.shell_idle,
+            "epoch": self.epoch,
+        })
+        .to_string()
+    }
+}
+
+/// Stateful poller tracking `_SEGGER_RTT.down_channels[0].flags` [`TargetBootState`] transitions across any binary.
+#[derive(Default, Debug, Clone)]
+pub struct BootStatusPoller {
+    last_emitted_state: Option<TargetBootState>,
+}
+
+impl BootStatusPoller {
+    /// Construct a new [`BootStatusPoller`].
+    pub fn new() -> Self {
+        Self {
+            last_emitted_state: None,
+        }
+    }
+
+    /// Evaluate `down_flags` and emit [`HostCliEvent::BootStatus`] whenever [`TargetBootState`] changes.
+    pub fn poll(&mut self, down_flags: u32) -> Option<HostCliEvent> {
+        let state = decode_rtt_boot_state(down_flags);
+        if self.last_emitted_state == Some(state) {
+            return None;
+        }
+        self.last_emitted_state = Some(state);
+        let (shell_idle, epoch) = decode_rtt_shell_flags(down_flags);
+        Some(HostCliEvent::BootStatus {
+            state: state.as_str().to_string(),
+            boot_ready: state.is_ready(),
+            shell_idle,
+            epoch,
+        })
     }
 }
 

@@ -2,6 +2,7 @@
 
 from collections import deque
 from datetime import datetime, timezone
+from enum import Enum
 import json
 import os
 from pathlib import Path
@@ -59,6 +60,19 @@ CLI_QUIET_TIMEOUT_RATIO: float = 0.45
 CLI_COMPLETION_SETTLE_SEC: float = 0.25
 ANSI_CLEAR_LINE_SEQ: str = "\x1b[2K"
 SHELL_PROMPT_PREFIX: str = "shell>"
+BOOT_STATUS_QUERY_TIMEOUT_SEC: float = 5.0
+
+
+class BootState(str, Enum):
+    """Canonical target boot lifecycle states reported via `host_cli boot-status`."""
+
+    RESET = "reset"
+    BOOTING = "booting"
+    READY = "ready"
+    FAULTED = "faulted"
+    UNKNOWN = "unknown"
+
+
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 DEFMT_DEVICE_TS_RE = re.compile(r"^\s*(\d+\.\d+)\s+(?:INFO|WARN|ERROR|DEBUG|TRACE)\b")
 RTT_SESSION_BANNER_PREFIXES: Tuple[str, ...] = (
@@ -165,6 +179,12 @@ class DaemonRunner:
         self._last_cmd_error: Optional[str] = None
         self._json_events_active: bool = False
         self._last_shell_idle_epoch: Optional[int] = None
+        self._boot_status: Dict[str, Any] = {
+            "state": BootState.UNKNOWN.value,
+            "boot_ready": False,
+            "shell_idle": False,
+            "epoch": 0,
+        }
         self._fs_seq: int = 0
         self.command_history: List[str] = []
         self._boot_mono: float = time.monotonic()
@@ -1463,6 +1483,82 @@ class DaemonRunner:
             self._json_events_active = False
             self._last_shell_idle_epoch = None
 
+    def _ensure_host_cli_path(self) -> Optional[Path]:
+        """Resolve `host_cli` executable path inside Cargo's target directory if not already set."""
+        if self.host_cli_path is not None and self.host_cli_path.exists():
+            return self.host_cli_path
+        try:
+            target_dir = get_cargo_target_directory(self.repo_root)
+            prof = "release" if self.release else "debug"
+            exe_suffix = ".exe" if os.name == "nt" else ""
+            cand = target_dir / prof / f"host_cli{exe_suffix}"
+            if cand.is_file():
+                self.host_cli_path = cand
+                return cand
+        except (OSError, RuntimeError, ValueError):
+            return None
+        return None
+
+    def query_boot_status(self, *, refresh_probe: bool = False) -> Dict[str, Any]:
+        """Query current target boot status via `host_cli boot-status --json` or active RTT session state."""
+        if self.elf_path is None:
+            self.elf_path = self.resolve_current_elf_path()
+        stream_alive = self.rtt_process is not None and self.rtt_process.poll() is None
+        can_probe_live = not stream_alive or self.debug_server_active
+
+        if refresh_probe and can_probe_live and self.elf_path and self.elf_path.exists():
+            cli_bin = self._ensure_host_cli_path()
+            if cli_bin is not None:
+                cmd = [
+                    str(cli_bin),
+                    "boot-status",
+                    "--elf",
+                    str(self.elf_path),
+                    "--json",
+                ]
+                if self.chip:
+                    cmd.extend(["--chip", str(self.chip)])
+                if self.debug_server_active:
+                    dbg_info = self.get_debug_status()
+                    bridge_port = int(dbg_info.get("rtt_bridge_port") or self.rtt_bridge_port)
+                    cmd.extend(["--gdb-bridge", f"127.0.0.1:{bridge_port}"])
+                else:
+                    cmd.extend(["--speed", str(self.speed)])
+                try:
+                    proc = subprocess.run(
+                        cmd,
+                        cwd=str(self.repo_root),
+                        capture_output=True,
+                        text=True,
+                        timeout=BOOT_STATUS_QUERY_TIMEOUT_SEC,
+                        check=False,
+                    )
+                    if proc.returncode == 0:
+                        for line in reversed(proc.stdout.splitlines()):
+                            trimmed = line.strip()
+                            if trimmed.startswith("{") and trimmed.endswith("}"):
+                                parsed = json.loads(trimmed)
+                                if isinstance(parsed, dict) and "state" in parsed:
+                                    with self._lock:
+                                        self._boot_status = {
+                                            "state": str(parsed.get("state") or BootState.UNKNOWN.value),
+                                            "boot_ready": bool(parsed.get("boot_ready", False)),
+                                            "shell_idle": bool(parsed.get("shell_idle", False)),
+                                            "epoch": int(parsed.get("epoch") or 0),
+                                        }
+                                    break
+                except (OSError, subprocess.SubprocessError, ValueError):
+                    pass
+
+        with self._lock:
+            snap = dict(self._boot_status)
+        return {
+            **snap,
+            "chip": self.chip,
+            "bin": self.bin_name,
+            "connected": self.is_connected,
+        }
+
     def start_rtt_streaming(
         self,
         *,
@@ -1474,17 +1570,7 @@ class DaemonRunner:
             self.elf_path = self.resolve_current_elf_path()
         if not self.elf_path or not self.elf_path.exists():
             return
-        if self.host_cli_path is None or not self.host_cli_path.exists():
-            try:
-                target_dir = get_cargo_target_directory(self.repo_root)
-                prof = "release" if self.release else "debug"
-                exe_suffix = ".exe" if os.name == "nt" else ""
-                cand = target_dir / prof / f"host_cli{exe_suffix}"
-                if cand.is_file():
-                    self.host_cli_path = cand
-            except (OSError, RuntimeError, ValueError):
-                return
-        if not self.host_cli_path or not self.host_cli_path.exists():
+        if self._ensure_host_cli_path() is None:
             return
 
         self.stop_rtt_streaming()
@@ -1532,7 +1618,6 @@ class DaemonRunner:
         boot_ready_event = threading.Event()
         session_ready = False
         has_cli_channel = True
-        expects_shell_prompt = ("shell" in str(self.bin_name or "").lower()) or not bool(self.bin_name)
 
         def _handle_json_event(ev_obj: Dict[str, Any]) -> None:
             nonlocal session_ready, has_cli_channel
@@ -1548,6 +1633,12 @@ class DaemonRunner:
                     self._reset_device_clock()
                     with self._lock:
                         self._last_shell_idle_epoch = None
+                        self._boot_status = {
+                            "state": BootState.RESET.value,
+                            "boot_ready": False,
+                            "shell_idle": False,
+                            "epoch": 0,
+                        }
                 with self._lock:
                     self._json_events_active = True
                 session_ready = True
@@ -1557,12 +1648,27 @@ class DaemonRunner:
                 started_event.set()
                 if not has_cli_channel and not bool(ev_obj.get("defmt", True)):
                     boot_ready_event.set()
+            elif ev_type == "boot_status":
+                state_str = str(ev_obj.get("state") or BootState.UNKNOWN.value)
+                is_ready = bool(ev_obj.get("boot_ready", state_str == BootState.READY.value))
+                is_idle = bool(ev_obj.get("shell_idle", False))
+                raw_ep = ev_obj.get("epoch")
+                ep_val = int(raw_ep) if isinstance(raw_ep, int) and not isinstance(raw_ep, bool) else 0
+                with self._lock:
+                    self._boot_status = {
+                        "state": state_str,
+                        "boot_ready": is_ready,
+                        "shell_idle": is_idle,
+                        "epoch": ep_val,
+                    }
+                if is_ready:
+                    boot_ready_event.set()
             elif ev_type == "defmt":
                 level_str = str(ev_obj.get("level") or "INFO").upper()
                 formatted = str(ev_obj.get("formatted") or ev_obj.get("message") or "")
                 if formatted:
                     self.log(formatted, level=level_str, channel="target")
-                if not has_cli_channel or not expects_shell_prompt:
+                if not has_cli_channel:
                     boot_ready_event.set()
             elif ev_type == "cli_output":
                 text_line = str(ev_obj.get("text") or "")
@@ -1575,6 +1681,12 @@ class DaemonRunner:
                     if epoch_val is None or epoch_val != self._last_shell_idle_epoch:
                         self._last_shell_idle_epoch = epoch_val
                         self._cli_clear_seq += 1
+                    self._boot_status = {
+                        "state": BootState.READY.value,
+                        "boot_ready": True,
+                        "shell_idle": True,
+                        "epoch": int(epoch_val or 0),
+                    }
                 boot_ready_event.set()
             elif ev_type == "command_completed":
                 ok = bool(ev_obj.get("success", True))
@@ -1589,8 +1701,6 @@ class DaemonRunner:
                     with self._lock:
                         self._last_device_ts_sec = float(raw_ts_us) / 1_000_000.0
                         self._last_device_ts_mono = time.monotonic()
-                if not expects_shell_prompt:
-                    boot_ready_event.set()
                 if self.should_ingest_trace_event(ev_obj):
                     self.trace_store.ingest_event(ev_obj)
             elif ev_type == "session_disconnected":
@@ -2004,6 +2114,7 @@ class DaemonRunner:
             "mode": self.active_mode,
             "message": self.status_message,
             "manual_prompt": self.manual_prompt.to_dict(),
+            "boot_status": self.query_boot_status(refresh_probe=False),
             "debug_server": self.get_debug_status(),
         }
 

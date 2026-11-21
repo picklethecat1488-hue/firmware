@@ -37,6 +37,7 @@ controller::declare_active_shell_commands! {
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::task]
 async fn carrier_shell_main_task(spawner: Spawner) {
+    platform::rtt::set_rtt_boot_state(platform::rtt::TargetBootState::Booting);
     // Initialize board peripherals using the unified Carrier Board 2.0 BSP configuration
     let mut board = app::Board::init().await;
 
@@ -89,6 +90,7 @@ async fn carrier_shell_main_task(spawner: Spawner) {
 
     let mut local_proc = CarrierBoardCliProcessor::new(&mut processor);
 
+    platform::rtt::set_rtt_boot_state(platform::rtt::TargetBootState::Ready);
     platform::run_rtt_shell_loop!(&mut cli, &mut local_proc, CarrierBoardCli, "\r\nshell> ");
 }
 

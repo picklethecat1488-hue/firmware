@@ -294,6 +294,20 @@ class SimulatedTargetRunner:
             self.peak_manual_heartbeats = max(self.peak_manual_heartbeats, self.manual_prompt.heartbeat_count)
             return self.manual_prompt.to_dict()
 
+    def query_boot_status(self, *, refresh_probe: bool = False) -> Dict[str, Any]:
+        """Return simulated target boot status matching `DaemonRunner.query_boot_status`."""
+        _ = refresh_probe
+        is_ready = bool(self.connected_board_type and self.is_flashed)
+        return {
+            "state": "ready" if is_ready else "reset",
+            "boot_ready": is_ready,
+            "shell_idle": is_ready,
+            "epoch": 1 if is_ready else 0,
+            "chip": self.chip,
+            "bin": self.bin_name,
+            "connected": self.is_connected,
+        }
+
     def get_status(self) -> Dict[str, Any]:
         """Return daemon status payload."""
         return {
@@ -3298,3 +3312,66 @@ def test_worm_lithe_enchytraeid_678_gdb_stdio_proxy_stdin_eof_and_sigint_hygiene
             proc.kill()
         srv_thread.join(timeout=2.0)
 
+
+def test_boot_status_cli_and_uniform_boot_readiness_without_shell_binary_heuristics(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify `boot-status` CLI / HTTP endpoint and uniform boot readiness without `shell` vs `app` heuristics (`[bcb1250e]`)."""
+    from host_daemon import cli as host_cli_mod
+    from host_daemon.provider.daemon.runner import DaemonRunner
+
+    fake_repo = _copy_resource_tree("fake_workspace", tmp_path / "repo")
+    elf_file = fake_repo / "target" / "thumbv6m-none-eabi" / "debug" / "cat_detector_app"
+    elf_file.parent.mkdir(parents=True, exist_ok=True)
+    elf_file.write_bytes(b"\x7fELF")
+
+    argv_log = tmp_path / "boot_cli_argv.json"
+    fake_cli = _make_resource_launcher(
+        tmp_path / "host_cli_mock",
+        "mock_host_cli.py",
+        env_overrides={
+            "XERXES_MOCK_CLI_ARGV_LOG": str(argv_log),
+            "XERXES_MOCK_OMIT_SHELL_IDLE": "1",
+        },
+    )
+
+    runner = DaemonRunner(
+        repo_root=fake_repo,
+        target="thumbv6m-none-eabi",
+        package="cat_detector",
+        bin_name="cat_detector_app",
+        chip="rp2040",
+    )
+    runner.elf_path = elf_file
+    runner.host_cli_path = fake_cli
+
+    # 1. One-shot `query_boot_status(refresh_probe=True)` invokes `host_cli boot-status --elf ... --json`
+    one_shot = runner.query_boot_status(refresh_probe=True)
+    assert one_shot["state"] == "ready"
+    assert one_shot["boot_ready"] is True
+    assert one_shot["shell_idle"] is False
+    recorded_args = json.loads(argv_log.read_text(encoding="utf-8"))
+    assert recorded_args[:2] == ["boot-status", "--elf"]
+    assert "--json" in recorded_args
+
+    # 2. Live RTT stream on `cat_detector_app` resolves boot readiness immediately from `boot_status` event (no `shell_idle`)
+    t0 = time.monotonic()
+    runner.start_rtt_streaming(reset_on_attach=False)
+    elapsed = time.monotonic() - t0
+    server, daemon_port = _start_ephemeral_daemon(runner)
+    try:
+        assert elapsed < 2.0, (
+            f"Expected immediate boot_status readiness without waiting 5s timeout, took {elapsed:.2f}s"
+        )
+        capsys.readouterr()
+        rc = host_cli_mod.main(["--host", "127.0.0.1", "boot-status", "--host-port", str(daemon_port), "--json"])
+        assert rc == 0
+        cli_out = json.loads(capsys.readouterr().out)
+        assert cli_out["state"] == "ready"
+        assert cli_out["boot_ready"] is True
+        assert cli_out["bin"] == "cat_detector_app"
+    finally:
+        server.shutdown()
+        server.server_close()
+        runner.stop()

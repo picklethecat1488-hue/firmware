@@ -1479,3 +1479,32 @@ fn test_worm_lithe_enchytraeid_678_single_step_across_wfe_wfi_and_abrupt_client_
 
     handle.stop();
 }
+
+#[test]
+fn test_frontend_probe_attach_retry_recovers_transient_errors_and_surfaces_exhaustion() {
+    use host_debug::{retry_probe_attach, PROBE_ATTACH_MAX_ATTEMPTS};
+
+    let mut calls = 0usize;
+    let recovered =
+        retry_probe_attach(PROBE_ATTACH_MAX_ATTEMPTS, Duration::from_millis(1), |idx| {
+            calls += 1;
+            if idx < 2 {
+                Err(format!("probe busy on attempt {}", idx + 1))
+            } else {
+                Ok("attached-session")
+            }
+        });
+    assert_eq!(recovered.as_deref(), Ok("attached-session"));
+    assert_eq!(calls, 3);
+
+    let mut fail_calls = 0usize;
+    let exhausted: Result<(), String> = retry_probe_attach(3, Duration::from_millis(1), |idx| {
+        fail_calls += 1;
+        Err(format!("probe claim failed #{}", idx + 1))
+    });
+    assert_eq!(fail_calls, 3);
+    assert_eq!(
+        exhausted.as_ref().err().map(String::as_str),
+        Some("probe claim failed #3")
+    );
+}

@@ -786,6 +786,13 @@ class AsyncHostSessionClient:
             except (OSError, RuntimeError):
                 pass
 
+    async def get_boot_status(self) -> Dict[str, Any]:
+        """Query current target firmware boot status from `host.py` (`/api/boot_status`)."""
+        if self._runner is not None:
+            return await asyncio.to_thread(self._runner.query_boot_status, refresh_probe=True)
+        res = await self._request("/api/boot_status", None, timeout=5.0)
+        return res if isinstance(res, dict) else {"state": "unknown", "boot_ready": False}
+
     async def get_trace_events(self, after_seq: int = 0, limit: int = 10_000) -> Dict[str, Any]:
         """Fetch incremental live trace slices, counters, and track metadata from `host.py`."""
         if self._runner is not None:

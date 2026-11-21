@@ -7,14 +7,14 @@ pub mod tracing;
 
 pub use dump::dump_logs;
 pub use events::{
-    detect_shell_completion_event, extract_defmt_level, CliChunkParser, HostCliEvent,
-    ShellIdlePoller,
+    detect_shell_completion_event, extract_defmt_level, BootStatusPoller, CliChunkParser,
+    HostCliEvent, ShellIdlePoller, TargetBootStatusReport,
 };
 pub use stream::{cancel_echo, stream_logs};
 pub use tool_common::autodetect_project_info;
 pub use tracing::{
     export_trace_events_to_csv, export_trace_events_to_perfetto_json, format_target_namespace,
-    LiveTraceStreamProcessor,
+    LiveCoreSpanState, LiveSpanEntry, LiveTaskSpanStack, LiveTraceStreamProcessor,
 };
 
 /// Trait abstracting a defmt log source.

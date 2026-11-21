@@ -59,10 +59,10 @@ target = "<rust_target_triple>"
 * **New Non-ARM Processor Architecture (e.g., RISC-V or AVR)**:
   1. Add the new variant to `ProcessorArch` in `tools/host_debug/src/arch.rs` (`gdb_architecture_name()` and `normalize_pc()`).
   2. Create a dedicated backend module (e.g., `tools/host_debug/src/riscv.rs`) defining single-sourced `RegisterFeatureGroup` / `RegisterDescriptor` tables rendered through `TargetRegisterLayout::new(...)` (`templates/target.xml.jinja`) and implementing `DebugBackend` (`core_register_layout`, `insert_breakpoint`, `remove_breakpoint`, `read_memory_masked`, `step_core`, `resume_core`).
-  3. Dispatch to the new backend in `tools/host_debug/src/main.rs` based on the target architecture and add unit + GDB RSP integration tests in `tools/host_debug/tests/host_debug_tests.rs`.
+  3. Dispatch to the new backend in `tools/host_debug/src/main.rs` (passing the generic `probe_rs::Session` attached via `tools/host_debug/src/session.rs`) based on the target architecture and add unit + GDB RSP integration tests in `tools/host_debug/tests/host_debug_tests.rs`.
 
-### 5. RTT Control Block & Shell Idle Signaling (`platform/src/system/rtt.rs`, `tools/host_cli/`)
-Ensure the target's shell entrypoint invokes `platform::run_rtt_shell_loop!`, which maintains `_SEGGER_RTT` (`defmt` Up 0, `cli` Up 1, `cli` Down 0) and updates `RTT_SHELL_IDLE_FLAG` + the 16-bit idle epoch in `_SEGGER_RTT.down_channels[0].flags` so `host_cli --json-events` and `host.py` detect shell readiness without polling console strings.
+### 5. RTT Control Block, Boot Status & Shell Idle Signaling (`platform/src/system/rtt.rs`, `tools/host_cli/`)
+Ensure every target firmware binary publishes `TargetBootState` (`Booting` -> `Ready` / `Faulted`) via `platform::rtt::set_rtt_boot_state(...)` (and `platform::run_rtt_shell_loop!` for interactive shells), updating `_SEGGER_RTT.down_channels[0].flags` so `cargo host-cli boot-status --json`, `host_cli --json-events`, and `python tools/host.py boot-status` detect boot and shell readiness uniformly without binary-name heuristics or console string polling.
 
 ### 6. On-Device Pytest Discovery (`tools/device_tests/`)
 Add `@device_test(project="...", boards=("<new_board_glob>",), target_binary="<bin_name>")` suites under `tools/device_tests/suites/`. `python tools/host.py test` and `./tools/verify.py` will automatically probe `.program_metadata` via `host_fs query_metadata`, match `board_type`, flash the binary, and run the matching suites.

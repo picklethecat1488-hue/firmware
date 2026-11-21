@@ -128,6 +128,11 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 self.send_error(500, f"Template rendering error: {e}")
         elif path == "/api/status":
             self._send_json(runner.get_status())
+        elif path == "/api/boot_status":
+            if hasattr(runner, "query_boot_status"):
+                self._send_json(runner.query_boot_status(refresh_probe=True))
+            else:
+                self._send_json({"state": "unknown", "boot_ready": False})
         elif path == "/api/targets":
             from host_daemon.provider.daemon.config import discover_target_packages, load_last_session
 

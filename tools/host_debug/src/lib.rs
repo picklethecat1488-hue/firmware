@@ -12,6 +12,7 @@ pub mod arm;
 pub mod probe_status;
 pub mod rsp;
 pub mod server;
+pub mod session;
 
 pub use arch::{
     ProcessorArch, RegisterDescriptor, RegisterFeatureGroup, TargetArchProfile,
@@ -29,3 +30,6 @@ pub use server::{
     run_debug_server_with_backend, start_debug_server_with_backend, DebugBackend,
     DebugServerConfig, DebugServerEvent, DebugServerHandle,
 };
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+pub use session::open_probe_session_with_retry;
+pub use session::{retry_probe_attach, PROBE_ATTACH_MAX_ATTEMPTS, PROBE_ATTACH_RETRY_DELAY_MS};

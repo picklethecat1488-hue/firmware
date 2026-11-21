@@ -36,6 +36,10 @@ To provide deterministic, zero-allocation structured telemetry on embedded targe
 
   # Attach concurrently to active host_debug non-halting RTT memory bridge (:50000):
   cargo host-cli --gdb-bridge 127.0.0.1:50000 --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
+
+  # Query current target firmware boot status across any binary without resetting:
+  cargo host-cli boot-status --elf target/active_target.elf --json
+  python tools/host.py boot-status --json
   ```
 * **Target GDB Server, Symbol Resolver & USB Probe Status (`tools/host_debug` / `cargo host-debug`)**: Subcommand CLI (`serve`, `resolve`, `probe-status`) providing the dual-core `probe-rs` GDB RSP server (`:3333` Core 0, `:3334` Core 1), `:50000` non-halting RTT bridge, DWARF breakpoint resolution, and non-resetting USB probe availability inspection managed by `tools/host.py`:
   ```bash

@@ -495,6 +495,21 @@ def _add_lifecycle_subparsers(subparsers: Any) -> None:
     subparsers.add_parser("reset", help="Reset the target device via active host daemon")
     subparsers.add_parser("reboot", help="Reboot the target device and re-attach RTT via active host daemon")
     subparsers.add_parser("metadata", help="Query target .program_metadata and validate against target ELF")
+    boot_status_parser = subparsers.add_parser(
+        "boot-status",
+        help="Check current target firmware boot status via host_cli boot-status / active daemon",
+    )
+    boot_status_parser.add_argument(
+        "--host-port",
+        type=int,
+        default=None,
+        help="Optional explicit TCP port of a running host.py daemon.",
+    )
+    boot_status_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Format boot status output as JSON.",
+    )
     subparsers.add_parser("stop", help="Stop running host daemon")
 
 
@@ -1168,6 +1183,42 @@ def main(argv: Optional[List[str]] = None) -> int:
         except Exception as e:
             print(f"Host daemon is not running ({e}).")
             return 1
+
+    if args.subcommand == "boot-status":
+        try:
+            res = send_daemon_request(
+                "/api/boot_status",
+                None,
+                port=getattr(args, "host_port", None),
+                host=args.host,
+            )
+        except Exception:
+            from host_daemon.provider.daemon.runner import DaemonRunner
+
+            sess = load_last_session(repo_root) or {}
+            offline_runner = DaemonRunner(
+                repo_root=repo_root,
+                target=args.target or sess.get("target"),
+                package=args.package or sess.get("package"),
+                bin_name=args.bin_name or sess.get("bin"),
+                release=bool(args.release or sess.get("release", False)),
+                speed=int(args.speed or sess.get("speed", 1000)),
+                chip=args.chip or sess.get("chip"),
+                enable_debug_server=bool(sess.get("enable_debug_server", False)),
+            )
+            res = offline_runner.query_boot_status(refresh_probe=True)
+        if getattr(args, "json", False):
+            print(json.dumps(res, indent=2))
+        else:
+            print(
+                f"Target Boot Status: {str(res.get('state') or 'unknown').upper()}\n"
+                f"  Boot Ready: {bool(res.get('boot_ready', False))}\n"
+                f"  Shell Idle: {bool(res.get('shell_idle', False))}\n"
+                f"  Epoch     : {int(res.get('epoch') or 0)}\n"
+                f"  Binary    : {res.get('bin')}\n"
+                f"  Chip      : {res.get('chip')}"
+            )
+        return 0
 
     if args.subcommand == "trace":
         action = str(getattr(args, "trace_action", "status") or "status").lower()

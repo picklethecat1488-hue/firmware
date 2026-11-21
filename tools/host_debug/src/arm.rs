@@ -795,9 +795,7 @@ impl ArmBreakpointManager {
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 pub mod probe_backend {
     use super::*;
-    use probe_rs::probe::list::Lister;
-    use probe_rs::probe::DebugProbeSelector;
-    use probe_rs::{CoreType, MemoryInterface as _, Permissions, RegisterId, Session};
+    use probe_rs::{CoreType, MemoryInterface as _, RegisterId, Session};
     use std::path::Path;
     use std::thread;
     use std::time::Duration;
@@ -1216,55 +1214,16 @@ pub mod probe_backend {
             Ok(final_pc)
         }
 
-        /// Open a SWD debug probe session for an ARM `chip` and optionally reset or reset-and-halt Core 0.
-        #[allow(clippy::too_many_arguments)]
-        pub fn attach(
+        /// Construct an [`ArmProbeDebugBackend`] from an already-attached `probe-rs` [`Session`] and optionally reset or reset-and-halt Core 0.
+        pub fn from_session(
+            mut session: Session,
             chip: &str,
-            probe_selector: Option<&str>,
-            speed_khz: u32,
             reset: bool,
             halt_on_reset: bool,
             core0_reset_addr: Option<u64>,
             core1_reset_addr: Option<u64>,
             elf_path: Option<&Path>,
         ) -> Result<Self, String> {
-            let lister = Lister::new();
-            let probes = if let Some(sel_str) = probe_selector {
-                let selector = DebugProbeSelector::try_from(sel_str)
-                    .map_err(|e| format!("Invalid --probe selector '{}': {}", sel_str, e))?;
-                lister.list(Some(&selector))
-            } else {
-                lister.list_all()
-            };
-
-            let probe_info = probes
-                .first()
-                .ok_or_else(|| "No debug probes connected".to_string())?;
-            const PROBE_OPEN_MAX_ATTEMPTS: usize = 4;
-            const PROBE_OPEN_RETRY_DELAY_MS: u64 = 250;
-            let mut last_open_err = String::new();
-            let mut opened_probe = None;
-            for attempt in 0..PROBE_OPEN_MAX_ATTEMPTS {
-                match probe_info.open() {
-                    Ok(p) => {
-                        opened_probe = Some(p);
-                        break;
-                    }
-                    Err(e) => {
-                        last_open_err = format!("Failed to open debug probe: {:?}", e);
-                        if attempt + 1 < PROBE_OPEN_MAX_ATTEMPTS {
-                            thread::sleep(Duration::from_millis(PROBE_OPEN_RETRY_DELAY_MS));
-                        }
-                    }
-                }
-            }
-            let mut probe = opened_probe.ok_or(last_open_err)?;
-            let _ = probe.set_speed(speed_khz);
-
-            let mut session = probe
-                .attach(chip, Permissions::default())
-                .map_err(|e| format!("Failed to attach probe to '{}': {:?}", chip, e))?;
-
             let listed_cores = session.list_cores();
             let cores = listed_cores.len();
             if halt_on_reset {
