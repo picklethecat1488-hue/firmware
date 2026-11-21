@@ -1362,6 +1362,186 @@ pub mod probe_backend {
                 Ok(())
             });
         }
+
+        /// Phase 1 of [`DebugBackend::step_core`]: delegate single-stepping to [`ArmBreakpointManager`]
+        /// whenever software `BKPT #0` patches are active in SRAM so patched halfwords are temporarily
+        /// restored before stepping and re-inserted afterward.
+        fn step_core_with_sw_patches(&mut self, core_idx: usize) -> Result<u32, String> {
+            self.clear_reg_cache(core_idx);
+            let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
+            let next_pc = {
+                let mut hw = SessionHwAccess {
+                    session: &mut self.session,
+                    core_archs: &self.core_archs,
+                    is_rp2040,
+                };
+                self.bp_mgr.step_core(&mut hw, core_idx)?
+            };
+            if let Some(cache) = self.halted_reg_cache.get_mut(core_idx) {
+                cache.insert(DCRSR_PC, next_pc);
+            }
+            Ok(next_pc)
+        }
+
+        /// Phase 2 of [`DebugBackend::step_core`]: resolve the starting Thumb-normalized `PC` (reusing
+        /// `cached_pc` when available) and fetch the 4-byte instruction window at `PC` from the host-side
+        /// ELF `.text`/`.rodata` ROM cache or target memory.
+        fn fetch_step_pc_and_insn(
+            core: &mut probe_rs::Core<'_>,
+            cached_pc: Option<u32>,
+            rom_segs: &[ElfRomSegment],
+        ) -> Result<(u64, Option<[u8; 4]>), String> {
+            let pc = match cached_pc {
+                Some(c_pc) => (c_pc & !1) as u64,
+                None => {
+                    (core
+                        .read_core_reg::<u32>(RegisterId(DCRSR_PC))
+                        .map_err(|e| format!("{:?}", e))?
+                        & !1) as u64
+                }
+            };
+
+            let mut insn_buf = [0u8; 4];
+            if let Some(end) = pc.checked_add(4) {
+                for seg in rom_segs {
+                    let seg_end = seg.vaddr.saturating_add(seg.data.len() as u64);
+                    if pc >= seg.vaddr && end <= seg_end {
+                        let off = (pc - seg.vaddr) as usize;
+                        insn_buf.copy_from_slice(&seg.data[off..off + 4]);
+                        return Ok((pc, Some(insn_buf)));
+                    }
+                }
+            }
+            let got_insn = core.read_8(pc, &mut insn_buf).ok().map(|()| insn_buf);
+            Ok((pc, got_insn))
+        }
+
+        /// Phase 3 of [`DebugBackend::step_core`]: either deterministically advance `DCRSR_PC` past an
+        /// ARM Thumb/Thumb-2 `WFE`/`WFI` sleep hint (avoiding `CoreStatus::Sleeping` lockups when
+        /// `DHCSR.C_MASKINTS = 1`) or disarm matching FPB comparators, pulse `DHCSR.C_STEP | C_MASKINTS`,
+        /// read the resulting `PC`, and re-arm the FPB comparators.
+        ///
+        /// Returns `(final_pc, bypassed_sleep_hint)`.
+        fn advance_sleep_hint_or_hw_step(
+            core: &mut probe_rs::Core<'_>,
+            core_idx: usize,
+            pc: u64,
+            insn_opt: Option<[u8; 4]>,
+            bp_mgr_ref: &ArmBreakpointManager,
+        ) -> Result<(u32, bool), String> {
+            if let Some(insn_buf) = insn_opt {
+                if let Some(sleep_len) = decode_arm_thumb_sleep_hint_len(&insn_buf) {
+                    let target_pc = (pc as u32).wrapping_add(sleep_len) & !1;
+                    if !core.core_halted().unwrap_or(false) {
+                        let _ = core.halt(Duration::from_millis(50));
+                    }
+                    core.write_core_reg(RegisterId(DCRSR_PC), target_pc)
+                        .map_err(|e| format!("{:?}", e))?;
+                    return Ok((target_pc, true));
+                }
+            }
+
+            // Temporarily disarm any hardware FPB comparator at `pc` so `C_STEP` advances instead of re-trapping.
+            let mut disarmed_slots: Vec<usize> = Vec::new();
+            if let Some(table) = bp_mgr_ref.cores.get(core_idx) {
+                for (slot_idx, entry) in table.hw_slots.iter().enumerate() {
+                    if *entry == Some(pc) {
+                        if core.clear_hw_breakpoint(pc).is_err() {
+                            let comp_addr = CORTEX_M_BP_COMP0_ADDR + (slot_idx as u64) * 4;
+                            let _ = core.write_word_32(comp_addr, 0);
+                            let _ = core.flush();
+                        }
+                        disarmed_slots.push(slot_idx);
+                    }
+                }
+            }
+            if core_idx == 0 && bp_mgr_ref.core1_post_reset_trap_addr == Some(pc) {
+                if let Some(trap_slot) = bp_mgr_ref.armed_core0_trap_slot {
+                    if !disarmed_slots.contains(&trap_slot) {
+                        if core.clear_hw_breakpoint(pc).is_err() {
+                            let comp_addr = CORTEX_M_BP_COMP0_ADDR + (trap_slot as u64) * 4;
+                            let _ = core.write_word_32(comp_addr, 0);
+                            let _ = core.flush();
+                        }
+                        disarmed_slots.push(trap_slot);
+                    }
+                }
+            }
+
+            let step_res = (|| -> Result<u32, String> {
+                core.write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_STEP_MASKINTS)
+                    .map_err(|e| format!("{:?}", e))?;
+                let dhcsr = core
+                    .read_word_32(CORTEX_M_DHCSR_ADDR)
+                    .map_err(|e| format!("{:?}", e))?;
+                if (dhcsr & CORTEX_M_DHCSR_S_HALT_MASK) == 0
+                    && core
+                        .wait_for_core_halted(Duration::from_millis(50))
+                        .is_err()
+                {
+                    let halted_info = core
+                        .halt(Duration::from_millis(50))
+                        .map_err(|e| format!("{:?}", e))?;
+                    return Ok((halted_info.pc as u32) & !1);
+                }
+                core.write_word_32(CORTEX_M_DCRSR_ADDR, DCRSR_PC as u32)
+                    .map_err(|e| format!("{:?}", e))?;
+                let new_pc = core
+                    .read_word_32(CORTEX_M_DCRDR_ADDR)
+                    .map_err(|e| format!("{:?}", e))?;
+                Ok(new_pc & !1)
+            })();
+
+            for slot_idx in disarmed_slots {
+                let _ = core.set_hw_breakpoint_unit(slot_idx, pc);
+            }
+            Ok((step_res?, false))
+        }
+
+        /// Phase 4 of [`DebugBackend::step_core`]: assemble expedited GDB `T05` frame-unwind registers
+        /// (`r7`, `sp`, `lr`), reusing pre-step cached values when architecturally preserved by a 16-bit
+        /// Thumb instruction or sleep-hint bypass and reading only potentially modified registers over SWD.
+        fn prefetch_expedited_unwind_regs(
+            core: &mut probe_rs::Core<'_>,
+            pc: u32,
+            final_pc: u32,
+            insn_opt: Option<[u8; 4]>,
+            bypassed_sleep_hint: bool,
+            prev_unwind: (Option<u32>, Option<u32>, Option<u32>),
+        ) -> Vec<(u16, u32)> {
+            let (prev_r7, prev_sp, prev_lr) = prev_unwind;
+            let (r7_preserved, sp_lr_preserved) = if bypassed_sleep_hint {
+                (true, true)
+            } else if let Some(insn_buf) = insn_opt {
+                let hw = u16::from_le_bytes([insn_buf[0], insn_buf[1]]);
+                thumb16_preserved_unwind_regs(hw, pc, final_pc)
+            } else {
+                (false, false)
+            };
+
+            let mut regs = Vec::with_capacity(3);
+            for (reg_id, cached_opt, preserved) in [
+                (DCRSR_R7, prev_r7, r7_preserved),
+                (DCRSR_SP, prev_sp, sp_lr_preserved),
+                (DCRSR_LR, prev_lr, sp_lr_preserved),
+            ] {
+                if preserved {
+                    if let Some(val) = cached_opt {
+                        regs.push((reg_id, val));
+                        continue;
+                    }
+                }
+                if core
+                    .write_word_32(CORTEX_M_DCRSR_ADDR, reg_id as u32)
+                    .is_ok()
+                {
+                    if let Ok(v) = core.read_word_32(CORTEX_M_DCRDR_ADDR) {
+                        regs.push((reg_id, v));
+                    }
+                }
+            }
+            regs
+        }
     }
 
     impl DebugBackend for ArmProbeDebugBackend {
@@ -1437,6 +1617,7 @@ pub mod probe_backend {
         }
 
         fn step_core(&mut self, core_idx: usize) -> Result<u32, String> {
+            // Phase 1: Delegate to `ArmBreakpointManager` when SRAM `BKPT #0` patches must be swapped around the step.
             let has_sw_patches = self
                 .bp_mgr
                 .cores
@@ -1444,171 +1625,42 @@ pub mod probe_backend {
                 .map(|t| !t.sw_ram_patches.is_empty())
                 .unwrap_or(false);
             if has_sw_patches {
-                self.clear_reg_cache(core_idx);
-                let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
-                let next_pc = {
-                    let mut hw = SessionHwAccess {
-                        session: &mut self.session,
-                        core_archs: &self.core_archs,
-                        is_rp2040,
-                    };
-                    self.bp_mgr.step_core(&mut hw, core_idx)?
-                };
-                if let Some(cache) = self.halted_reg_cache.get_mut(core_idx) {
-                    cache.insert(DCRSR_PC, next_pc);
-                }
-                return Ok(next_pc);
+                return self.step_core_with_sw_patches(core_idx);
             }
 
-            let (cached_pc, prev_r7, prev_sp, prev_lr) = match self.halted_reg_cache.get(core_idx) {
+            // Snapshot pre-step `PC` and frame-unwind registers before invalidating the per-halt register cache.
+            let (cached_pc, prev_unwind) = match self.halted_reg_cache.get(core_idx) {
                 Some(c) => (
                     c.get(&DCRSR_PC).copied(),
-                    c.get(&DCRSR_R7).copied(),
-                    c.get(&DCRSR_SP).copied(),
-                    c.get(&DCRSR_LR).copied(),
+                    (
+                        c.get(&DCRSR_R7).copied(),
+                        c.get(&DCRSR_SP).copied(),
+                        c.get(&DCRSR_LR).copied(),
+                    ),
                 ),
-                None => (None, None, None, None),
+                None => (None, (None, None, None)),
             };
             self.clear_reg_cache(core_idx);
 
             let rom_segs = &self.rom_segments;
             let bp_mgr_ref = &self.bp_mgr;
             let (next_pc, prefetched) = with_session_core(&mut self.session, core_idx, |core| {
-                let pc = match cached_pc {
-                    Some(c_pc) => (c_pc & !1) as u64,
-                    None => {
-                        (core
-                            .read_core_reg::<u32>(RegisterId(DCRSR_PC))
-                            .map_err(|e| format!("{:?}", e))?
-                            & !1) as u64
-                    }
-                };
+                // Phase 2: Resolve current `PC` and fetch the 4-byte instruction window (ELF ROM cache or target RAM).
+                let (pc, insn_opt) = Self::fetch_step_pc_and_insn(core, cached_pc, rom_segs)?;
 
-                let mut insn_buf = [0u8; 4];
-                let got_insn = {
-                    let mut from_rom = false;
-                    if let Some(end) = pc.checked_add(4) {
-                        for seg in rom_segs {
-                            let seg_end = seg.vaddr.saturating_add(seg.data.len() as u64);
-                            if pc >= seg.vaddr && end <= seg_end {
-                                let off = (pc - seg.vaddr) as usize;
-                                insn_buf.copy_from_slice(&seg.data[off..off + 4]);
-                                from_rom = true;
-                                break;
-                            }
-                        }
-                    }
-                    from_rom || core.read_8(pc, &mut insn_buf).is_ok()
-                };
+                // Phase 3: Advance deterministically past `WFE`/`WFI` or execute a masked hardware `C_STEP`.
+                let (final_pc, bypassed_sleep_hint) =
+                    Self::advance_sleep_hint_or_hw_step(core, core_idx, pc, insn_opt, bp_mgr_ref)?;
 
-                let stepped_pc = if got_insn {
-                    if let Some(sleep_len) = decode_arm_thumb_sleep_hint_len(&insn_buf) {
-                        let target_pc = (pc as u32).wrapping_add(sleep_len) & !1;
-                        if !core.core_halted().unwrap_or(false) {
-                            let _ = core.halt(Duration::from_millis(50));
-                        }
-                        core.write_core_reg(RegisterId(DCRSR_PC), target_pc)
-                            .map_err(|e| format!("{:?}", e))?;
-                        Some(target_pc)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                let final_pc = if let Some(wfe_pc) = stepped_pc {
-                    wfe_pc
-                } else {
-                    let mut disarmed_slots: Vec<usize> = Vec::new();
-                    if let Some(table) = bp_mgr_ref.cores.get(core_idx) {
-                        for (slot_idx, entry) in table.hw_slots.iter().enumerate() {
-                            if *entry == Some(pc) {
-                                if core.clear_hw_breakpoint(pc).is_err() {
-                                    let comp_addr = CORTEX_M_BP_COMP0_ADDR + (slot_idx as u64) * 4;
-                                    let _ = core.write_word_32(comp_addr, 0);
-                                    let _ = core.flush();
-                                }
-                                disarmed_slots.push(slot_idx);
-                            }
-                        }
-                    }
-                    if core_idx == 0 && bp_mgr_ref.core1_post_reset_trap_addr == Some(pc) {
-                        if let Some(trap_slot) = bp_mgr_ref.armed_core0_trap_slot {
-                            if !disarmed_slots.contains(&trap_slot) {
-                                if core.clear_hw_breakpoint(pc).is_err() {
-                                    let comp_addr = CORTEX_M_BP_COMP0_ADDR + (trap_slot as u64) * 4;
-                                    let _ = core.write_word_32(comp_addr, 0);
-                                    let _ = core.flush();
-                                }
-                                disarmed_slots.push(trap_slot);
-                            }
-                        }
-                    }
-
-                    let step_res = (|| -> Result<u32, String> {
-                        core.write_word_32(
-                            CORTEX_M_DHCSR_ADDR,
-                            CORTEX_M_DHCSR_DBGKEY_STEP_MASKINTS,
-                        )
-                        .map_err(|e| format!("{:?}", e))?;
-                        let dhcsr = core
-                            .read_word_32(CORTEX_M_DHCSR_ADDR)
-                            .map_err(|e| format!("{:?}", e))?;
-                        if (dhcsr & CORTEX_M_DHCSR_S_HALT_MASK) == 0
-                            && core
-                                .wait_for_core_halted(Duration::from_millis(50))
-                                .is_err()
-                        {
-                            let halted_info = core
-                                .halt(Duration::from_millis(50))
-                                .map_err(|e| format!("{:?}", e))?;
-                            return Ok((halted_info.pc as u32) & !1);
-                        }
-                        core.write_word_32(CORTEX_M_DCRSR_ADDR, DCRSR_PC as u32)
-                            .map_err(|e| format!("{:?}", e))?;
-                        let new_pc = core
-                            .read_word_32(CORTEX_M_DCRDR_ADDR)
-                            .map_err(|e| format!("{:?}", e))?;
-                        Ok(new_pc & !1)
-                    })();
-
-                    for slot_idx in disarmed_slots {
-                        let _ = core.set_hw_breakpoint_unit(slot_idx, pc);
-                    }
-                    step_res?
-                };
-
-                let (r7_preserved, sp_lr_preserved) = if stepped_pc.is_some() {
-                    (true, true)
-                } else if got_insn {
-                    let hw = u16::from_le_bytes([insn_buf[0], insn_buf[1]]);
-                    thumb16_preserved_unwind_regs(hw, pc as u32, final_pc)
-                } else {
-                    (false, false)
-                };
-
-                let mut regs = Vec::with_capacity(3);
-                for (reg_id, cached_opt, preserved) in [
-                    (DCRSR_R7, prev_r7, r7_preserved),
-                    (DCRSR_SP, prev_sp, sp_lr_preserved),
-                    (DCRSR_LR, prev_lr, sp_lr_preserved),
-                ] {
-                    if preserved {
-                        if let Some(val) = cached_opt {
-                            regs.push((reg_id, val));
-                            continue;
-                        }
-                    }
-                    if core
-                        .write_word_32(CORTEX_M_DCRSR_ADDR, reg_id as u32)
-                        .is_ok()
-                    {
-                        if let Ok(v) = core.read_word_32(CORTEX_M_DCRDR_ADDR) {
-                            regs.push((reg_id, v));
-                        }
-                    }
-                }
+                // Phase 4: Populate expedited `T05` unwind registers (`r7`, `sp`, `lr`) for GDB frame unwinding.
+                let regs = Self::prefetch_expedited_unwind_regs(
+                    core,
+                    pc as u32,
+                    final_pc,
+                    insn_opt,
+                    bypassed_sleep_hint,
+                    prev_unwind,
+                );
                 Ok((final_pc, regs))
             })?;
 
@@ -1775,14 +1827,30 @@ pub mod probe_backend {
             self.clear_all_reg_caches();
             self.core1_left_bootrom = false;
             {
-                let mut core = self
-                    .session
-                    .core(core_idx)
-                    .map_err(|e| format!("{:?}", e))?;
-                core.reset().map_err(|e| format!("{:?}", e))?;
-                let _ = core.write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_ENABLE);
-                let _ = core.flush();
-                let _ = core.status();
+                let mut core = self.session.core(core_idx).map_err(|e| {
+                    format!("Failed to access Core {} for reset: {:?}", core_idx, e)
+                })?;
+                core.reset()
+                    .map_err(|e| format!("Failed to reset Core {}: {:?}", core_idx, e))?;
+                // Clear `C_HALT` / `C_STEP` / `C_MASKINTS` directly via `DHCSR` while keeping `C_DEBUGEN`
+                // enabled so hardware breakpoints remain active without invoking `probe-rs` `armv6m::run()`'s
+                // masked pre-step, and propagate any SWD write/flush/status error explicitly.
+                core.write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_ENABLE)
+                    .map_err(|e| {
+                        format!(
+                            "Failed to write DHCSR after Core {} reset: {:?}",
+                            core_idx, e
+                        )
+                    })?;
+                core.flush().map_err(|e| {
+                    format!("Failed to flush SWD after Core {} reset: {:?}", core_idx, e)
+                })?;
+                core.status().map_err(|e| {
+                    format!(
+                        "Failed to synchronize Core {} status after reset: {:?}",
+                        core_idx, e
+                    )
+                })?;
             }
             self.configure_target_debug_peripherals();
             let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
@@ -1791,7 +1859,7 @@ pub mod probe_backend {
                 core_archs: &self.core_archs,
                 is_rp2040,
             };
-            let _ = self.bp_mgr.ensure_armed(&mut hw, core_idx);
+            self.bp_mgr.ensure_armed(&mut hw, core_idx)?;
             Ok(())
         }
 
@@ -1819,6 +1887,14 @@ pub mod probe_backend {
         fn read_core_regs(&mut self, core_idx: usize, hw_reg_ids: &[u16]) -> Vec<u32> {
             let mut results = vec![0u32; hw_reg_ids.len()];
             let mut missing: Vec<(usize, u16)> = Vec::new();
+            // `halted_reg_cache` is intentionally populated sparsely during halts and single-steps:
+            // `halt_core` / `reset_and_halt_core` seed only `PC`, and `step_core` / `step_range_core`
+            // prefetch only the expedited `T05` frame-unwind registers (`PC`, `r7`, `sp`, `lr`) to avoid
+            // 19+ SWD `DCRSR` round-trips per instruction. When GDB or an IDE subsequently requests the
+            // full register bank (`$g`, e.g. opening the VS Code Registers view or evaluating locals in
+            // `r0..r6`, `r8..r12`, `xpsr`, `msp`, `psp`, or FPU `s0..s31`), those uncached registers
+            // miss here (`cache.get(&reg_id) == None`) and are fetched on-demand below and memoized for
+            // the remainder of the current halt.
             if let Some(cache) = self.halted_reg_cache.get(core_idx) {
                 for (idx, &reg_id) in hw_reg_ids.iter().enumerate() {
                     if let Some(&cached) = cache.get(&reg_id) {
@@ -1837,22 +1913,31 @@ pub mod probe_backend {
                 let fetched = with_session_core(&mut self.session, core_idx, |core| {
                     let mut out = Vec::with_capacity(missing.len());
                     for &(idx, reg_id) in &missing {
-                        let val = core.read_core_reg::<u32>(RegisterId(reg_id)).unwrap_or(0);
-                        out.push((idx, reg_id, val));
+                        // Secondary cores held in `PSM` hardware reset prior to `spawn_core1` (or cores
+                        // queried while briefly running) cannot service `DCRSR` reads; fall back to `0`
+                        // for individual unreadable selectors so a `$g` packet still returns a well-formed
+                        // fixed-width hex payload rather than aborting the GDB session.
+                        if let Ok(val) = core.read_core_reg::<u32>(RegisterId(reg_id)) {
+                            out.push((idx, reg_id, Some(val)));
+                        } else {
+                            out.push((idx, reg_id, None));
+                        }
                     }
                     Ok(out)
                 });
                 if let Ok(items) = fetched {
-                    for (idx, reg_id, val) in items {
-                        results[idx] = val;
-                        if core_idx == 1
-                            && reg_id == DCRSR_PC
-                            && (val & !1) >= RP2040_FLASH_BASE_ADDR
-                        {
-                            self.core1_left_bootrom = true;
-                        }
-                        if let Some(cache) = self.halted_reg_cache.get_mut(core_idx) {
-                            cache.insert(reg_id, val);
+                    for (idx, reg_id, opt_val) in items {
+                        if let Some(val) = opt_val {
+                            results[idx] = val;
+                            if core_idx == 1
+                                && reg_id == DCRSR_PC
+                                && (val & !1) >= RP2040_FLASH_BASE_ADDR
+                            {
+                                self.core1_left_bootrom = true;
+                            }
+                            if let Some(cache) = self.halted_reg_cache.get_mut(core_idx) {
+                                cache.insert(reg_id, val);
+                            }
                         }
                     }
                 }
