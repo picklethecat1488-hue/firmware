@@ -452,37 +452,28 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
         rp_writer.len
     );
 
-    let src_path = temp_dir.join("dummy_elf.rs");
+    let fixture_rs = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../platform/host/tests/resources/dummy_metadata_bin.rs");
     let elf_bin_path = temp_dir.join("dummy_elf_bin");
-    let mut bytes_str = String::new();
-    for i in 0..rp_writer.len {
-        bytes_str.push_str(&format!("0x{:02x}, ", rp_writer.buf[i]));
-    }
-    let mut elf_bytes_str = String::new();
-    for i in 0..rp_elf_writer.len {
-        elf_bytes_str.push_str(&format!("0x{:02x}, ", rp_elf_writer.buf[i]));
-    }
+    let standalone_meta_path = temp_dir.join("standalone_prog_meta.bin");
+    let standalone_elf_meta_path = temp_dir.join("standalone_prog_meta_elf.bin");
+    std::fs::write(&standalone_meta_path, &rp_writer.buf[..rp_writer.len]).unwrap();
     std::fs::write(
-        &src_path,
-        format!(
-            "#[used]\n#[no_mangle]\npub static PROJECT_METADATA: [u8; {}] = [{}];\n\
-             #[used]\n#[no_mangle]\npub static PROJECT_METADATA_ELF: [u8; {}] = [{}];\n\
-             fn main() {{}}\n",
-            rp_writer.len, bytes_str, rp_elf_writer.len, elf_bytes_str
-        ),
+        &standalone_elf_meta_path,
+        &rp_elf_writer.buf[..rp_elf_writer.len],
     )
     .unwrap();
     let status = Command::new("rustc")
-        .arg(&src_path)
+        .arg(&fixture_rs)
         .arg("-o")
         .arg(&elf_bin_path)
+        .env("TEST_PROJECT_METADATA_PATH", &standalone_meta_path)
+        .env("TEST_PROJECT_METADATA_ELF_PATH", &standalone_elf_meta_path)
         .status()
         .unwrap();
     assert!(status.success());
 
     let elf_info = tool_common::autodetect_project_info(&elf_bin_path).unwrap();
-    let standalone_meta_path = temp_dir.join("standalone_prog_meta.bin");
-    std::fs::write(&standalone_meta_path, &rp_writer.buf[..rp_writer.len]).unwrap();
 
     // 1. Verify `--elf-only` dumps the entire target ELF `.program_metadata` specification
     let elf_only_out = Command::new(bin_path)
@@ -569,7 +560,6 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
 
     // 4. Verify Carrier Board compact `.program_metadata` (`<= 12` bytes) + deferred `.elf` strings
     let carrier_dump_path = temp_dir.join("carrier_prog_meta.bin");
-    let carrier_src_path = temp_dir.join("carrier_elf.rs");
     let carrier_elf_path = temp_dir.join("carrier_elf_bin");
     let (cb_writer, cb_elf_writer) = platform::types::ProjectMetadata::serialize_pair(
         "MCXN947",
@@ -593,32 +583,22 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
         "Carrier Board .program_metadata must be <= 12 bytes, got {}",
         cb_writer.len
     );
-    let mut cb_bytes_str = String::new();
-    for i in 0..cb_writer.len {
-        cb_bytes_str.push_str(&format!("0x{:02x}, ", cb_writer.buf[i]));
-    }
-    let mut cb_elf_bytes_str = String::new();
-    for i in 0..cb_elf_writer.len {
-        cb_elf_bytes_str.push_str(&format!("0x{:02x}, ", cb_elf_writer.buf[i]));
-    }
+    let carrier_elf_meta_path = temp_dir.join("carrier_prog_meta_elf.bin");
+    std::fs::write(&carrier_dump_path, &cb_writer.buf[..cb_writer.len]).unwrap();
     std::fs::write(
-        &carrier_src_path,
-        format!(
-            "#[used]\n#[no_mangle]\npub static PROJECT_METADATA: [u8; {}] = [{}];\n\
-             #[used]\n#[no_mangle]\npub static PROJECT_METADATA_ELF: [u8; {}] = [{}];\n\
-             fn main() {{}}\n",
-            cb_writer.len, cb_bytes_str, cb_elf_writer.len, cb_elf_bytes_str
-        ),
+        &carrier_elf_meta_path,
+        &cb_elf_writer.buf[..cb_elf_writer.len],
     )
     .unwrap();
     let cb_status = Command::new("rustc")
-        .arg(&carrier_src_path)
+        .arg(&fixture_rs)
         .arg("-o")
         .arg(&carrier_elf_path)
+        .env("TEST_PROJECT_METADATA_PATH", &carrier_dump_path)
+        .env("TEST_PROJECT_METADATA_ELF_PATH", &carrier_elf_meta_path)
         .status()
         .unwrap();
     assert!(cb_status.success());
-    std::fs::write(&carrier_dump_path, &cb_writer.buf[..cb_writer.len]).unwrap();
 
     let out_cb = Command::new(bin_path)
         .args([
