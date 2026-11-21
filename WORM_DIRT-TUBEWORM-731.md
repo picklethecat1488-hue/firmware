@@ -2,12 +2,13 @@
 
 - **UUID**: `4e00966b-b2af-40ef-85eb-ee2da450c4a5`
 - **ID**: `WORM-DIRT-TUBEWORM-731`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-21 19:26:35 UTC`
 - **Resolved**: `2026-11-21 23:56:21 UTC`
+- **Accepted**: `2026-11-21 23:56:23 UTC`
 
 #### Reproduction Steps
 
