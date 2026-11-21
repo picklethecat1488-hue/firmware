@@ -119,6 +119,14 @@ impl ArmHardwareOps for SharedHwAdapter<'_> {
         Ok(guard.cores[core_idx].regs.get(&15).copied().unwrap_or(0))
     }
 
+    fn raw_write_pc(&mut self, core_idx: usize, pc: u32) -> Result<(), String> {
+        let mut guard = self.state.lock().unwrap();
+        let core = &mut guard.cores[core_idx];
+        core.regs.insert(15, pc & !1);
+        core.halted = true;
+        Ok(())
+    }
+
     fn raw_core_halted(&mut self, core_idx: usize) -> Result<bool, String> {
         let mut guard = self.state.lock().unwrap();
         let core = &mut guard.cores[core_idx];
@@ -136,12 +144,27 @@ impl ArmHardwareOps for SharedHwAdapter<'_> {
 
     fn raw_step_core(&mut self, core_idx: usize) -> Result<u32, String> {
         let mut guard = self.state.lock().unwrap();
+        let cur_pc = guard.cores[core_idx].regs.get(&15).copied().unwrap_or(0) & !1;
+        let b0 = guard.memory.get(&(cur_pc as u64)).copied().unwrap_or(0);
+        let b1 = guard.memory.get(&(cur_pc as u64 + 1)).copied().unwrap_or(0);
+        let b2 = guard.memory.get(&(cur_pc as u64 + 2)).copied().unwrap_or(0);
+        let b3 = guard.memory.get(&(cur_pc as u64 + 3)).copied().unwrap_or(0);
         let core = &mut guard.cores[core_idx];
-        let cur_pc = core.regs.get(&15).copied().unwrap_or(0) & !1;
         // Hardware BPU v1/FPB re-traps at cur_pc if comparator at cur_pc was not disarmed!
         if core.bp_ctrl_enabled && core.hw_comparators.contains(&Some(cur_pc as u64)) {
             core.halted = true;
             return Ok(cur_pc);
+        }
+        // Real ARM Cortex-M (`probe-rs` `armv6m::step` / `armv8m::step`) enters `CoreStatus::Sleeping`
+        // (`DHCSR.S_SLEEP = 1, S_HALT = 0`) and times out when stepping `WFE` (`0xBF20` / `0xF3AF_8002`)
+        // or `WFI` (`0xBF30` / `0xF3AF_8003`) with `DHCSR.C_MASKINTS = 1` (`WORM-LITHE-ENCHYTRAEID-678`).
+        let is_sleep_insn = ([b0, b1] == [0x20, 0xBF])
+            || ([b0, b1] == [0x30, 0xBF])
+            || ([b0, b1, b2, b3] == [0xAF, 0xF3, 0x02, 0x80])
+            || ([b0, b1, b2, b3] == [0xAF, 0xF3, 0x03, 0x80]);
+        if is_sleep_insn && core.interrupts_masked {
+            core.halted = false;
+            return Err("Timeout waiting for core halt on WFE/WFI under C_MASKINTS".to_string());
         }
         // Unmasked pending interrupt vectors into ISR instead of stepping the current instruction!
         let next_pc = if !core.interrupts_masked {
@@ -290,10 +313,7 @@ impl DebugBackend for MockDualCoreBackend {
 
     fn resume_core(&mut self, core_idx: usize) -> Result<(), String> {
         let mut hw = SharedHwAdapter { state: &self.state };
-        if hw.raw_core_halted(core_idx)? {
-            let _ = self.bp_mgr.step_over_sw_bkpt_if_needed(&mut hw, core_idx);
-        }
-        let _ = self.bp_mgr.ensure_armed(&mut hw, core_idx);
+        let _ = self.bp_mgr.prepare_resume(&mut hw, core_idx);
         hw.raw_resume_core(core_idx)
     }
 
@@ -593,9 +613,19 @@ fn test_rsp_framing_rinja_target_xml_sram_sw_breakpoints_and_arch_limits() {
         handler.handle_packet(set_pc_cmd.as_bytes(), &mut backend),
         RspAction::status(RspReplyCode::Ok)
     );
-    assert_eq!(
-        handler.handle_packet(b"s", &mut backend),
-        RspAction::status(RspReplyCode::SigTrap)
+    let step_reply = match handler.handle_packet(b"s", &mut backend) {
+        RspAction::Reply(s) => s,
+        other => panic!(
+            "Expected T05 expedited stop reply after target.xml fetch, got {:?}",
+            other
+        ),
+    };
+    assert!(
+        step_reply.starts_with("T05")
+            && step_reply.contains("0f:32020020;")
+            && step_reply.ends_with("thread:01;"),
+        "Unexpected expedited T05 reply: {}",
+        step_reply
     );
     assert_eq!(
         shared.lock().unwrap().cores[0].regs.get(&15).copied(),
@@ -999,7 +1029,7 @@ fn test_worm_glowing_burrower_8_ack_retransmit_running_detach_and_reset_rearm() 
     assert!(qsup_reply.starts_with("PacketSize=4096;"), "{}", qsup_reply);
 
     client1.stream.write_all(b"+").expect("ack qSupported");
-    assert_eq!(client1.send_cmd("vCont?"), "vCont;c;C;s;S;t");
+    assert_eq!(client1.send_cmd("vCont?"), "vCont;c;C;s;S;t;r");
     client1.stream.write_all(b"+").expect("ack vCont?");
     assert_eq!(
         client1.send_cmd("vMustReplyEmpty"),
@@ -1077,7 +1107,7 @@ fn test_worm_glowing_burrower_8_ack_retransmit_running_detach_and_reset_rearm() 
         .send_cmd("qSupported:swbreak+;hwbreak+;vContSupported+")
         .starts_with("PacketSize=4096;"));
     client2.stream.write_all(b"+").expect("ack");
-    assert_eq!(client2.send_cmd("vCont?"), "vCont;c;C;s;S;t");
+    assert_eq!(client2.send_cmd("vCont?"), "vCont;c;C;s;S;t;r");
     client2.stream.write_all(b"+").expect("ack");
     assert_eq!(client2.send_cmd("vMustReplyEmpty"), "");
     client2.stream.write_all(b"+").expect("ack");
@@ -1328,4 +1358,124 @@ fn test_host_debug_subcommand_probe_status_json() {
     assert!(probe_json.contains("\"interface\":\"swd_usb\""));
     assert!(probe_json.contains("\"availability\":\"disconnected\""));
     assert!(probe_json.contains("\"in_use\":false"));
+}
+
+#[test]
+fn test_worm_lithe_enchytraeid_678_single_step_across_wfe_wfi_and_abrupt_client_disconnect() {
+    let (backend, shared) = MockDualCoreBackend::new();
+    {
+        let mut guard = shared.lock().unwrap();
+        // Seed a realistic scheduler loop starting at `0x1002_13F6`:
+        // 0x1002_13F6: 0x46C0 (`nop`)
+        // 0x1002_13F8: 0xBF20 (`wfe` 16-bit Thumb)
+        // 0x1002_13FA: 0xBF30 (`wfi` 16-bit Thumb)
+        // 0x1002_13FC: 0xF3AF 0x8002 (`wfe.w` 32-bit Thumb-2)
+        // 0x1002_1400: 0xF3AF 0x8003 (`wfi.w` 32-bit Thumb-2)
+        // 0x1002_1404..0x1002_1414: `nop`s
+        let loop_bytes: &[(u64, &[u8])] = &[
+            (0x1002_13F6, &[0xC0, 0x46]),
+            (0x1002_13F8, &[0x20, 0xBF]),
+            (0x1002_13FA, &[0x30, 0xBF]),
+            (0x1002_13FC, &[0xAF, 0xF3, 0x02, 0x80]),
+            (0x1002_1400, &[0xAF, 0xF3, 0x03, 0x80]),
+            (0x1002_1404, &[0xC0, 0x46]),
+            (0x1002_1406, &[0xC0, 0x46]),
+            (0x1002_1408, &[0xC0, 0x46]),
+            (0x1002_140A, &[0xC0, 0x46]),
+            (0x1002_140C, &[0xC0, 0x46]),
+            (0x1002_140E, &[0xC0, 0x46]),
+            (0x1002_1410, &[0xC0, 0x46]),
+        ];
+        for &(addr, bytes) in loop_bytes {
+            for (off, &b) in bytes.iter().enumerate() {
+                guard.memory.insert(addr + off as u64, b);
+            }
+        }
+        guard.cores[0].regs.insert(15, 0x1002_13F6);
+        guard.cores[0].halted = true;
+    }
+
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let config = DebugServerConfig {
+        bind_host: "127.0.0.1".to_string(),
+        gdb_core0_port: 0,
+        gdb_core1_port: None,
+        rtt_bridge_port: None,
+        halted_on_reset: true,
+        exec_file_path: None,
+        json_events: false,
+    };
+    let handle =
+        start_debug_server_with_backend(backend, &config, shutdown).expect("start debug server");
+    let mut gdb = TestRspClient::connect(handle.gdb_core0_port);
+    assert_eq!(gdb.send_cmd("QStartNoAckMode"), "OK");
+    assert_eq!(gdb.send_cmd("?"), "S05");
+
+    // Arm a hardware breakpoint right on the `WFE` instruction (`0x1002_13F8`) as well!
+    assert_eq!(gdb.send_cmd("Z1,100213f8,2"), "OK");
+
+    let expected_pcs: &[u32] = &[
+        0x1002_13F8, // after nop
+        0x1002_13FA, // after 16-bit wfe (with active hw bp disarmed & re-armed!)
+        0x1002_13FC, // after 16-bit wfi
+        0x1002_1400, // after 32-bit wfe.w (+4)
+        0x1002_1404, // after 32-bit wfi.w (+4)
+        0x1002_1406,
+        0x1002_1408,
+        0x1002_140A,
+        0x1002_140C,
+        0x1002_140E,
+        0x1002_1410,
+        0x1002_1412,
+    ];
+
+    for (idx, &exp_pc) in expected_pcs.iter().enumerate() {
+        let reply = gdb.send_cmd("vCont;s:1");
+        assert_eq!(
+            reply,
+            "S05",
+            "Step {} failed with reply '{}' (expected S05 without WFE/WFI timeout)",
+            idx + 1,
+            reply
+        );
+        assert_eq!(
+            gdb.read_pc(),
+            exp_pc,
+            "Unexpected PC after step {}",
+            idx + 1
+        );
+    }
+
+    // Verify `vCont;r<start>,<end>` range-stepping steps cleanly across multiple instructions
+    // (including `WFE` / `WFI`) in a single RSP packet and stops immediately upon leaving `[start, end)`.
+    assert_eq!(gdb.send_cmd("z1,100213f8,2"), "OK");
+    assert_eq!(gdb.send_cmd("P0f=f6130210"), "OK");
+    assert_eq!(gdb.send_cmd("vCont;r100213f6,10021406:1;c"), "S05");
+    assert_eq!(gdb.read_pc(), 0x1002_1406);
+
+    // Simulate VS Code killing GDB abruptly (closing TCP socket without sending `$D#44`):
+    // `serve_core_gdb_client` must clear Core 0 breakpoints and resume Core 0 automatically!
+    drop(gdb);
+    let deadline = std::time::Instant::now() + Duration::from_millis(500);
+    while std::time::Instant::now() < deadline {
+        let guard = shared.lock().unwrap();
+        if !guard.cores[0].halted && guard.cores[0].hw_comparators.iter().all(Option::is_none) {
+            break;
+        }
+        drop(guard);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    {
+        let guard = shared.lock().unwrap();
+        assert!(
+            !guard.cores[0].halted,
+            "Core 0 must be resumed automatically on abrupt GDB TCP disconnect"
+        );
+        assert!(
+            guard.cores[0].hw_comparators.iter().all(Option::is_none),
+            "Core 0 breakpoints must be cleared automatically on abrupt GDB TCP disconnect"
+        );
+    }
+
+    handle.stop();
 }

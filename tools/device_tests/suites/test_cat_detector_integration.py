@@ -8,9 +8,12 @@ automatic `cat_detector_app` binary switching.
 import asyncio
 from pathlib import Path
 import re
+import shlex
 import shutil
 import socket
 import subprocess
+import sys
+import time
 
 from device_tests.client import AsyncHostSessionClient, _find_free_local_port
 from device_tests.model import ScenarioTier, device_test
@@ -274,6 +277,71 @@ async def test_dual_core_gdb_reset_handler_to_loc(host: AsyncHostSessionClient) 
             assert "sequential_storage" not in bt_combined, bt_combined
             assert "0x00000000 in ??" not in bt_combined, bt_combined
             assert "Remote replied unexpectedly" not in bt_combined, bt_combined
+
+            # Verify 10 consecutive source-line single steps from `cat_detector_shell.rs:60` across `.await` / `scheduler.rs` `wfe()`
+            # and clean `gdb-proxy` disconnect within 30s (`WORM-LITHE-ENCHYTRAEID-678`).
+            repo_root = Path(__file__).resolve().parents[3]
+            proxy_cmd = (
+                f"| {shlex.quote(sys.executable)} -u "
+                f"{shlex.quote(str(repo_root / 'tools' / 'host.py'))} "
+                f"--host 127.0.0.1 --port {int(host.port)} debug gdb-proxy --core 0 "
+                f"--host-port {int(host.port)}"
+            )
+            gdb_step_args = [
+                gdb_bin,
+                "--nx",
+                "--batch",
+                "-ex",
+                "set sysroot /",
+                "-ex",
+                f"source {repo_root / '.vscode' / 'cortex_debug_init.gdb'}",
+                "-ex",
+                f"target extended-remote {proxy_cmd}",
+                "-ex",
+                "monitor reset halt",
+                "-ex",
+                "maintenance flush register-cache",
+                "-ex",
+                "hbreak app/src/cat_detector_shell.rs:60",
+                "-ex",
+                "continue",
+            ]
+            for _ in range(10):
+                gdb_step_args.extend(["-ex", "next"])
+            gdb_step_args.extend(
+                [
+                    "-ex",
+                    "delete breakpoints",
+                    "-ex",
+                    "hbreak platform/src/system/scheduler.rs:222",
+                    "-ex",
+                    "continue",
+                    "-ex",
+                    "next",
+                    "-ex",
+                    "next",
+                    "-ex",
+                    "detach",
+                    str(active_link),
+                ]
+            )
+
+            step_t0 = time.monotonic()
+            step_proc = await asyncio.to_thread(
+                subprocess.run,
+                gdb_step_args,
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+                timeout=30.0,
+                check=False,
+            )
+            step_elapsed = time.monotonic() - step_t0
+            step_combined = f"{step_proc.stdout}\n{step_proc.stderr}"
+            assert step_proc.returncode == 0, step_combined
+            assert step_elapsed < 30.0, f"10 single steps took {step_elapsed:.2f}s (>= 30s):\n{step_combined}"
+            assert "Remote failure reply" not in step_combined, step_combined
+            assert "Remote replied unexpectedly" not in step_combined, step_combined
     finally:
         if was_debug_enabled:
             await host.start_debug_server(

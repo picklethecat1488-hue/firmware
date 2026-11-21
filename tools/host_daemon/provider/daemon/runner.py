@@ -47,6 +47,7 @@ DEBUG_SERVER_STARTUP_TIMEOUT_SEC: float = 20.0
 DEFAULT_GDB_CORE0_PORT: int = 3333
 DEFAULT_GDB_CORE1_PORT: int = 3334
 DEFAULT_RTT_BRIDGE_PORT: int = 50000
+MIN_DEBUG_SERVER_SWD_SPEED_KHZ: int = 4000
 PROBE_RELEASE_SETTLE_SEC: float = 0.25
 PROBE_RETRY_BACKOFF_SEC: float = 0.6
 MAX_PROBE_OPEN_RETRIES: int = 2
@@ -1225,13 +1226,14 @@ class DaemonRunner:
 
         self.stop_debug_server()
         effective_halt = self.halt_on_reset if halt_on_reset is None else bool(halt_on_reset)
+        debug_speed_khz = max(int(self.speed), MIN_DEBUG_SERVER_SWD_SPEED_KHZ)
         cmd = [
             *self._resolve_host_debug_cmd_prefix(),
             "serve",
             "--elf",
             str(self.elf_path),
             "--speed",
-            str(self.speed),
+            str(debug_speed_khz),
             "--gdb-core0-port",
             str(self.gdb_core0_port),
             "--gdb-core1-port",

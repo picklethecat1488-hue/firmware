@@ -2,7 +2,7 @@
 //! typed reply status codes, XML/exec-file transfer chunking, and command dispatch.
 
 use crate::arch::{TargetArchProfile, TargetRegisterLayout};
-use crate::server::DebugBackend;
+use crate::server::{DebugBackend, MAX_RANGE_STEPS_PER_PACKET};
 
 /// Cortex-M `EXC_RETURN` / System Control Space non-instruction address threshold (`0xF000_0000`).
 pub const CORTEX_M_NON_CODE_THRESHOLD: u64 = 0xF000_0000;
@@ -10,20 +10,20 @@ pub const CORTEX_M_NON_CODE_THRESHOLD: u64 = 0xF000_0000;
 /// Maximum single RSP memory read chunk size in bytes.
 pub const MAX_RSP_MEMORY_READ_BYTES: usize = 4096;
 
-fn select_vcont_action_for_core(vcont_body: &str) -> char {
-    let mut fallback_unthreaded: Option<char> = None;
+fn select_vcont_clause_for_core(vcont_body: &str) -> &str {
+    let mut fallback_unthreaded: Option<&str> = None;
     for clause in vcont_body.split(';') {
         let trimmed = clause.trim();
         if trimmed.is_empty() {
             continue;
         }
         let (act_part, tid_opt) = match trimmed.split_once(':') {
-            Some((a, t)) => (a, Some(t.trim())),
+            Some((a, t)) => (a.trim(), Some(t.trim())),
             None => (trimmed, None),
         };
-        let Some(action_char) = act_part.chars().next() else {
+        if act_part.is_empty() {
             continue;
-        };
+        }
         match tid_opt {
             Some(tid) => {
                 let matches_thread_1 = matches!(tid, "1" | "01" | "-1")
@@ -31,17 +31,17 @@ fn select_vcont_action_for_core(vcont_body: &str) -> char {
                     || tid.ends_with(".01")
                     || tid.ends_with(".-1");
                 if matches_thread_1 {
-                    return action_char;
+                    return act_part;
                 }
             }
             None => {
                 if fallback_unthreaded.is_none() {
-                    fallback_unthreaded = Some(action_char);
+                    fallback_unthreaded = Some(act_part);
                 }
             }
         }
     }
-    fallback_unthreaded.unwrap_or('c')
+    fallback_unthreaded.unwrap_or("c")
 }
 
 /// Strongly typed GDB Remote Serial Protocol status and error reply codes.
@@ -251,6 +251,8 @@ pub struct RspCoreHandler {
     pub core_idx: usize,
     /// Whether `QStartNoAckMode` has been negotiated on this socket.
     pub no_ack_mode: bool,
+    /// Whether the connected GDB client has fetched the full `target.xml` register layout.
+    pub target_xml_complete: bool,
     /// Architecture register profile supplying `target.xml` and register mappings.
     pub arch_profile: TargetRegisterLayout,
     /// Optional absolute target ELF executable path served over `qXfer:exec-file:read`.
@@ -269,10 +271,52 @@ impl RspCoreHandler {
         Self {
             core_idx,
             no_ack_mode: false,
+            target_xml_complete: false,
             arch_profile,
             exec_file_path,
             last_reported_stop_pc: None,
         }
+    }
+
+    /// Build a `SIGTRAP` stop-reply string (`T05...;thread:01;` with expedited frame-unwind registers
+    /// once `target.xml` has been transferred to GDB, or `"S05"` for minimal raw RSP clients).
+    pub fn format_trap_stop_reply<B: DebugBackend + ?Sized>(&mut self, backend: &mut B) -> String {
+        const EXPEDITED_STOP_REG_NAMES: &[&str] = &["r7", "sp", "lr", "pc"];
+        if !self.target_xml_complete {
+            return RspReplyCode::SigTrap.as_reply_string();
+        }
+        let mut descs = Vec::with_capacity(EXPEDITED_STOP_REG_NAMES.len());
+        for reg in self.arch_profile.general_registers() {
+            if EXPEDITED_STOP_REG_NAMES.contains(&reg.name.as_str()) {
+                descs.push(reg.clone());
+            }
+        }
+        if descs.is_empty() {
+            return RspReplyCode::SigTrap.as_reply_string();
+        }
+        let hw_ids: Vec<u16> = descs.iter().map(|d| d.hw_reg_id).collect();
+        let vals = backend.read_core_regs(self.core_idx, &hw_ids);
+        let mut out = String::from("T05");
+        for (desc, &raw_val) in descs.iter().zip(vals.iter()) {
+            let val = if desc.is_pc {
+                let norm = self.arch_profile.normalize_pc(raw_val);
+                self.last_reported_stop_pc = Some(norm);
+                norm
+            } else {
+                raw_val
+            };
+            let le = val.to_le_bytes();
+            let width = desc.byte_width().min(4);
+            use std::fmt::Write as _;
+            let _ = write!(
+                &mut out,
+                "{:02x}:{};",
+                desc.gdb_regnum,
+                encode_hex(&le[..width])
+            );
+        }
+        out.push_str("thread:01;");
+        out
     }
 
     /// Snapshot the current halted normalized `PC` on `core_idx` as reported to the GDB client.
@@ -314,7 +358,7 @@ impl RspCoreHandler {
             return Some(RspAction::status(RspReplyCode::Empty));
         }
         if cmd == "vCont?" {
-            return Some(RspAction::Reply("vCont;c;C;s;S;t".to_string()));
+            return Some(RspAction::Reply("vCont;c;C;s;S;t;r".to_string()));
         }
         if cmd == "qAttached" {
             return Some(RspAction::Reply("1".to_string()));
@@ -340,10 +384,11 @@ impl RspCoreHandler {
             return Some(RspAction::status(RspReplyCode::Ok));
         }
         if let Some(xfer_args) = cmd.strip_prefix("qXfer:features:read:target.xml:") {
-            return Some(RspAction::Reply(slice_qxfer_blob(
-                self.arch_profile.target_xml(),
-                xfer_args,
-            )));
+            let chunk = slice_qxfer_blob(self.arch_profile.target_xml(), xfer_args);
+            if chunk.starts_with('l') {
+                self.target_xml_complete = true;
+            }
+            return Some(RspAction::Reply(chunk));
         }
         if let Some(rest) = cmd.strip_prefix("qXfer:exec-file:read:") {
             if let Some((_, xfer_args)) = rest.split_once(':') {
@@ -431,21 +476,47 @@ impl RspCoreHandler {
                 }
             }
             return match backend.step_core(self.core_idx) {
-                Ok(_) => {
-                    self.record_stop_pc(backend);
-                    RspAction::status(RspReplyCode::SigTrap)
+                Ok(next_pc) => {
+                    self.last_reported_stop_pc = Some(self.arch_profile.normalize_pc(next_pc));
+                    RspAction::Reply(self.format_trap_stop_reply(backend))
                 }
                 Err(_) => RspAction::status(RspReplyCode::ErrTargetState),
             };
         }
         if let Some(vcont_body) = cmd.strip_prefix("vCont;") {
-            let action_char = select_vcont_action_for_core(vcont_body);
+            let act_clause = select_vcont_clause_for_core(vcont_body);
+            let action_char = act_clause.chars().next().unwrap_or('c');
             match action_char {
                 's' | 'S' => {
                     return match backend.step_core(self.core_idx) {
-                        Ok(_) => {
-                            self.record_stop_pc(backend);
-                            RspAction::status(RspReplyCode::SigTrap)
+                        Ok(next_pc) => {
+                            self.last_reported_stop_pc =
+                                Some(self.arch_profile.normalize_pc(next_pc));
+                            RspAction::Reply(self.format_trap_stop_reply(backend))
+                        }
+                        Err(_) => RspAction::status(RspReplyCode::ErrTargetState),
+                    };
+                }
+                'r' => {
+                    let Some((start_hex, end_hex)) = act_clause[1..].split_once(',') else {
+                        return RspAction::status(RspReplyCode::ErrBadRequest);
+                    };
+                    let (Ok(start_addr), Ok(end_addr)) = (
+                        u32::from_str_radix(start_hex.trim(), 16),
+                        u32::from_str_radix(end_hex.trim(), 16),
+                    ) else {
+                        return RspAction::status(RspReplyCode::ErrBadRequest);
+                    };
+                    return match backend.step_range_core(
+                        self.core_idx,
+                        self.arch_profile.normalize_pc(start_addr),
+                        self.arch_profile.normalize_pc(end_addr),
+                        MAX_RANGE_STEPS_PER_PACKET,
+                    ) {
+                        Ok(next_pc) => {
+                            self.last_reported_stop_pc =
+                                Some(self.arch_profile.normalize_pc(next_pc));
+                            RspAction::Reply(self.format_trap_stop_reply(backend))
                         }
                         Err(_) => RspAction::status(RspReplyCode::ErrTargetState),
                     };
@@ -484,17 +555,21 @@ impl RspCoreHandler {
     }
 
     fn handle_read_all_regs<B: DebugBackend + ?Sized>(&self, backend: &mut B) -> String {
-        if !backend.core_halted(self.core_idx).unwrap_or(false) {
+        if self.last_reported_stop_pc.is_none()
+            && !backend.core_halted(self.core_idx).unwrap_or(false)
+        {
             let _ = backend.halt_core(self.core_idx);
         }
         let regs = self.arch_profile.general_registers();
+        let reg_ids: Vec<u16> = regs.iter().map(|r| r.hw_reg_id).collect();
+        let values = backend.read_core_regs(self.core_idx, &reg_ids);
         let total_hex_chars: usize = regs.iter().map(|r| r.byte_width() * 2).sum();
         let mut hex = String::with_capacity(total_hex_chars);
-        for reg in regs {
-            let val = match backend.read_core_reg(self.core_idx, reg.hw_reg_id) {
-                Ok(v) if reg.is_pc => self.arch_profile.normalize_pc(v),
-                Ok(v) => v,
-                Err(_) => 0,
+        for (reg, &raw_val) in regs.iter().zip(values.iter()) {
+            let val = if reg.is_pc {
+                self.arch_profile.normalize_pc(raw_val)
+            } else {
+                raw_val
             };
             let le_bytes = val.to_le_bytes();
             let width = reg.byte_width().min(4);
@@ -549,7 +624,9 @@ impl RspCoreHandler {
         let Some(desc) = self.arch_profile.lookup_gdb_register(gdb_reg) else {
             return RspReplyCode::ErrBadRequest.as_reply_string();
         };
-        if !backend.core_halted(self.core_idx).unwrap_or(false) {
+        if self.last_reported_stop_pc.is_none()
+            && !backend.core_halted(self.core_idx).unwrap_or(false)
+        {
             let _ = backend.halt_core(self.core_idx);
         }
         match backend.read_core_reg(self.core_idx, desc.hw_reg_id) {

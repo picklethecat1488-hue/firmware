@@ -3193,3 +3193,108 @@ def test_worm_radiant_vinegarworm_918_trace_mode_switch_clears_tracks_and_stops_
     assert runner.should_ingest_trace_event({"category": "sensor", "track": "Proximity (West)"}) is False
     assert runner.should_ingest_trace_event({"category": "span", "track": "CPU Core 0"}) is True
     assert runner.should_ingest_trace_event({"category": "cpu_usage", "track": "Core 0 CPU Usage (%)"}) is True
+
+
+def test_worm_lithe_enchytraeid_678_gdb_stdio_proxy_stdin_eof_and_sigint_hygiene(
+    tmp_path: Path,
+) -> None:
+    """Verify `host.py debug gdb-proxy` exits promptly on stdin EOF even if remote TCP stays open and never duplicates Ctrl-C on SIGINT (`WORM-LITHE-ENCHYTRAEID-678`)."""
+    import signal
+
+    received_bytes = bytearray()
+    accepted_event = threading.Event()
+    release_server = threading.Event()
+
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", 0))
+    mock_gdb_port = srv.getsockname()[1]
+    srv.listen(1)
+
+    def _keep_open_server() -> None:
+        try:
+            conn, _ = srv.accept()
+            accepted_event.set()
+            conn.settimeout(0.05)
+            while not release_server.is_set():
+                try:
+                    chunk = conn.recv(256)
+                    if chunk:
+                        received_bytes.extend(chunk)
+                except socket.timeout:
+                    continue
+                except OSError:
+                    break
+            # Intentionally keep `conn` open (no server-side close) until test finishes!
+            release_server.wait(timeout=5.0)
+            conn.close()
+        finally:
+            srv.close()
+
+    srv_thread = threading.Thread(target=_keep_open_server, daemon=True)
+    srv_thread.start()
+
+    fake_repo = _copy_resource_tree("fake_workspace", tmp_path / "repo")
+    (fake_repo / "target").mkdir(parents=True, exist_ok=True)
+    (fake_repo / "target" / "host_session.json").write_text(
+        json.dumps(
+            {
+                "package": "cat_detector",
+                "bin": "cat_detector_shell",
+                "gdb_core0_port": mock_gdb_port,
+            }
+        ),
+        encoding="utf-8",
+    )
+    from device_tests.client import _find_free_local_port
+
+    unused_daemon_port = _find_free_local_port("127.0.0.1")
+
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-u",
+            str(WORKSPACE_ROOT / "tools" / "host.py"),
+            "debug",
+            "gdb-proxy",
+            "--core",
+            "0",
+            "--host-port",
+            str(unused_daemon_port),
+            "--repo-root",
+            str(fake_repo),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        assert accepted_event.wait(timeout=5.0), "gdb-proxy did not connect to mock GDB port"
+        assert proc.stdin is not None
+        proc.stdin.write(b"+$QStartNoAckMode#b0")
+        proc.stdin.flush()
+        time.sleep(0.08)
+
+        # Send SIGINT (as VS Code Cortex-Debug sends to GDB's process group before Disconnect):
+        # `gdb-proxy` MUST survive SIGINT AND must NOT inject its own duplicate `\x03` byte!
+        proc.send_signal(signal.SIGINT)
+        time.sleep(0.08)
+        assert proc.poll() is None, "gdb-proxy must not die on SIGINT while stdin is still open"
+        assert b"\x03" not in bytes(received_bytes), (
+            f"gdb-proxy injected duplicate Ctrl-C on SIGINT (desynchronizes GDB detach): {bytes(received_bytes)!r}"
+        )
+
+        # Now close stdin (simulating VS Code closing GDB pipe on Disconnect while remote TCP stays open):
+        # `gdb-proxy` MUST exit within 1.5s instead of hanging forever in `sock.recv()`!
+        t0 = time.monotonic()
+        proc.stdin.close()
+        rc = proc.wait(timeout=1.5)
+        elapsed = time.monotonic() - t0
+        assert rc == 0, f"Expected clean exit 0 on stdin EOF, got {rc}"
+        assert elapsed < 1.5, f"gdb-proxy took too long ({elapsed:.2f}s) to exit after stdin EOF"
+    finally:
+        release_server.set()
+        if proc.poll() is None:
+            proc.kill()
+        srv_thread.join(timeout=2.0)
+

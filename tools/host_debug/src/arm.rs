@@ -14,6 +14,34 @@ pub const CORTEX_M_SRAM_END: u64 = 0x4000_0000;
 /// Little-endian encoding of 16-bit Thumb `BKPT #0` (`0xBE00`).
 pub const THUMB_BKPT_0_LE: [u8; 2] = [0x00, 0xBE];
 
+/// Little-endian encoding of 16-bit Thumb `WFE` (`0xBF20`).
+pub const THUMB_WFE_16_LE: [u8; 2] = [0x20, 0xBF];
+
+/// Little-endian encoding of 16-bit Thumb `WFI` (`0xBF30`).
+pub const THUMB_WFI_16_LE: [u8; 2] = [0x30, 0xBF];
+
+/// Little-endian encoding of 32-bit Thumb-2 `WFE.W` (`0xF3AF_8002`).
+pub const THUMB2_WFE_32_LE: [u8; 4] = [0xAF, 0xF3, 0x02, 0x80];
+
+/// Little-endian encoding of 32-bit Thumb-2 `WFI.W` (`0xF3AF_8003`).
+pub const THUMB2_WFI_32_LE: [u8; 4] = [0xAF, 0xF3, 0x03, 0x80];
+
+/// Return the architectural byte width (`2` or `4`) if `insn_bytes` starts with an ARM Thumb / Thumb-2
+/// `WFE` or `WFI` low-power sleep-hint instruction (`WORM-LITHE-ENCHYTRAEID-678`).
+pub fn decode_arm_thumb_sleep_hint_len(insn_bytes: &[u8]) -> Option<u32> {
+    if insn_bytes.len() >= 2
+        && (insn_bytes[0..2] == THUMB_WFE_16_LE || insn_bytes[0..2] == THUMB_WFI_16_LE)
+    {
+        return Some(2);
+    }
+    if insn_bytes.len() >= 4
+        && (insn_bytes[0..4] == THUMB2_WFE_32_LE || insn_bytes[0..4] == THUMB2_WFI_32_LE)
+    {
+        return Some(4);
+    }
+    None
+}
+
 /// Cortex-M Debug Halting Control and Status Register (`DHCSR`) address.
 pub const CORTEX_M_DHCSR_ADDR: u64 = 0xE000_EDF0;
 
@@ -25,6 +53,18 @@ pub const CORTEX_M_DHCSR_DBGKEY_HALT: u32 = 0xA05F_0003;
 
 /// `DHCSR` write value (`DBGKEY | C_DEBUGEN | C_HALT | C_MASKINTS`) masking PendSV/SysTick/IRQs during single-step.
 pub const CORTEX_M_DHCSR_DBGKEY_HALT_MASKINTS: u32 = 0xA05F_000B;
+
+/// `DHCSR` write value (`DBGKEY | C_DEBUGEN | C_STEP | C_MASKINTS`) executing one masked instruction step.
+pub const CORTEX_M_DHCSR_DBGKEY_STEP_MASKINTS: u32 = 0xA05F_000D;
+
+/// `DHCSR.S_HALT` status bit (`1 << 17`) asserted when the core is in Debug Halt state.
+pub const CORTEX_M_DHCSR_S_HALT_MASK: u32 = 0x0002_0000;
+
+/// Cortex-M Debug Core Register Selector Register (`DCRSR`) address.
+pub const CORTEX_M_DCRSR_ADDR: u64 = 0xE000_EDF4;
+
+/// Cortex-M Debug Core Register Data Register (`DCRDR`) address.
+pub const CORTEX_M_DCRDR_ADDR: u64 = 0xE000_EDF8;
 
 /// Cortex-M Debug Exception and Monitor Control Register (`DEMCR`) address.
 pub const CORTEX_M_DEMCR_ADDR: u64 = 0xE000_EDFC;
@@ -52,6 +92,15 @@ pub const CORTEX_M_BP_COMP0_ADDR: u64 = 0xE000_2008;
 
 /// Exclusive upper address bound for ARMv6-M BPU v1 hardware comparators (`0x2000_0000`).
 pub const ARMV6M_HW_BP_LIMIT: u64 = 0x2000_0000;
+
+/// ARM DCRSR register number for Frame Pointer (`r7`).
+pub const DCRSR_R7: u16 = 7;
+
+/// ARM DCRSR register number for Stack Pointer (`sp` / `r13`).
+pub const DCRSR_SP: u16 = 13;
+
+/// ARM DCRSR register number for Link Register (`lr` / `r14`).
+pub const DCRSR_LR: u16 = 14;
 
 /// ARM DCRSR register number for Program Counter (`r15`).
 pub const DCRSR_PC: u16 = 15;
@@ -203,6 +252,46 @@ pub fn build_arm_cortex_m_register_layout(
     TargetRegisterLayout::new(arch, features)
 }
 
+/// Return `(r7_preserved, sp_lr_preserved)` for a 16-bit Thumb instruction (`hw`) stepped from `pc` to `next_pc`.
+#[inline]
+fn thumb16_preserved_unwind_regs(hw: u16, pc: u32, next_pc: u32) -> (bool, bool) {
+    const THUMB32_PREFIX_MIN: u16 = 0xE800;
+    const THUMB16_HIGH_REG_MASK: u16 = 0xFC00;
+    const THUMB16_HIGH_REG_VAL: u16 = 0x4400;
+    const THUMB16_MISC_SP_MASK: u16 = 0xF000;
+    const THUMB16_MISC_SP_VAL: u16 = 0xB000;
+    const THUMB16_SVC_MASK: u16 = 0xFF00;
+    const THUMB16_SVC_VAL: u16 = 0xDF00;
+    const THUMB16_BCOND_VAL: u16 = 0xD000;
+    const THUMB16_UNCOND_B_MASK: u16 = 0xF800;
+    const THUMB16_UNCOND_B_VAL: u16 = 0xE000;
+    const THUMB16_LDMIA_VAL: u16 = 0xC800;
+    const THUMB16_R7_BIT: u16 = 0x0080;
+
+    if hw >= THUMB32_PREFIX_MIN {
+        return (false, false);
+    }
+    if (hw & THUMB16_HIGH_REG_MASK) == THUMB16_HIGH_REG_VAL
+        || (hw & THUMB16_MISC_SP_MASK) == THUMB16_MISC_SP_VAL
+        || (hw & THUMB16_SVC_MASK) == THUMB16_SVC_VAL
+    {
+        return (false, false);
+    }
+    let is_branch = (hw & THUMB16_MISC_SP_MASK) == THUMB16_BCOND_VAL
+        || (hw & THUMB16_UNCOND_B_MASK) == THUMB16_UNCOND_B_VAL;
+    if !is_branch && next_pc != pc.wrapping_add(2) {
+        return (false, false);
+    }
+    let r7_preserved = if is_branch {
+        true
+    } else if (hw & THUMB16_UNCOND_B_MASK) == THUMB16_LDMIA_VAL {
+        (hw & THUMB16_R7_BIT) == 0 && ((hw >> 8) & 0x7) != DCRSR_R7
+    } else {
+        (hw & 0x7) != DCRSR_R7 && ((hw >> 8) & 0x7) != DCRSR_R7
+    };
+    (r7_preserved, true)
+}
+
 /// Return `true` if the ARM hardware FPB/BPU for `arch` can match instruction fetches at `addr`.
 pub const fn supports_arm_hw_breakpoint_at(arch: ProcessorArch, addr: u64) -> bool {
     match arch {
@@ -225,6 +314,9 @@ pub trait ArmHardwareOps {
 
     /// Read raw 32-bit `PC` (`DCRSR_PC`) on `core_idx`.
     fn raw_read_pc(&mut self, core_idx: usize) -> Result<u32, String>;
+
+    /// Write raw 32-bit `PC` (`DCRSR_PC`) on halted `core_idx`.
+    fn raw_write_pc(&mut self, core_idx: usize, pc: u32) -> Result<(), String>;
 
     /// Return `true` if `core_idx` is currently halted.
     fn raw_core_halted(&mut self, core_idx: usize) -> Result<bool, String>;
@@ -481,6 +573,14 @@ impl ArmBreakpointManager {
         Ok(rearmed)
     }
 
+    /// Return `true` if `core_idx` has any active user hardware or SRAM software breakpoint.
+    pub fn has_any_user_breakpoints(&self, core_idx: usize) -> bool {
+        self.cores
+            .get(core_idx)
+            .map(|t| t.has_active_hw_breakpoints() || !t.sw_ram_patches.is_empty())
+            .unwrap_or(false)
+    }
+
     /// Step over an active SRAM `BKPT #0` patch at `PC` on `core_idx`, if `PC` matches one.
     pub fn step_over_sw_bkpt_if_needed<H: ArmHardwareOps + ?Sized>(
         &self,
@@ -493,6 +593,14 @@ impl ArmBreakpointManager {
             .get(core_idx)
             .and_then(|t| t.sw_ram_patches.get(&pc).copied());
         if let Some(orig) = orig_opt {
+            let mut insn_buf = [0u8; 4];
+            let _ = hw.raw_read_memory(core_idx, pc, &mut insn_buf);
+            insn_buf[0..2].copy_from_slice(&orig);
+            if let Some(sleep_len) = decode_arm_thumb_sleep_hint_len(&insn_buf) {
+                let next_pc = (pc as u32).wrapping_add(sleep_len) & !1;
+                hw.raw_write_pc(core_idx, next_pc)?;
+                return Ok(Some(next_pc));
+            }
             hw.raw_write_memory(core_idx, pc, &orig)?;
             let _ = hw.set_interrupt_mask(core_idx, true);
             let step_res = hw.raw_step_core(core_idx);
@@ -505,13 +613,31 @@ impl ArmBreakpointManager {
     }
 
     /// Single-step one instruction on `core_idx` with `DHCSR.C_MASKINTS` enabled while temporarily
-    /// disarming any hardware FPB comparator or SRAM `BKPT #0` patch matching the current `PC`.
+    /// disarming any hardware FPB comparator or SRAM `BKPT #0` patch matching the current `PC`,
+    /// and advancing deterministically past `WFE`/`WFI` sleep-hint instructions without hanging.
     pub fn step_core<H: ArmHardwareOps + ?Sized>(
         &self,
         hw: &mut H,
         core_idx: usize,
     ) -> Result<u32, String> {
         let pc = (hw.raw_read_pc(core_idx)? & !1) as u64;
+        let orig_sw_patch = self
+            .cores
+            .get(core_idx)
+            .and_then(|t| t.sw_ram_patches.get(&pc).copied());
+
+        let mut insn_buf = [0u8; 4];
+        if hw.raw_read_memory(core_idx, pc, &mut insn_buf).is_ok() {
+            if let Some(orig) = orig_sw_patch {
+                insn_buf[0..2].copy_from_slice(&orig);
+            }
+            if let Some(sleep_len) = decode_arm_thumb_sleep_hint_len(&insn_buf) {
+                let next_pc = (pc as u32).wrapping_add(sleep_len) & !1;
+                hw.raw_write_pc(core_idx, next_pc)?;
+                return Ok(next_pc);
+            }
+        }
+
         let mut disarmed_slots: Vec<usize> = Vec::new();
         if let Some(table) = self.cores.get(core_idx) {
             for (slot_idx, entry) in table.hw_slots.iter().enumerate() {
@@ -530,10 +656,6 @@ impl ArmBreakpointManager {
             }
         }
 
-        let orig_sw_patch = self
-            .cores
-            .get(core_idx)
-            .and_then(|t| t.sw_ram_patches.get(&pc).copied());
         if let Some(orig) = orig_sw_patch {
             hw.raw_write_memory(core_idx, pc, &orig)?;
         }
@@ -551,6 +673,35 @@ impl ArmBreakpointManager {
 
         let next_pc = step_res?;
         Ok(next_pc & !1)
+    }
+
+    /// Prepare `core_idx` for resuming execution from Debug Halt, stepping past any active
+    /// `PC` breakpoint or `WFE`/`WFI` sleep-hint instruction when user breakpoints are armed.
+    pub fn prepare_resume<H: ArmHardwareOps + ?Sized>(
+        &mut self,
+        hw: &mut H,
+        core_idx: usize,
+    ) -> Result<(), String> {
+        if hw.raw_core_halted(core_idx).unwrap_or(false) {
+            if let Ok(raw_pc) = hw.raw_read_pc(core_idx) {
+                let pc = (raw_pc & !1) as u64;
+                let has_trap_at_pc = self.has_breakpoint_at(core_idx, pc)
+                    || (core_idx == 0 && self.core1_post_reset_trap_addr == Some(pc));
+                if has_trap_at_pc {
+                    let _ = self.step_core(hw, core_idx);
+                } else if self.has_any_user_breakpoints(core_idx) {
+                    let mut insn_buf = [0u8; 4];
+                    if hw.raw_read_memory(core_idx, pc, &mut insn_buf).is_ok() {
+                        if let Some(sleep_len) = decode_arm_thumb_sleep_hint_len(&insn_buf) {
+                            let next_pc = (pc as u32).wrapping_add(sleep_len) & !1;
+                            let _ = hw.raw_write_pc(core_idx, next_pc);
+                        }
+                    }
+                }
+            }
+        }
+        let _ = self.ensure_armed(hw, core_idx);
+        Ok(())
     }
 
     /// Synchronize the optional Core 0 post-`PSM.frce_off` helper trap whenever Core 1 has breakpoints.
@@ -733,6 +884,16 @@ pub mod probe_backend {
             })
         }
 
+        fn raw_write_pc(&mut self, core_idx: usize, pc: u32) -> Result<(), String> {
+            with_session_core(self.session, core_idx, |core| {
+                if !core.core_halted().unwrap_or(false) {
+                    let _ = core.halt(Duration::from_millis(50));
+                }
+                core.write_core_reg(RegisterId(DCRSR_PC), pc & !1)
+                    .map_err(|e| format!("{:?}", e))
+            })
+        }
+
         fn raw_core_halted(&mut self, core_idx: usize) -> Result<bool, String> {
             with_session_core(self.session, core_idx, |core| {
                 core.core_halted().map_err(|e| format!("{:?}", e))
@@ -740,9 +901,17 @@ pub mod probe_backend {
         }
 
         fn raw_step_core(&mut self, core_idx: usize) -> Result<u32, String> {
-            with_session_core(self.session, core_idx, |core| {
-                let info = core.step().map_err(|e| format!("{:?}", e))?;
-                Ok((info.pc as u32) & !1)
+            with_session_core(self.session, core_idx, |core| match core.step() {
+                Ok(info) => Ok((info.pc as u32) & !1),
+                Err(step_err) => {
+                    // If `C_STEP` ever enters sleep or stalls, force Debug Halt immediately so
+                    // `C_MASKINTS` / `C_STEP` never remain latched on the target core.
+                    if let Ok(halted_info) = core.halt(Duration::from_millis(50)) {
+                        Ok((halted_info.pc as u32) & !1)
+                    } else {
+                        Err(format!("{:?}", step_err))
+                    }
+                }
             })
         }
 
@@ -761,10 +930,15 @@ pub mod probe_backend {
 
         fn raw_resume_core(&mut self, core_idx: usize) -> Result<(), String> {
             with_session_core(self.session, core_idx, |core| {
-                if !core.core_halted().unwrap_or(true) {
-                    return Ok(());
-                }
-                core.run().map_err(|e| format!("{:?}", e))
+                // Write `DHCSR = DBGKEY | C_DEBUGEN` directly rather than calling `probe_rs::Core::run()`,
+                // because `probe-rs` `armv6m::run()` unconditionally invokes `self.step()?` with
+                // `C_MASKINTS = 1` first—which hangs and fails with `Timeout` whenever the core was
+                // halted on a `WFE`/`WFI` instruction (`WORM-LITHE-ENCHYTRAEID-678`).
+                core.write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_ENABLE)
+                    .map_err(|e| format!("{:?}", e))?;
+                core.flush().map_err(|e| format!("{:?}", e))?;
+                let _ = core.status();
+                Ok(())
             })
         }
 
@@ -875,7 +1049,10 @@ pub mod probe_backend {
                                 );
                             }
                         }
-                        let _ = core1.run();
+                        let _ =
+                            core1.write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_ENABLE);
+                        let _ = core1.flush();
+                        let _ = core1.status();
                     }
                 }
                 Ok(())
@@ -896,6 +1073,73 @@ pub mod probe_backend {
         }
     }
 
+    #[derive(Clone, Debug)]
+    struct ElfRomSegment {
+        vaddr: u64,
+        data: Vec<u8>,
+    }
+
+    fn load_elf_rom_segments(elf_path: Option<&Path>) -> Vec<ElfRomSegment> {
+        const ELF_MAGIC: &[u8; 4] = b"\x7fELF";
+        const ELFCLASS32: u8 = 1;
+        const ELFDATA2LSB: u8 = 1;
+        const PT_LOAD: u32 = 1;
+        const PF_W: u32 = 0x2;
+        const ELF32_EHDR_MIN_LEN: usize = 52;
+        const ELF32_PHDR_MIN_LEN: usize = 32;
+
+        let Some(path) = elf_path else {
+            return Vec::new();
+        };
+        let Ok(bytes) = std::fs::read(path) else {
+            return Vec::new();
+        };
+        if bytes.len() < ELF32_EHDR_MIN_LEN
+            || &bytes[0..4] != ELF_MAGIC
+            || bytes[4] != ELFCLASS32
+            || bytes[5] != ELFDATA2LSB
+        {
+            return Vec::new();
+        }
+        let phoff = u32::from_le_bytes([bytes[28], bytes[29], bytes[30], bytes[31]]) as usize;
+        let phentsize = u16::from_le_bytes([bytes[42], bytes[43]]) as usize;
+        let phnum = u16::from_le_bytes([bytes[44], bytes[45]]) as usize;
+        if phentsize < ELF32_PHDR_MIN_LEN {
+            return Vec::new();
+        }
+
+        let mut segments = Vec::new();
+        for idx in 0..phnum {
+            let Some(off) = phoff.checked_add(idx.saturating_mul(phentsize)) else {
+                break;
+            };
+            if off.saturating_add(ELF32_PHDR_MIN_LEN) > bytes.len() {
+                break;
+            }
+            let hdr = &bytes[off..off + ELF32_PHDR_MIN_LEN];
+            let p_type = u32::from_le_bytes([hdr[0], hdr[1], hdr[2], hdr[3]]);
+            let p_offset = u32::from_le_bytes([hdr[4], hdr[5], hdr[6], hdr[7]]) as usize;
+            let p_vaddr = u32::from_le_bytes([hdr[8], hdr[9], hdr[10], hdr[11]]) as u64;
+            let p_filesz = u32::from_le_bytes([hdr[16], hdr[17], hdr[18], hdr[19]]) as usize;
+            let p_memsz = u32::from_le_bytes([hdr[20], hdr[21], hdr[22], hdr[23]]) as usize;
+            let p_flags = u32::from_le_bytes([hdr[24], hdr[25], hdr[26], hdr[27]]);
+
+            if p_type == PT_LOAD
+                && (p_flags & PF_W) == 0
+                && p_filesz > 0
+                && p_filesz == p_memsz
+                && p_vaddr < CORTEX_M_SRAM_START
+                && p_offset.saturating_add(p_filesz) <= bytes.len()
+            {
+                segments.push(ElfRomSegment {
+                    vaddr: p_vaddr,
+                    data: bytes[p_offset..p_offset + p_filesz].to_vec(),
+                });
+            }
+        }
+        segments
+    }
+
     /// Concrete ARM Cortex-M `probe-rs` target session implementing [`DebugBackend`].
     pub struct ArmProbeDebugBackend {
         session: Session,
@@ -905,6 +1149,9 @@ pub mod probe_backend {
         core0_reset_addr: Option<u64>,
         core1_reset_addr: Option<u64>,
         bp_mgr: ArmBreakpointManager,
+        halted_reg_cache: Vec<BTreeMap<u16, u32>>,
+        core1_left_bootrom: bool,
+        rom_segments: Vec<ElfRomSegment>,
     }
 
     impl ArmProbeDebugBackend {
@@ -1087,6 +1334,8 @@ pub mod probe_backend {
                 None
             };
 
+            let rom_segments = load_elf_rom_segments(elf_path);
+            let core_count = core_archs.len();
             let mut backend = Self {
                 session,
                 chip: chip.to_string(),
@@ -1095,9 +1344,39 @@ pub mod probe_backend {
                 core0_reset_addr,
                 core1_reset_addr,
                 bp_mgr: ArmBreakpointManager::new(&bp_units, rp2040_psm_trap),
+                halted_reg_cache: vec![BTreeMap::new(); core_count],
+                core1_left_bootrom: false,
+                rom_segments,
             };
             backend.configure_target_debug_peripherals();
             Ok(backend)
+        }
+
+        fn try_read_rom(&self, addr: u64, buf: &mut [u8]) -> bool {
+            let Some(end) = addr.checked_add(buf.len() as u64) else {
+                return false;
+            };
+            for seg in &self.rom_segments {
+                let seg_end = seg.vaddr.saturating_add(seg.data.len() as u64);
+                if addr >= seg.vaddr && end <= seg_end {
+                    let start_off = (addr - seg.vaddr) as usize;
+                    buf.copy_from_slice(&seg.data[start_off..start_off + buf.len()]);
+                    return true;
+                }
+            }
+            false
+        }
+
+        fn clear_reg_cache(&mut self, core_idx: usize) {
+            if let Some(cache) = self.halted_reg_cache.get_mut(core_idx) {
+                cache.clear();
+            }
+        }
+
+        fn clear_all_reg_caches(&mut self) {
+            for cache in &mut self.halted_reg_cache {
+                cache.clear();
+            }
         }
 
         /// Configure chip-specific debug-pause peripherals (e.g. RP2040 `TIMER.DBGPAUSE = DBG0`) and
@@ -1144,43 +1423,53 @@ pub mod probe_backend {
 
         fn core_halted(&mut self, core_idx: usize) -> Result<bool, String> {
             let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
-            let mut hw = SessionHwAccess {
-                session: &mut self.session,
-                core_archs: &self.core_archs,
-                is_rp2040,
+            let halted = {
+                let mut hw = SessionHwAccess {
+                    session: &mut self.session,
+                    core_archs: &self.core_archs,
+                    is_rp2040,
+                };
+                hw.raw_core_halted(core_idx)?
             };
-            hw.raw_core_halted(core_idx)
+            if !halted {
+                self.clear_reg_cache(core_idx);
+            }
+            Ok(halted)
         }
 
         fn halt_core(&mut self, core_idx: usize) -> Result<u32, String> {
+            self.clear_reg_cache(core_idx);
             let pc = with_session_core(&mut self.session, core_idx, |core| {
                 let info = core
                     .halt(Duration::from_millis(250))
                     .map_err(|e| format!("{:?}", e))?;
                 Ok((info.pc as u32) & !1)
             })?;
-            self.configure_target_debug_peripherals();
+            if let Some(cache) = self.halted_reg_cache.get_mut(core_idx) {
+                cache.insert(DCRSR_PC, pc);
+            }
+            if core_idx == 1 && pc >= RP2040_FLASH_BASE_ADDR {
+                self.core1_left_bootrom = true;
+            }
             Ok(pc)
         }
 
         fn resume_core(&mut self, core_idx: usize) -> Result<(), String> {
-            self.configure_target_debug_peripherals();
+            self.clear_reg_cache(core_idx);
             let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
+            let check_bootrom = core_idx == 0 && is_rp2040 && !self.core1_left_bootrom;
             let mut hw = SessionHwAccess {
                 session: &mut self.session,
                 core_archs: &self.core_archs,
                 is_rp2040,
             };
-            if core_idx == 0 {
+            if check_bootrom {
                 // If Core 1 was halted in Mask Boot ROM (`PC < 0x1000_0000`) by a Dual-Core GDB attach
                 // before Core 0 calls `spawn_core1`, release Core 1's Boot ROM FIFO loop (and clear
                 // `DEMCR.VC_CORERESET`) so Core 0's `bootstrap_core1` handshake never deadlocks!
                 hw.release_secondary_bootrom_if_halted();
             }
-            if hw.raw_core_halted(core_idx).unwrap_or(false) {
-                let _ = self.bp_mgr.step_over_sw_bkpt_if_needed(&mut hw, core_idx);
-            }
-            let _ = self.bp_mgr.ensure_armed(&mut hw, core_idx);
+            let _ = self.bp_mgr.prepare_resume(&mut hw, core_idx);
             match hw.raw_resume_core(core_idx) {
                 Ok(()) => Ok(()),
                 Err(_) if core_idx > 0 => Ok(()),
@@ -1189,20 +1478,320 @@ pub mod probe_backend {
         }
 
         fn step_core(&mut self, core_idx: usize) -> Result<u32, String> {
-            if !self.core_halted(core_idx).unwrap_or(false) {
-                let _ = self.halt_core(core_idx);
+            let has_sw_patches = self
+                .bp_mgr
+                .cores
+                .get(core_idx)
+                .map(|t| !t.sw_ram_patches.is_empty())
+                .unwrap_or(false);
+            if has_sw_patches {
+                self.clear_reg_cache(core_idx);
+                let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
+                let next_pc = {
+                    let mut hw = SessionHwAccess {
+                        session: &mut self.session,
+                        core_archs: &self.core_archs,
+                        is_rp2040,
+                    };
+                    self.bp_mgr.step_core(&mut hw, core_idx)?
+                };
+                if let Some(cache) = self.halted_reg_cache.get_mut(core_idx) {
+                    cache.insert(DCRSR_PC, next_pc);
+                }
+                return Ok(next_pc);
             }
-            self.configure_target_debug_peripherals();
-            let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
-            let mut hw = SessionHwAccess {
-                session: &mut self.session,
-                core_archs: &self.core_archs,
-                is_rp2040,
+
+            let (cached_pc, prev_r7, prev_sp, prev_lr) = match self.halted_reg_cache.get(core_idx) {
+                Some(c) => (
+                    c.get(&DCRSR_PC).copied(),
+                    c.get(&DCRSR_R7).copied(),
+                    c.get(&DCRSR_SP).copied(),
+                    c.get(&DCRSR_LR).copied(),
+                ),
+                None => (None, None, None, None),
             };
-            self.bp_mgr.step_core(&mut hw, core_idx)
+            self.clear_reg_cache(core_idx);
+
+            let rom_segs = &self.rom_segments;
+            let bp_mgr_ref = &self.bp_mgr;
+            let (next_pc, prefetched) = with_session_core(&mut self.session, core_idx, |core| {
+                let pc = match cached_pc {
+                    Some(c_pc) => (c_pc & !1) as u64,
+                    None => {
+                        (core
+                            .read_core_reg::<u32>(RegisterId(DCRSR_PC))
+                            .map_err(|e| format!("{:?}", e))?
+                            & !1) as u64
+                    }
+                };
+
+                let mut insn_buf = [0u8; 4];
+                let got_insn = {
+                    let mut from_rom = false;
+                    if let Some(end) = pc.checked_add(4) {
+                        for seg in rom_segs {
+                            let seg_end = seg.vaddr.saturating_add(seg.data.len() as u64);
+                            if pc >= seg.vaddr && end <= seg_end {
+                                let off = (pc - seg.vaddr) as usize;
+                                insn_buf.copy_from_slice(&seg.data[off..off + 4]);
+                                from_rom = true;
+                                break;
+                            }
+                        }
+                    }
+                    from_rom || core.read_8(pc, &mut insn_buf).is_ok()
+                };
+
+                let stepped_pc = if got_insn {
+                    if let Some(sleep_len) = decode_arm_thumb_sleep_hint_len(&insn_buf) {
+                        let target_pc = (pc as u32).wrapping_add(sleep_len) & !1;
+                        if !core.core_halted().unwrap_or(false) {
+                            let _ = core.halt(Duration::from_millis(50));
+                        }
+                        core.write_core_reg(RegisterId(DCRSR_PC), target_pc)
+                            .map_err(|e| format!("{:?}", e))?;
+                        Some(target_pc)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let final_pc = if let Some(wfe_pc) = stepped_pc {
+                    wfe_pc
+                } else {
+                    let mut disarmed_slots: Vec<usize> = Vec::new();
+                    if let Some(table) = bp_mgr_ref.cores.get(core_idx) {
+                        for (slot_idx, entry) in table.hw_slots.iter().enumerate() {
+                            if *entry == Some(pc) {
+                                if core.clear_hw_breakpoint(pc).is_err() {
+                                    let comp_addr = CORTEX_M_BP_COMP0_ADDR + (slot_idx as u64) * 4;
+                                    let _ = core.write_word_32(comp_addr, 0);
+                                    let _ = core.flush();
+                                }
+                                disarmed_slots.push(slot_idx);
+                            }
+                        }
+                    }
+                    if core_idx == 0 && bp_mgr_ref.core1_post_reset_trap_addr == Some(pc) {
+                        if let Some(trap_slot) = bp_mgr_ref.armed_core0_trap_slot {
+                            if !disarmed_slots.contains(&trap_slot) {
+                                if core.clear_hw_breakpoint(pc).is_err() {
+                                    let comp_addr = CORTEX_M_BP_COMP0_ADDR + (trap_slot as u64) * 4;
+                                    let _ = core.write_word_32(comp_addr, 0);
+                                    let _ = core.flush();
+                                }
+                                disarmed_slots.push(trap_slot);
+                            }
+                        }
+                    }
+
+                    let step_res = (|| -> Result<u32, String> {
+                        core.write_word_32(
+                            CORTEX_M_DHCSR_ADDR,
+                            CORTEX_M_DHCSR_DBGKEY_STEP_MASKINTS,
+                        )
+                        .map_err(|e| format!("{:?}", e))?;
+                        let dhcsr = core
+                            .read_word_32(CORTEX_M_DHCSR_ADDR)
+                            .map_err(|e| format!("{:?}", e))?;
+                        if (dhcsr & CORTEX_M_DHCSR_S_HALT_MASK) == 0
+                            && core
+                                .wait_for_core_halted(Duration::from_millis(50))
+                                .is_err()
+                        {
+                            let halted_info = core
+                                .halt(Duration::from_millis(50))
+                                .map_err(|e| format!("{:?}", e))?;
+                            return Ok((halted_info.pc as u32) & !1);
+                        }
+                        core.write_word_32(CORTEX_M_DCRSR_ADDR, DCRSR_PC as u32)
+                            .map_err(|e| format!("{:?}", e))?;
+                        let new_pc = core
+                            .read_word_32(CORTEX_M_DCRDR_ADDR)
+                            .map_err(|e| format!("{:?}", e))?;
+                        Ok(new_pc & !1)
+                    })();
+
+                    for slot_idx in disarmed_slots {
+                        let _ = core.set_hw_breakpoint_unit(slot_idx, pc);
+                    }
+                    step_res?
+                };
+
+                let (r7_preserved, sp_lr_preserved) = if stepped_pc.is_some() {
+                    (true, true)
+                } else if got_insn {
+                    let hw = u16::from_le_bytes([insn_buf[0], insn_buf[1]]);
+                    thumb16_preserved_unwind_regs(hw, pc as u32, final_pc)
+                } else {
+                    (false, false)
+                };
+
+                let mut regs = Vec::with_capacity(3);
+                for (reg_id, cached_opt, preserved) in [
+                    (DCRSR_R7, prev_r7, r7_preserved),
+                    (DCRSR_SP, prev_sp, sp_lr_preserved),
+                    (DCRSR_LR, prev_lr, sp_lr_preserved),
+                ] {
+                    if preserved {
+                        if let Some(val) = cached_opt {
+                            regs.push((reg_id, val));
+                            continue;
+                        }
+                    }
+                    if core
+                        .write_word_32(CORTEX_M_DCRSR_ADDR, reg_id as u32)
+                        .is_ok()
+                    {
+                        if let Ok(v) = core.read_word_32(CORTEX_M_DCRDR_ADDR) {
+                            regs.push((reg_id, v));
+                        }
+                    }
+                }
+                Ok((final_pc, regs))
+            })?;
+
+            if let Some(cache) = self.halted_reg_cache.get_mut(core_idx) {
+                cache.insert(DCRSR_PC, next_pc);
+                for (reg_id, val) in prefetched {
+                    cache.insert(reg_id, val);
+                }
+            }
+            Ok(next_pc)
+        }
+
+        fn step_range_core(
+            &mut self,
+            core_idx: usize,
+            start_addr: u32,
+            end_addr: u32,
+            max_steps: usize,
+        ) -> Result<u32, String> {
+            let norm_start = start_addr & !1;
+            let norm_end = end_addr & !1;
+            // Perform the first step through `bp_mgr.step_core` so any breakpoint or SRAM patch
+            // at the starting `PC` is cleanly disarmed, stepped over, and re-armed.
+            let mut cur_pc = self.step_core(core_idx)? & !1;
+            let total_limit = max_steps.max(1);
+            if total_limit <= 1
+                || cur_pc < norm_start
+                || cur_pc >= norm_end
+                || self.bp_mgr.has_breakpoint_at(core_idx, cur_pc as u64)
+            {
+                return Ok(cur_pc);
+            }
+
+            let has_sw_patches = self
+                .bp_mgr
+                .cores
+                .get(core_idx)
+                .map(|t| !t.sw_ram_patches.is_empty())
+                .unwrap_or(false);
+            if has_sw_patches {
+                for _ in 1..total_limit {
+                    if cur_pc < norm_start
+                        || cur_pc >= norm_end
+                        || self.bp_mgr.has_breakpoint_at(core_idx, cur_pc as u64)
+                    {
+                        break;
+                    }
+                    cur_pc = self.step_core(core_idx)? & !1;
+                }
+                return Ok(cur_pc);
+            }
+
+            // Fast hardware range-stepping path inside a single `session.core(core_idx)` borrow!
+            const EXPEDITED_PREFETCH_REGS: &[u16] = &[DCRSR_R7, DCRSR_SP, DCRSR_LR];
+            self.clear_reg_cache(core_idx);
+            let rom_segs = &self.rom_segments;
+            let bp_mgr_ref = &self.bp_mgr;
+            let (final_pc, prefetched) = with_session_core(&mut self.session, core_idx, |core| {
+                let mut pc = cur_pc;
+                let mut insn_buf = [0u8; 4];
+                for _ in 1..total_limit {
+                    if pc < norm_start
+                        || pc >= norm_end
+                        || bp_mgr_ref.has_breakpoint_at(core_idx, pc as u64)
+                        || (core_idx == 0
+                            && bp_mgr_ref.core1_post_reset_trap_addr == Some(pc as u64))
+                    {
+                        break;
+                    }
+                    let pc_u64 = pc as u64;
+                    let mut got_insn = false;
+                    if let Some(end) = pc_u64.checked_add(4) {
+                        for seg in rom_segs {
+                            let seg_end = seg.vaddr.saturating_add(seg.data.len() as u64);
+                            if pc_u64 >= seg.vaddr && end <= seg_end {
+                                let off = (pc_u64 - seg.vaddr) as usize;
+                                insn_buf.copy_from_slice(&seg.data[off..off + 4]);
+                                got_insn = true;
+                                break;
+                            }
+                        }
+                    }
+                    if !got_insn {
+                        got_insn = core.read_8(pc_u64, &mut insn_buf).is_ok();
+                    }
+                    if got_insn {
+                        if let Some(sleep_len) = decode_arm_thumb_sleep_hint_len(&insn_buf) {
+                            let next_pc = pc.wrapping_add(sleep_len) & !1;
+                            core.write_core_reg(RegisterId(DCRSR_PC), next_pc)
+                                .map_err(|e| format!("{:?}", e))?;
+                            pc = next_pc;
+                            continue;
+                        }
+                    }
+                    core.write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_STEP_MASKINTS)
+                        .map_err(|e| format!("{:?}", e))?;
+                    let dhcsr = core
+                        .read_word_32(CORTEX_M_DHCSR_ADDR)
+                        .map_err(|e| format!("{:?}", e))?;
+                    if (dhcsr & CORTEX_M_DHCSR_S_HALT_MASK) == 0
+                        && core
+                            .wait_for_core_halted(Duration::from_millis(50))
+                            .is_err()
+                    {
+                        if let Ok(halted_info) = core.halt(Duration::from_millis(50)) {
+                            pc = (halted_info.pc as u32) & !1;
+                            break;
+                        }
+                    }
+                    core.write_word_32(CORTEX_M_DCRSR_ADDR, DCRSR_PC as u32)
+                        .map_err(|e| format!("{:?}", e))?;
+                    let raw_next = core
+                        .read_word_32(CORTEX_M_DCRDR_ADDR)
+                        .map_err(|e| format!("{:?}", e))?;
+                    pc = raw_next & !1;
+                }
+                let _ = core.write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_HALT);
+                let mut regs = Vec::with_capacity(EXPEDITED_PREFETCH_REGS.len());
+                for &reg_id in EXPEDITED_PREFETCH_REGS {
+                    if core
+                        .write_word_32(CORTEX_M_DCRSR_ADDR, reg_id as u32)
+                        .is_ok()
+                    {
+                        if let Ok(v) = core.read_word_32(CORTEX_M_DCRDR_ADDR) {
+                            regs.push((reg_id, v));
+                        }
+                    }
+                }
+                Ok((pc, regs))
+            })?;
+            if let Some(cache) = self.halted_reg_cache.get_mut(core_idx) {
+                cache.insert(DCRSR_PC, final_pc);
+                for (reg_id, val) in prefetched {
+                    cache.insert(reg_id, val);
+                }
+            }
+            Ok(final_pc)
         }
 
         fn reset_and_halt_core(&mut self, core_idx: usize) -> Result<u32, String> {
+            self.clear_all_reg_caches();
+            self.core1_left_bootrom = false;
             let entry = if core_idx == 0 {
                 self.core0_reset_addr
             } else {
@@ -1217,17 +1806,24 @@ pub mod probe_backend {
                 is_rp2040,
             };
             let _ = self.bp_mgr.ensure_armed(&mut hw, core_idx);
+            if let Some(cache) = self.halted_reg_cache.get_mut(core_idx) {
+                cache.insert(DCRSR_PC, pc);
+            }
             Ok(pc)
         }
 
         fn reset_and_run_core(&mut self, core_idx: usize) -> Result<(), String> {
+            self.clear_all_reg_caches();
+            self.core1_left_bootrom = false;
             {
                 let mut core = self
                     .session
                     .core(core_idx)
                     .map_err(|e| format!("{:?}", e))?;
                 core.reset().map_err(|e| format!("{:?}", e))?;
-                core.run().map_err(|e| format!("{:?}", e))?;
+                let _ = core.write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_ENABLE);
+                let _ = core.flush();
+                let _ = core.status();
             }
             self.configure_target_debug_peripherals();
             let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
@@ -1241,10 +1837,68 @@ pub mod probe_backend {
         }
 
         fn read_core_reg(&mut self, core_idx: usize, hw_reg_id: u16) -> Result<u32, String> {
-            with_session_core(&mut self.session, core_idx, |core| {
+            if let Some(val) = self
+                .halted_reg_cache
+                .get(core_idx)
+                .and_then(|c| c.get(&hw_reg_id).copied())
+            {
+                return Ok(val);
+            }
+            let val = with_session_core(&mut self.session, core_idx, |core| {
                 core.read_core_reg::<u32>(RegisterId(hw_reg_id))
                     .map_err(|e| format!("{:?}", e))
-            })
+            })?;
+            if core_idx == 1 && hw_reg_id == DCRSR_PC && (val & !1) >= RP2040_FLASH_BASE_ADDR {
+                self.core1_left_bootrom = true;
+            }
+            if let Some(cache) = self.halted_reg_cache.get_mut(core_idx) {
+                cache.insert(hw_reg_id, val);
+            }
+            Ok(val)
+        }
+
+        fn read_core_regs(&mut self, core_idx: usize, hw_reg_ids: &[u16]) -> Vec<u32> {
+            let mut results = vec![0u32; hw_reg_ids.len()];
+            let mut missing: Vec<(usize, u16)> = Vec::new();
+            if let Some(cache) = self.halted_reg_cache.get(core_idx) {
+                for (idx, &reg_id) in hw_reg_ids.iter().enumerate() {
+                    if let Some(&cached) = cache.get(&reg_id) {
+                        results[idx] = cached;
+                    } else {
+                        missing.push((idx, reg_id));
+                    }
+                }
+            } else {
+                for (idx, &reg_id) in hw_reg_ids.iter().enumerate() {
+                    missing.push((idx, reg_id));
+                }
+            }
+
+            if !missing.is_empty() {
+                let fetched = with_session_core(&mut self.session, core_idx, |core| {
+                    let mut out = Vec::with_capacity(missing.len());
+                    for &(idx, reg_id) in &missing {
+                        let val = core.read_core_reg::<u32>(RegisterId(reg_id)).unwrap_or(0);
+                        out.push((idx, reg_id, val));
+                    }
+                    Ok(out)
+                });
+                if let Ok(items) = fetched {
+                    for (idx, reg_id, val) in items {
+                        results[idx] = val;
+                        if core_idx == 1
+                            && reg_id == DCRSR_PC
+                            && (val & !1) >= RP2040_FLASH_BASE_ADDR
+                        {
+                            self.core1_left_bootrom = true;
+                        }
+                        if let Some(cache) = self.halted_reg_cache.get_mut(core_idx) {
+                            cache.insert(reg_id, val);
+                        }
+                    }
+                }
+            }
+            results
         }
 
         fn write_core_reg(
@@ -1256,7 +1910,18 @@ pub mod probe_backend {
             with_session_core(&mut self.session, core_idx, |core| {
                 core.write_core_reg(RegisterId(hw_reg_id), value)
                     .map_err(|e| format!("{:?}", e))
-            })
+            })?;
+            if let Some(cache) = self.halted_reg_cache.get_mut(core_idx) {
+                cache.insert(
+                    hw_reg_id,
+                    if hw_reg_id == DCRSR_PC {
+                        value & !1
+                    } else {
+                        value
+                    },
+                );
+            }
+            Ok(())
         }
 
         fn read_memory(
@@ -1280,7 +1945,9 @@ pub mod probe_backend {
             addr: u64,
             buf: &mut [u8],
         ) -> Result<(), String> {
-            self.read_memory(core_idx, addr, buf)?;
+            if !self.try_read_rom(addr, buf) {
+                self.read_memory(core_idx, addr, buf)?;
+            }
             if let Some(table) = self.bp_mgr.cores.get(core_idx) {
                 table.mask_memory_read(addr, buf);
             }

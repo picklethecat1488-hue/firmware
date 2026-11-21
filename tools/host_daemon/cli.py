@@ -841,30 +841,35 @@ def _resolve_offline_debug_target_info(
     return offline_runner.get_debug_status()
 
 
+GDB_PROXY_EOF_DRAIN_SEC: float = 0.08
+
+
 def _run_gdb_stdio_proxy(
     *,
     core_idx: int,
     repo_root: Path,
     host: str,
     host_port: Optional[int],
+    explicit_gdb_port: Optional[int] = None,
 ) -> int:
     """Bridge GDB Remote Serial Protocol stdio (`target extended-remote | ...`) to the active Core 0/1 TCP port."""
     port_key = "gdb_core1_port" if core_idx == 1 else "gdb_core0_port"
     default_port = DEFAULT_GDB_CORE1_PORT if core_idx == 1 else DEFAULT_GDB_CORE0_PORT
-    target_port: Optional[int] = None
+    target_port: Optional[int] = explicit_gdb_port
 
-    try:
-        dbg = send_daemon_request("/api/debug/status", None, port=host_port, host=host)
-        if isinstance(dbg, dict):
-            if not dbg.get("active"):
-                started = send_daemon_request("/api/debug/start", {"reset": False}, port=host_port, host=host)
-                if isinstance(started, dict):
-                    dbg = started.get("debug") or started
-            raw_port = dbg.get(port_key)
-            if raw_port is not None:
-                target_port = int(raw_port)
-    except RuntimeError:
-        target_port = None
+    if target_port is None:
+        try:
+            dbg = send_daemon_request("/api/debug/status", None, port=host_port, host=host)
+            if isinstance(dbg, dict):
+                if not dbg.get("active"):
+                    started = send_daemon_request("/api/debug/start", {"reset": False}, port=host_port, host=host)
+                    if isinstance(started, dict):
+                        dbg = started.get("debug") or started
+                raw_port = dbg.get(port_key)
+                if raw_port is not None:
+                    target_port = int(raw_port)
+        except RuntimeError:
+            target_port = None
 
     if target_port is None:
         sess = load_last_session(repo_root) or {}
@@ -881,14 +886,11 @@ def _run_gdb_stdio_proxy(
         )
         return 1
 
-    def _forward_sigint(_signum: int, _frame: Any) -> None:
-        try:
-            sock.sendall(b"\x03")
-        except OSError:
-            pass
-
+    # Ignore SIGINT in the pipe helper: GDB (`target extended-remote | ...`) catches SIGINT from
+    # VS Code Cortex-Debug itself and writes `\x03` onto our stdin pipe; forwarding SIGINT here too
+    # would inject a duplicate `\x03` and desynchronize GDB's detach (`$D#44`) handshake.
     try:
-        signal.signal(signal.SIGINT, _forward_sigint)
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
     except (OSError, ValueError):
         pass
 
@@ -907,6 +909,15 @@ def _run_gdb_stdio_proxy(
         finally:
             try:
                 sock.shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
+            time.sleep(GDB_PROXY_EOF_DRAIN_SEC)
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                sock.close()
             except OSError:
                 pass
 
@@ -1056,11 +1067,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         action = str(getattr(args, "debug_action", "status") or "status").lower()
         effective_dbg_root = Path(args.dbg_repo_root).resolve() if getattr(args, "dbg_repo_root", None) else repo_root
         if action == "gdb-proxy":
+            core_val = int(getattr(args, "dbg_core", 0))
+            explicit_port = getattr(args, "dbg_core1_port" if core_val == 1 else "dbg_core0_port", None)
             return _run_gdb_stdio_proxy(
-                core_idx=int(getattr(args, "dbg_core", 0)),
+                core_idx=core_val,
                 repo_root=effective_dbg_root,
                 host=args.host,
                 host_port=args.host_port,
+                explicit_gdb_port=int(explicit_port) if explicit_port is not None else None,
             )
         try:
             if action in ("target-info", "sync-symbols"):
