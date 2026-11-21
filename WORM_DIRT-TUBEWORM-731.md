@@ -1,12 +1,13 @@
-# 🔴 `[WORM-DIRT-TUBEWORM-731]` Only single perf span recorded
+# 🟢 `[WORM-DIRT-TUBEWORM-731]` Only single perf span recorded
 
 - **UUID**: `4e00966b-b2af-40ef-85eb-ee2da450c4a5`
 - **ID**: `WORM-DIRT-TUBEWORM-731`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `HIGH`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-21 19:26:35 UTC`
+- **Resolved**: `2026-11-21 20:35:08 UTC`
 
 #### Reproduction Steps
 
@@ -79,3 +80,7 @@
 
 - [ ] Sync cat_detector_app in PERF mode and verify continuous execution without spinlock deadlock | `python tools/host.py --bin cat_detector_app --trace-mode PERF && sleep 4 && python tools/host.py trace status` <!-- id:372dd545 -->
 - [ ] Export captured cat_detector_app PERF trace to CSV and confirm bounded Core 0 and Core 1 spans are recorded | `python tools/host.py trace export -f csv -o recordings/traces/worm_731_verify.csv && head -n 25 recordings/traces/worm_731_verify.csv` <!-- id:6b601897 -->
+
+#### Resolution Notes
+
+Added SeqCst hardware memory barriers (dmb sy) and non-panicking CRASH_LOG_BUFFER borrow in RttProtocol to prevent dual-core RP2040 IOPORT spinlock vs AHB-Lite SRAM RefCell panics under PERF tracing, added cooperative async task suspension across CPU Idle entries in LiveTraceStreamProcessor, wiped stale pre-reset _SEGGER_RTT SRAM headers before MCU reset, and avoided spurious 5s shell_idle resets on non-shell binaries.
