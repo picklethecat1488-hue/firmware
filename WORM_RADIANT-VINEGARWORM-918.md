@@ -76,3 +76,4 @@ When switching trace modes from sensor to perf, I noticed the sensor tracks did 
 #### Review Tasks & Functional Checklist
 
 - [ ] Sync target in SENSOR mode, emit sensor readings, and confirm Proximity/Thermal tracks appear | `python tools/host.py sync --bin cat_detector_shell --trace-mode SENSOR && python tools/host.py cli sensor status && python tools/host.py trace status` <!-- id:fe1bd451 -->
+- [ ] Switch target to PERF mode via sync and verify stale SENSOR tracks are cleared and only PERF/CPU tracks remain without log corruption | `python tools/host.py sync --bin cat_detector_shell --trace-mode PERF && python tools/host.py cli fs ls && python tools/host.py trace status` <!-- id:4a2963ca -->
