@@ -70,12 +70,6 @@
 [] [target] [INFO] 0.072105 INFO [36m[controller::motor_controller][0m Stopping motor...
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-DIRT-TUBEWORM-731.log](attachments/WORM-DIRT-TUBEWORM-731/target_system_logs_WORM-DIRT-TUBEWORM-731.log) | Target system and defmt logs from host daemon session |
-
 #### Attached Commits
 
 - `07d2ad02`
