@@ -19,36 +19,41 @@ export const LAST_TRACE_MODE_STORAGE_KEY = "xerxes_last_trace_mode";
 
 export const DEFAULT_TRACE_MODE_OPTIONS = Object.freeze([
   Object.freeze({
-    id: "NONE",
-    label: "NONE — Standard Build (No Trace Overhead)",
+    mode: "NONE",
+    label: "NONE",
+    summary: "Standard defmt logs; zero runtime trace overhead",
     cargo_features: [],
-    external_viewer: "NONE",
-    enabled: true,
-    planned: false,
+    external_viewer: "none",
+    enabled_in_ui: true,
+    badge: "default",
   }),
   Object.freeze({
-    id: "SENSOR",
-    label: "SENSOR — Sensor Reports & Values Only",
+    mode: "SENSOR",
+    label: "SENSOR",
+    summary: "Sensor reports & measured values only • External viewer: Rerun",
     cargo_features: ["trace-sensors"],
-    external_viewer: "RERUN",
-    enabled: true,
-    planned: false,
+    external_viewer: "rerun",
+    enabled_in_ui: true,
+    badge: "trace-sensors",
   }),
   Object.freeze({
-    id: "PERF",
-    label: "PERF — Execution Spans & Telemetry (Excl. Sensors)",
+    mode: "PERF",
+    label: "PERF",
+    summary:
+      "All CPU spans, CPU usage % & system telemetry (excl. sensors) • Viewer: Perfetto",
     cargo_features: ["trace-perf"],
-    external_viewer: "PERFETTO",
-    enabled: true,
-    planned: false,
+    external_viewer: "perfetto",
+    enabled_in_ui: true,
+    badge: "trace-perf",
   }),
   Object.freeze({
-    id: "AUDIO",
-    label: "AUDIO — Audio I2S / Codec Stream [PLANNED]",
+    mode: "AUDIO",
+    label: "AUDIO",
+    summary: "PDM/I2S audio stream & DSP frame tracing • External viewer: Rerun",
     cargo_features: ["trace-audio"],
-    external_viewer: "RERUN",
-    enabled: false,
-    planned: true,
+    external_viewer: "rerun",
+    enabled_in_ui: false,
+    badge: "PLANNED",
   }),
 ]);
 
@@ -621,12 +626,13 @@ export class TargetConfigController {
   selectTraceModeOption(modeId) {
     const upper = String(modeId || "NONE").toUpperCase();
     const matched =
-      this.traceModeOptions.find((m) => String(m.id || "").toUpperCase() === upper) ||
-      this.traceModeOptions[0];
-    if (matched && matched.enabled === false) {
+      this.traceModeOptions.find(
+        (m) => String(m.mode || "").toUpperCase() === upper,
+      ) || this.traceModeOptions[0];
+    if (matched && matched.enabled_in_ui === false) {
       return;
     }
-    const chosenId = matched ? String(matched.id).toUpperCase() : "NONE";
+    const chosenId = matched ? String(matched.mode || "NONE").toUpperCase() : "NONE";
     if (this.cfgTraceModeInput) {
       this.cfgTraceModeInput.value = chosenId;
     }
@@ -642,12 +648,14 @@ export class TargetConfigController {
   _renderTraceModeDropdown(selectedId) {
     const activeId = String(selectedId || "NONE").toUpperCase();
     const selectedMeta =
-      this.traceModeOptions.find((m) => String(m.id || "").toUpperCase() === activeId) ||
-      this.traceModeOptions[0];
+      this.traceModeOptions.find(
+        (m) => String(m.mode || "").toUpperCase() === activeId,
+      ) || this.traceModeOptions[0];
 
     if (this.cfgTraceModeTriggerLabel && selectedMeta) {
-      this.cfgTraceModeTriggerLabel.textContent =
-        selectedMeta.label || selectedMeta.id || activeId;
+      const modeName = String(selectedMeta.label || selectedMeta.mode || activeId);
+      const summary = selectedMeta.summary ? ` — ${selectedMeta.summary}` : "";
+      this.cfgTraceModeTriggerLabel.textContent = `${modeName}${summary}`;
     }
 
     if (this.cfgTraceModeFlags && selectedMeta) {
@@ -670,11 +678,14 @@ export class TargetConfigController {
     clearChildren(this.cfgTraceModeMenu);
 
     for (const opt of this.traceModeOptions) {
-      const optId = String(opt.id || "").toUpperCase();
-      const isDisabled = opt.enabled === false || Boolean(opt.planned);
+      const optId = String(opt.mode || "").toUpperCase();
+      const isDisabled = opt.enabled_in_ui === false;
       const isSelected = optId === activeId;
       const features = Array.isArray(opt.cargo_features) ? opt.cargo_features : [];
       const viewer = String(opt.external_viewer || "NONE").toUpperCase();
+      const badgeSuffix =
+        opt.badge === "PLANNED" ? " [PLANNED]" : "";
+      const titleText = `${opt.label || optId}${badgeSuffix}${opt.summary ? ` — ${opt.summary}` : ""}`;
       const subText =
         features.length > 0
           ? `--features ${features.join(",")} • Viewer: ${viewer}`
@@ -689,7 +700,7 @@ export class TargetConfigController {
         children: [
           createEl(this.ctx, "strong", {
             style: { color: isDisabled ? "var(--xerxes-text-dim)" : "var(--xerxes-cyan)", fontSize: "9.5px" },
-            text: opt.label || optId,
+            text: titleText,
           }),
           createEl(this.ctx, "span", {
             style: { color: "var(--xerxes-text-muted)", fontSize: "8px" },

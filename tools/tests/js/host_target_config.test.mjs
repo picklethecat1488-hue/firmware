@@ -219,6 +219,44 @@ describe("Host Daemon Target Configuration, Sync Flash Matrix & Reset Controller
         release: true,
         speed: 4000,
       },
+      traceModes: [
+        {
+          mode: "NONE",
+          label: "NONE",
+          summary: "Standard defmt logs; zero runtime trace overhead",
+          cargo_features: [],
+          external_viewer: "none",
+          enabled_in_ui: true,
+          badge: "default",
+        },
+        {
+          mode: "SENSOR",
+          label: "SENSOR",
+          summary: "Sensor reports & measured values only • External viewer: Rerun",
+          cargo_features: ["trace-sensors"],
+          external_viewer: "rerun",
+          enabled_in_ui: true,
+          badge: "trace-sensors",
+        },
+        {
+          mode: "PERF",
+          label: "PERF",
+          summary: "All CPU spans & telemetry (excl. sensors) • Viewer: Perfetto",
+          cargo_features: ["trace-perf"],
+          external_viewer: "perfetto",
+          enabled_in_ui: true,
+          badge: "trace-perf",
+        },
+        {
+          mode: "AUDIO",
+          label: "AUDIO",
+          summary: "PDM/I2S audio stream • External viewer: Rerun",
+          cargo_features: ["trace-audio"],
+          external_viewer: "rerun",
+          enabled_in_ui: false,
+          badge: "PLANNED",
+        },
+      ],
     };
 
     const ctx = createMockRuntimeContext({
@@ -261,14 +299,25 @@ describe("Host Daemon Target Configuration, Sync Flash Matrix & Reset Controller
     dom.cfgGdbCore0Port.value = "4333";
     dom.cfgGdbCore1Port.value = "4334";
 
-    // Open scrollable trace mode dropdown, verify 4 options (including disabled AUDIO [PLANNED]), and select PERF
+    // Open scrollable trace mode dropdown, verify 4 server TRACE_MODE_DESCRIPTORS options, and select SENSOR -> PERF
     dom.cfgTraceModeTrigger.click();
     assert.equal(dom.cfgTraceModeMenu.style.display, "flex");
     assert.equal(dom.cfgTraceModeMenu.children.length, 4);
+    assert.equal(dom.cfgTraceModeMenu.children[0].getAttribute("data-trace-mode"), "NONE");
+    assert.equal(dom.cfgTraceModeMenu.children[1].getAttribute("data-trace-mode"), "SENSOR");
+    assert.equal(dom.cfgTraceModeMenu.children[2].getAttribute("data-trace-mode"), "PERF");
+    assert.equal(dom.cfgTraceModeMenu.children[3].getAttribute("data-trace-mode"), "AUDIO");
+    assert.ok(dom.cfgTraceModeMenu.children[3].textContent.includes("[PLANNED]"));
     // Clicking disabled AUDIO [PLANNED] item (index 3) does not select it
     dom.cfgTraceModeMenu.children[3].click();
     assert.equal(dom.cfgTraceModeInput.value, "NONE");
-    // Clicking PERF item (index 2) selects PERF, previews `--features trace-perf`, and closes dropdown
+    // Clicking SENSOR item (index 1) selects SENSOR and previews `--features trace-sensors` + RERUN
+    dom.cfgTraceModeMenu.children[1].click();
+    assert.equal(dom.cfgTraceModeInput.value, "SENSOR");
+    assert.ok(dom.cfgTraceModeFlags.textContent.includes("--features trace-sensors"));
+    assert.ok(dom.cfgTraceModeFlags.textContent.includes("RERUN"));
+    // Re-open and click PERF item (index 2) -> selects PERF, previews `--features trace-perf` + PERFETTO, and closes dropdown
+    dom.cfgTraceModeTrigger.click();
     dom.cfgTraceModeMenu.children[2].click();
     assert.equal(dom.cfgTraceModeInput.value, "PERF");
     assert.equal(dom.cfgTraceModeMenu.style.display, "none");
