@@ -1530,6 +1530,7 @@ class DaemonRunner:
         boot_ready_event = threading.Event()
         session_ready = False
         has_cli_channel = True
+        expects_shell_prompt = ("shell" in str(self.bin_name or "").lower()) or not bool(self.bin_name)
 
         def _handle_json_event(ev_obj: Dict[str, Any]) -> None:
             nonlocal session_ready, has_cli_channel
@@ -1559,7 +1560,7 @@ class DaemonRunner:
                 formatted = str(ev_obj.get("formatted") or ev_obj.get("message") or "")
                 if formatted:
                     self.log(formatted, level=level_str, channel="target")
-                if not has_cli_channel:
+                if not has_cli_channel or not expects_shell_prompt:
                     boot_ready_event.set()
             elif ev_type == "cli_output":
                 text_line = str(ev_obj.get("text") or "")
@@ -1586,6 +1587,8 @@ class DaemonRunner:
                     with self._lock:
                         self._last_device_ts_sec = float(raw_ts_us) / 1_000_000.0
                         self._last_device_ts_mono = time.monotonic()
+                if not expects_shell_prompt:
+                    boot_ready_event.set()
                 if self.should_ingest_trace_event(ev_obj):
                     self.trace_store.ingest_event(ev_obj)
             elif ev_type == "session_disconnected":

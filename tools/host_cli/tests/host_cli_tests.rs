@@ -1080,3 +1080,105 @@ fn test_live_trace_stream_processor_perf_spans_sensor_reports_and_exports() {
         && e["ph"] == "C"
         && e["args"]["value"] == 118.0));
 }
+
+#[test]
+fn test_worm_dirt_tubeworm_731_live_processor_suspends_long_lived_tasks_across_idle() {
+    use host_cli::{HostCliEvent, LiveTraceStreamProcessor};
+
+    let mut proc = LiveTraceStreamProcessor::new();
+    let mut emitted = Vec::new();
+
+    // 1. Long-lived `TELEMETRY_CHANNEL` task (`span_id=9`) enters at boot (31,800 µs) and runs `push_record` (`span_id=10`)
+    emitted.extend(proc.process_defmt_frame(
+        "0.031800 TRACE [cat_detector_app::__bootstrap_task_task] ctx=9 parent=0 span_enter: TELEMETRY_CHANNEL",
+        "ctx=9 parent=0 span_enter: TELEMETRY_CHANNEL",
+        Some("cat_detector_app::__bootstrap_task_task"),
+        Some(31_800.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "0.032100 TRACE [controller::telemetry_controller] ctx=a parent=9 span_enter: telemetry_controller::push_record",
+        "ctx=a parent=9 span_enter: telemetry_controller::push_record",
+        Some("controller::telemetry_controller"),
+        Some(32_100.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "0.037200 TRACE [controller::telemetry_controller] a parent=9 span_exit: telemetry_controller::push_record",
+        "a parent=9 span_exit: telemetry_controller::push_record",
+        Some("controller::telemetry_controller"),
+        Some(37_200.0),
+    ));
+
+    // 2. Core 0 yields into `CPU Idle Core 0` (`38,000 .. 1,038,000 µs`) -> must suspend `TELEMETRY_CHANNEL` (`ph = "E"`)!
+    emitted.extend(proc.process_defmt_frame(
+        "1.038000 TRACE [platform::system] ctx=cpu_idle_c0 parent=0 span_enter: Core 0: CPU Idle Core 0 ts=38000",
+        "ctx=cpu_idle_c0 parent=0 span_enter: Core 0: CPU Idle Core 0 ts=38000",
+        Some("platform::system"),
+        Some(1_038_000.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "1.038000 TRACE [platform::system] cpu_idle_c0 span_exit: Core 0: CPU Idle Core 0 ts=1038000",
+        "cpu_idle_c0 span_exit: Core 0: CPU Idle Core 0 ts=1038000",
+        Some("platform::system"),
+        Some(1_038_000.0),
+    ));
+
+    // 3. `TELEMETRY_CHANNEL` wakes up 1s later (`1,038,500 µs`) and enters `push_record` (`span_id=19`, `parent=9`) -> must resume `TELEMETRY_CHANNEL` (`ph = "B"`)!
+    emitted.extend(proc.process_defmt_frame(
+        "1.038500 TRACE [controller::telemetry_controller] ctx=19 parent=9 span_enter: telemetry_controller::push_record",
+        "ctx=19 parent=9 span_enter: telemetry_controller::push_record",
+        Some("controller::telemetry_controller"),
+        Some(1_038_500.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "1.042800 TRACE [controller::telemetry_controller] 19 parent=9 span_exit: telemetry_controller::push_record",
+        "19 parent=9 span_exit: telemetry_controller::push_record",
+        Some("controller::telemetry_controller"),
+        Some(1_042_800.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "1.060000 TRACE [platform::system] ctx=cpu_idle_c0 parent=0 span_enter: Core 0: CPU Idle Core 0 ts=1043000",
+        "ctx=cpu_idle_c0 parent=0 span_enter: Core 0: CPU Idle Core 0 ts=1043000",
+        Some("platform::system"),
+        Some(1_060_000.0),
+    ));
+
+    let telemetry_ch_begins = emitted
+        .iter()
+        .filter(|ev| {
+            matches!(
+                ev,
+                HostCliEvent::Trace {
+                    category,
+                    ph,
+                    name,
+                    ..
+                } if category == "span" && ph == "B" && name == "TELEMETRY_CHANNEL"
+            )
+        })
+        .count();
+    let telemetry_ch_ends = emitted
+        .iter()
+        .filter(|ev| {
+            matches!(
+                ev,
+                HostCliEvent::Trace {
+                    category,
+                    ph,
+                    name,
+                    ..
+                } if category == "span" && ph == "E" && name == "TELEMETRY_CHANNEL"
+            )
+        })
+        .count();
+
+    assert_eq!(
+        telemetry_ch_begins, 2,
+        "Expected TELEMETRY_CHANNEL to begin at boot and resume on wakeup, got {} begins in {:?}",
+        telemetry_ch_begins, emitted
+    );
+    assert_eq!(
+        telemetry_ch_ends, 2,
+        "Expected TELEMETRY_CHANNEL to suspend cleanly at each CPU Idle entry, got {} ends in {:?}",
+        telemetry_ch_ends, emitted
+    );
+}

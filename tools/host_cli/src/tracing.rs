@@ -1997,10 +1997,110 @@ pub fn format_target_namespace(raw: &str) -> String {
     non_compiler[0].to_string()
 }
 
+#[derive(Clone, Debug)]
+struct LiveSpanEntry {
+    span_id: String,
+    parent_id: Option<String>,
+    name: String,
+    module: Option<String>,
+    task_key: String,
+}
+
+#[derive(Default)]
+struct LiveCoreSpanState {
+    spans: std::collections::HashMap<String, LiveSpanEntry>,
+    task_stacks: std::collections::HashMap<String, Vec<String>>,
+    running_task: Option<String>,
+}
+
+impl LiveCoreSpanState {
+    fn emit_span_event(
+        core: i64,
+        ts_us: u64,
+        ph: &str,
+        entry: &LiveSpanEntry,
+        extra_flag: Option<&str>,
+    ) -> crate::HostCliEvent {
+        let args = match extra_flag {
+            Some("suspended") => serde_json::json!({ "core": core, "suspended": true }),
+            Some("resumed") => serde_json::json!({ "core": core, "resumed": true }),
+            Some("implicit") => serde_json::json!({ "core": core, "implicit": true }),
+            _ => serde_json::json!({ "core": core }),
+        };
+        crate::HostCliEvent::Trace {
+            ts_us,
+            track: format!("CPU Core {}", core),
+            ph: ph.to_string(),
+            category: "span".to_string(),
+            name: entry.name.clone(),
+            span_id: if entry.span_id.is_empty() {
+                None
+            } else {
+                Some(entry.span_id.clone())
+            },
+            parent_id: entry.parent_id.clone(),
+            module: entry.module.clone(),
+            value: None,
+            unit: None,
+            args,
+        }
+    }
+
+    fn suspend_running(&mut self, core: i64, ts_us: u64, out: &mut Vec<crate::HostCliEvent>) {
+        let Some(cur_task) = self.running_task.take() else {
+            return;
+        };
+        if let Some(stack) = self.task_stacks.get(&cur_task) {
+            for sid in stack.iter().rev() {
+                if let Some(entry) = self.spans.get(sid) {
+                    out.push(Self::emit_span_event(
+                        core,
+                        ts_us,
+                        "E",
+                        entry,
+                        Some("suspended"),
+                    ));
+                }
+            }
+        }
+    }
+
+    fn switch_to_task(
+        &mut self,
+        core: i64,
+        task_key: &str,
+        ts_us: u64,
+        resume_existing: bool,
+        out: &mut Vec<crate::HostCliEvent>,
+    ) {
+        if self.running_task.as_deref() == Some(task_key) {
+            return;
+        }
+        self.suspend_running(core, ts_us, out);
+        if resume_existing {
+            if let Some(stack) = self.task_stacks.get(task_key) {
+                for sid in stack.iter() {
+                    if let Some(entry) = self.spans.get(sid) {
+                        out.push(Self::emit_span_event(
+                            core,
+                            ts_us,
+                            "B",
+                            entry,
+                            Some("resumed"),
+                        ));
+                    }
+                }
+            }
+        }
+        self.running_task = Some(task_key.to_string());
+    }
+}
+
 /// Stateful real-time RTT trace decoder converting `defmt` span and telemetry frames into [`crate::HostCliEvent::Trace`] events.
 #[derive(Default)]
 pub struct LiveTraceStreamProcessor {
     span_cores: std::collections::HashMap<String, i64>,
+    core_spans: std::collections::HashMap<i64, LiveCoreSpanState>,
     cpu_integrators: std::collections::HashMap<i64, CoreCpuUsageIntegrator>,
 }
 
@@ -2067,6 +2167,13 @@ impl LiveTraceStreamProcessor {
         }
 
         if meta.is_idle {
+            let mut out_events = Vec::new();
+            if parsed.is_enter() {
+                self.core_spans
+                    .entry(resolved_core)
+                    .or_default()
+                    .suspend_running(resolved_core, ts_us, &mut out_events);
+            }
             let track = format!("Core {} CPU Usage (%)", resolved_core);
             let integ = self.cpu_integrators.entry(resolved_core).or_default();
             let samples = if parsed.is_enter() {
@@ -2074,9 +2181,8 @@ impl LiveTraceStreamProcessor {
             } else {
                 integ.record_idle_exit(ts_us)
             };
-            return samples
-                .into_iter()
-                .map(|(sample_ts, usage_pct)| crate::HostCliEvent::Trace {
+            out_events.extend(samples.into_iter().map(|(sample_ts, usage_pct)| {
+                crate::HostCliEvent::Trace {
                     ts_us: sample_ts,
                     track: track.clone(),
                     ph: "C".to_string(),
@@ -2088,8 +2194,9 @@ impl LiveTraceStreamProcessor {
                     value: Some(usage_pct),
                     unit: Some("%".to_string()),
                     args: serde_json::json!({ "core": resolved_core, "value": usage_pct }),
-                })
-                .collect();
+                }
+            }));
+            return out_events;
         }
 
         let mut out_events = Vec::new();
@@ -2124,31 +2231,183 @@ impl LiveTraceStreamProcessor {
             }
         }
 
-        out_events.push(crate::HostCliEvent::Trace {
-            ts_us,
-            track: format!("CPU Core {}", resolved_core),
-            ph: if parsed.is_enter() {
-                "B".to_string()
+        let core_state = self.core_spans.entry(resolved_core).or_default();
+        if parsed.is_enter() {
+            let is_root = is_root_or_empty_id(&parent_id);
+            let task_key = if !is_root {
+                core_state
+                    .spans
+                    .get(&parent_id)
+                    .map(|p| p.task_key.clone())
+                    .unwrap_or_else(|| parent_id.clone())
+            } else if !span_id.is_empty() {
+                span_id.clone()
             } else {
-                "E".to_string()
-            },
-            category: "span".to_string(),
-            name: cleaned_name,
-            span_id: if span_id.is_empty() {
+                cleaned_name.clone()
+            };
+
+            if is_root {
+                // Entering a fresh root task replaces any stale unclosed stack for the same task key
+                if core_state.running_task.as_deref() == Some(task_key.as_str()) {
+                    core_state.suspend_running(resolved_core, ts_us, &mut out_events);
+                }
+                core_state.task_stacks.remove(&task_key);
+                core_state.switch_to_task(resolved_core, &task_key, ts_us, false, &mut out_events);
+            } else {
+                core_state.switch_to_task(resolved_core, &task_key, ts_us, true, &mut out_events);
+            }
+
+            let eff_id = if span_id.is_empty() {
+                cleaned_name.clone()
+            } else {
+                span_id.clone()
+            };
+            let entry = LiveSpanEntry {
+                span_id: span_id.clone(),
+                parent_id: if parent_id.is_empty() {
+                    None
+                } else {
+                    Some(parent_id.clone())
+                },
+                name: cleaned_name,
+                module: module.filter(|m| !m.is_empty()).map(str::to_string),
+                task_key: task_key.clone(),
+            };
+
+            let stack = core_state.task_stacks.entry(task_key).or_default();
+            if let Some(dup_pos) = stack.iter().position(|id| {
+                id == &eff_id
+                    || core_state
+                        .spans
+                        .get(id)
+                        .map(|existing| {
+                            existing.name == entry.name
+                                || is_span_name_match(&existing.name, &entry.name)
+                        })
+                        .unwrap_or(false)
+            }) {
+                while stack.len() > dup_pos {
+                    if let Some(popped_id) = stack.pop() {
+                        if let Some(popped_entry) = core_state.spans.get(&popped_id) {
+                            out_events.push(LiveCoreSpanState::emit_span_event(
+                                resolved_core,
+                                ts_us,
+                                "E",
+                                popped_entry,
+                                Some("implicit"),
+                            ));
+                        }
+                    }
+                }
+            }
+            stack.push(eff_id.clone());
+            out_events.push(LiveCoreSpanState::emit_span_event(
+                resolved_core,
+                ts_us,
+                "B",
+                &entry,
+                None,
+            ));
+            core_state.spans.insert(eff_id, entry);
+        } else {
+            let mut resolved_id = if !span_id.is_empty() && core_state.spans.contains_key(&span_id)
+            {
+                Some(span_id.clone())
+            } else {
                 None
+            };
+            if resolved_id.is_none() {
+                for stack in core_state.task_stacks.values() {
+                    if let Some(found) = stack.iter().rev().find(|id| {
+                        core_state
+                            .spans
+                            .get(*id)
+                            .map(|e| is_span_name_match(&e.name, &cleaned_name))
+                            .unwrap_or(false)
+                    }) {
+                        resolved_id = Some(found.clone());
+                        break;
+                    }
+                }
+            }
+
+            if let Some(target_id) = resolved_id {
+                let task_key = core_state
+                    .spans
+                    .get(&target_id)
+                    .map(|e| e.task_key.clone())
+                    .unwrap_or_default();
+                let is_on_stack = core_state
+                    .task_stacks
+                    .get(&task_key)
+                    .map(|s| s.iter().any(|x| x == &target_id))
+                    .unwrap_or(false);
+                if is_on_stack {
+                    core_state.switch_to_task(
+                        resolved_core,
+                        &task_key,
+                        ts_us,
+                        true,
+                        &mut out_events,
+                    );
+                    if let Some(mut stack) = core_state.task_stacks.remove(&task_key) {
+                        if let Some(pos) = stack.iter().position(|x| x == &target_id) {
+                            while stack.len() > pos + 1 {
+                                if let Some(child_id) = stack.pop() {
+                                    if let Some(child_entry) = core_state.spans.get(&child_id) {
+                                        out_events.push(LiveCoreSpanState::emit_span_event(
+                                            resolved_core,
+                                            ts_us,
+                                            "E",
+                                            child_entry,
+                                            Some("implicit"),
+                                        ));
+                                    }
+                                }
+                            }
+                            stack.pop();
+                        }
+                        if stack.is_empty() {
+                            core_state.running_task = None;
+                        } else {
+                            core_state.task_stacks.insert(task_key, stack);
+                        }
+                    }
+                    if let Some(exit_entry) = core_state.spans.get(&target_id) {
+                        out_events.push(LiveCoreSpanState::emit_span_event(
+                            resolved_core,
+                            ts_us,
+                            "E",
+                            exit_entry,
+                            None,
+                        ));
+                    }
+                }
             } else {
-                Some(span_id)
-            },
-            parent_id: if parent_id.is_empty() {
-                None
-            } else {
-                Some(parent_id)
-            },
-            module: module.filter(|m| !m.is_empty()).map(str::to_string),
-            value: None,
-            unit: None,
-            args: serde_json::json!({ "core": resolved_core }),
-        });
+                // Fallback for isolated exit without seen enter
+                out_events.push(crate::HostCliEvent::Trace {
+                    ts_us,
+                    track: format!("CPU Core {}", resolved_core),
+                    ph: "E".to_string(),
+                    category: "span".to_string(),
+                    name: cleaned_name,
+                    span_id: if span_id.is_empty() {
+                        None
+                    } else {
+                        Some(span_id)
+                    },
+                    parent_id: if parent_id.is_empty() {
+                        None
+                    } else {
+                        Some(parent_id)
+                    },
+                    module: module.filter(|m| !m.is_empty()).map(str::to_string),
+                    value: None,
+                    unit: None,
+                    args: serde_json::json!({ "core": resolved_core }),
+                });
+            }
+        }
         out_events
     }
 

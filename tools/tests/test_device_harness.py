@@ -399,6 +399,38 @@ class SimulatedTargetRunner:
                 }
             )
         self.log(f"INFO [boot] Booted {self.bin_name} -> SystemStatus::Active -> SystemStatus::Sleep")
+        if self.bin_name == "cat_detector_app" and self.trace_mode == "PERF":
+            for core_idx, span_name in (
+                (0, "boot"),
+                (0, "battery_controller::update"),
+                (0, "telemetry_controller::push_record"),
+                (1, "motor_controller::update"),
+            ):
+                self._trace_ts_us += 15_000
+                sid = f"app_sim_{self._trace_ts_us}"
+                self.trace_store.ingest_event(
+                    {
+                        "ts_us": self._trace_ts_us,
+                        "track": f"CPU Core {core_idx}",
+                        "ph": "B",
+                        "category": "span",
+                        "name": span_name,
+                        "span_id": sid,
+                        "args": {"core": core_idx},
+                    }
+                )
+                self._trace_ts_us += 3_000
+                self.trace_store.ingest_event(
+                    {
+                        "ts_us": self._trace_ts_us,
+                        "track": f"CPU Core {core_idx}",
+                        "ph": "E",
+                        "category": "span",
+                        "name": span_name,
+                        "span_id": sid,
+                        "args": {"core": core_idx},
+                    }
+                )
         return dict(self.sync_status)
 
     def sync_async(self) -> None:

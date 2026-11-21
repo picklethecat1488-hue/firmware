@@ -386,9 +386,10 @@ async def test_trace_mode_sensor_emits_sensor_reports_only(
     boards=("rp2040*",),
     scenarios=(ScenarioTier.INTEGRATION, ScenarioTier.BRINGUP),
     target_binary="cat_detector_app",
+    trace_mode="PERF",
 )
 async def test_standalone_app_binary_boot_lifecycle(host: AsyncHostSessionClient) -> None:
-    """Flash `cat_detector_app` via `target_binary` and verify clean dual-core Embassy boot logs."""
+    """Flash `cat_detector_app` in `PERF` mode and verify continuous dual-core boot logs and multiple bounded spans (`WORM-DIRT-TUBEWORM-731`)."""
     async with host.watch_logs(
         r"(boot|INFO|System|Battery|Thermal|Sensor)",
         timeout=10.0,
@@ -396,3 +397,15 @@ async def test_standalone_app_binary_boot_lifecycle(host: AsyncHostSessionClient
     ) as watcher:
         matched = await watcher.matched()
     assert len(matched) >= 1
+
+    closed_spans = []
+    for _ in range(30):
+        snap = await host.get_trace_events(after_seq=0, limit=5000)
+        events = list(snap.get("events") or [])
+        closed_spans = [e for e in events if e.get("category") == "span" and e.get("ph") == "X"]
+        if len(closed_spans) >= 4:
+            break
+        await asyncio.sleep(0.10)
+    assert len(closed_spans) >= 4, (
+        f"Expected multiple bounded PERF spans on cat_detector_app (WORM-DIRT-TUBEWORM-731), got {len(closed_spans)}: {closed_spans}"
+    )

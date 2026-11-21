@@ -149,6 +149,9 @@ fn read_elf_addr(file: &object::File, addr: u64, len: usize) -> Option<Vec<u8>> 
     None
 }
 
+pub const RTT_CONTROL_BLOCK_MAGIC: &[u8; 10] = b"SEGGER RTT";
+pub const RTT_RESET_WIPE_BYTES: usize = 96;
+
 pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
     target: &mut T,
     rtt_symbol_addr: u64,
@@ -157,10 +160,16 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
     let mut initial_header = [0u8; 24];
     target.read_mem(rtt_symbol_addr, &mut initial_header)?;
 
+    if &initial_header[..RTT_CONTROL_BLOCK_MAGIC.len()] != RTT_CONTROL_BLOCK_MAGIC {
+        return Err(
+            "RTT control block header magic ('SEGGER RTT') not yet initialized".to_string(),
+        );
+    }
+
     let max_up = u32::from_le_bytes(initial_header[16..20].try_into().unwrap()) as usize;
     let max_down = u32::from_le_bytes(initial_header[20..24].try_into().unwrap()) as usize;
 
-    if max_up > 32 || max_down > 32 {
+    if (max_up == 0 && max_down == 0) || max_up > 32 || max_down > 32 {
         return Err(format!(
             "RTT control block has invalid channel counts: up={}, down={}",
             max_up, max_down
@@ -171,15 +180,36 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
     let mut header = vec![0u8; full_size];
     target.read_mem(rtt_symbol_addr, &mut header)?;
 
+    if &header[..RTT_CONTROL_BLOCK_MAGIC.len()] != RTT_CONTROL_BLOCK_MAGIC {
+        return Err("RTT control block header changed during read".to_string());
+    }
+
+    let expected_elf_header = elf_file
+        .and_then(|elf| read_elf_addr(elf, rtt_symbol_addr, full_size))
+        .filter(|bytes| bytes.len() == full_size && bytes.starts_with(RTT_CONTROL_BLOCK_MAGIC));
+
     let mut up_channels = Vec::new();
     let mut down_channels = Vec::new();
 
     let mut offset = 24;
     for _ in 0..max_up {
         let chunk = &header[offset..offset + 24];
+        if let Some(ref exp) = expected_elf_header {
+            if chunk[0..12] != exp[offset..offset + 12] {
+                return Err(
+                    "Target SRAM RTT up-channel descriptor does not match active ELF (.data not yet copied)"
+                        .to_string(),
+                );
+            }
+        }
         let name_ptr = u32::from_le_bytes(chunk[0..4].try_into().unwrap()) as u64;
         let buffer_ptr = u32::from_le_bytes(chunk[4..8].try_into().unwrap()) as u64;
         let size = u32::from_le_bytes(chunk[8..12].try_into().unwrap()) as usize;
+        if name_ptr != 0 && (buffer_ptr == 0 || size == 0) {
+            return Err(
+                "Target RTT up-channel buffer pointer/size not yet initialized".to_string(),
+            );
+        }
         let write_offset_ptr = rtt_symbol_addr + offset as u64 + 12;
         let read_offset_ptr = rtt_symbol_addr + offset as u64 + 16;
         let flags_offset_ptr = rtt_symbol_addr + offset as u64 + 20;
@@ -218,9 +248,22 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
 
     for _ in 0..max_down {
         let chunk = &header[offset..offset + 24];
+        if let Some(ref exp) = expected_elf_header {
+            if chunk[0..12] != exp[offset..offset + 12] {
+                return Err(
+                    "Target SRAM RTT down-channel descriptor does not match active ELF (.data not yet copied)"
+                        .to_string(),
+                );
+            }
+        }
         let name_ptr = u32::from_le_bytes(chunk[0..4].try_into().unwrap()) as u64;
         let buffer_ptr = u32::from_le_bytes(chunk[4..8].try_into().unwrap()) as u64;
         let size = u32::from_le_bytes(chunk[8..12].try_into().unwrap()) as usize;
+        if name_ptr != 0 && (buffer_ptr == 0 || size == 0) {
+            return Err(
+                "Target RTT down-channel buffer pointer/size not yet initialized".to_string(),
+            );
+        }
         let write_offset_ptr = rtt_symbol_addr + offset as u64 + 12;
         let read_offset_ptr = rtt_symbol_addr + offset as u64 + 16;
         let flags_offset_ptr = rtt_symbol_addr + offset as u64 + 20;
@@ -427,6 +470,10 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                 let mut core = session.core(0).map_err(|e| format!("{:?}", e))?;
                                 if reset && !is_reconnecting {
                                     spinner.set_message("Resetting target CPU...");
+                                    let _ = core.halt(Duration::from_millis(50));
+                                    let _ =
+                                        core.write_8(rtt_symbol_addr, &[0u8; RTT_RESET_WIPE_BYTES]);
+                                    let _ = core.flush();
                                     core.reset().map_err(|e| {
                                         format!("Failed to reset target CPU: {:?}", e)
                                     })?;
@@ -513,8 +560,8 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
             match parse_rtt_channels(target.as_mut(), rtt_symbol_addr, object_file.as_ref()) {
                 Ok(chans) => chans,
                 Err(e) => {
-                    const BRIDGE_RETRY_DELAY_MS: u64 = 250;
-                    const DIRECT_RETRY_DELAY_MS: u64 = 1000;
+                    const BRIDGE_RETRY_DELAY_MS: u64 = 100;
+                    const DIRECT_RETRY_DELAY_MS: u64 = 100;
                     if stream_cli && !dump && stdin_eof.load(std::sync::atomic::Ordering::SeqCst) {
                         break;
                     }
@@ -1122,7 +1169,8 @@ impl<'b> TargetAccess for ProbeRsWrapper<'b> {
     }
     fn write_mem(&mut self, addr: u64, buf: &[u8]) -> Result<(), String> {
         let core = unsafe { &mut *self.core_ptr };
-        core.write_8(addr, buf).map_err(|e| format!("{:?}", e))
+        core.write_8(addr, buf).map_err(|e| format!("{:?}", e))?;
+        core.flush().map_err(|e| format!("{:?}", e))
     }
 }
 
