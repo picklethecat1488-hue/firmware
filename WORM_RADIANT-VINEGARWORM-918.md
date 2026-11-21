@@ -1,12 +1,13 @@
-# 🔴 `[WORM-RADIANT-VINEGARWORM-918]` Old tracks do not get cleareds when switching trace modes
+# 🟢 `[WORM-RADIANT-VINEGARWORM-918]` Old tracks do not get cleareds when switching trace modes
 
 - **UUID**: `90a2f829-fb88-49b6-b840-d5ba9f558fbd`
 - **ID**: `WORM-RADIANT-VINEGARWORM-918`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-21 19:25:26 UTC`
+- **Resolved**: `2026-11-21 19:53:13 UTC`
 
 #### Description
 
@@ -77,3 +78,7 @@ When switching trace modes from sensor to perf, I noticed the sensor tracks did 
 
 - [ ] Sync target in SENSOR mode, emit sensor readings, and confirm Proximity/Thermal tracks appear | `python tools/host.py sync --bin cat_detector_shell --trace-mode SENSOR && python tools/host.py cli sensor status && python tools/host.py trace status` <!-- id:fe1bd451 -->
 - [ ] Switch target to PERF mode via sync and verify stale SENSOR tracks are cleared and only PERF/CPU tracks remain without log corruption | `python tools/host.py sync --bin cat_detector_shell --trace-mode PERF && python tools/host.py cli fs ls && python tools/host.py trace status` <!-- id:4a2963ca -->
+
+#### Resolution Notes
+
+Stopped active RTT/debug streaming before build_target() overwrites the ELF on disk (preventing defmt string-table log corruption and stale pre-flash events), added session_epoch tracking on TraceSessionStore.clear() + mode category filtering in DaemonRunner, and reset TraceViewerController local buffers on trace_mode/session_epoch transitions.
