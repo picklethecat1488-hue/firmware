@@ -1,15 +1,33 @@
 //! ARM Cortex-M (`ARMv6-M`, `ARMv7-M`, `ARMv8-M`) register descriptors, hardware FPB + SRAM
 //! software `BKPT #0` management, and `probe-rs` SWD debug backend.
 
-use crate::arch::{ProcessorArch, RegisterDescriptor, RegisterFeatureGroup, TargetRegisterLayout};
+use crate::arch::{
+    MemoryRegionDescriptor, MemoryRegionKind, ProcessorArch, RegisterDescriptor,
+    RegisterFeatureGroup, TargetRegisterLayout,
+};
 use crate::server::DebugBackend;
 use std::collections::BTreeMap;
+
+/// Start address of Cortex-M Code / XIP Flash region (`0x0000_0000`).
+pub const CORTEX_M_ROM_START: u64 = 0x0000_0000;
+
+/// Byte length of Cortex-M Code / XIP Flash region (`0x2000_0000`, 512 MiB).
+pub const CORTEX_M_ROM_LENGTH: u64 = 0x2000_0000;
 
 /// Start address of Cortex-M SRAM region (`0x2000_0000`).
 pub const CORTEX_M_SRAM_START: u64 = 0x2000_0000;
 
 /// Exclusive end address of Cortex-M SRAM region (`0x4000_0000`).
 pub const CORTEX_M_SRAM_END: u64 = 0x4000_0000;
+
+/// Byte length of Cortex-M SRAM region (`0x2000_0000`, 512 MiB).
+pub const CORTEX_M_SRAM_LENGTH: u64 = CORTEX_M_SRAM_END - CORTEX_M_SRAM_START;
+
+/// Start address of Cortex-M Peripheral / System Control Space region (`0x4000_0000`).
+pub const CORTEX_M_PERIPH_START: u64 = 0x4000_0000;
+
+/// Byte length of Cortex-M Peripheral / System Control Space region (`0xC000_0000`).
+pub const CORTEX_M_PERIPH_LENGTH: u64 = 0xC000_0000;
 
 /// Little-endian encoding of 16-bit Thumb `BKPT #0` (`0xBE00`).
 pub const THUMB_BKPT_0_LE: [u8; 2] = [0x00, 0xBE];
@@ -139,7 +157,29 @@ pub const GDB_REGNUM_S0_BASE: u32 = 32;
 /// GDB XML `regnum` for `fpscr` in `org.gnu.gdb.arm.vfp`.
 pub const GDB_REGNUM_FPSCR: u32 = 64;
 
-/// Build a single-sourced ARM Cortex-M [`TargetRegisterLayout`] rendered dynamically via Rinja.
+/// Build the canonical ARM Cortex-M GDB `memory-map` region descriptors marking Code/XIP (`< 0x2000_0000`)
+/// as `rom` (forcing hardware FPB breakpoints `Z1`) and SRAM/MMIO (`>= 0x2000_0000`) as `ram`.
+pub fn build_arm_cortex_m_memory_regions() -> Vec<MemoryRegionDescriptor> {
+    vec![
+        MemoryRegionDescriptor {
+            kind: MemoryRegionKind::Rom,
+            start: CORTEX_M_ROM_START,
+            length: CORTEX_M_ROM_LENGTH,
+        },
+        MemoryRegionDescriptor {
+            kind: MemoryRegionKind::Ram,
+            start: CORTEX_M_SRAM_START,
+            length: CORTEX_M_SRAM_LENGTH,
+        },
+        MemoryRegionDescriptor {
+            kind: MemoryRegionKind::Ram,
+            start: CORTEX_M_PERIPH_START,
+            length: CORTEX_M_PERIPH_LENGTH,
+        },
+    ]
+}
+
+/// Build a single-sourced ARM Cortex-M [`TargetRegisterLayout`] (`target.xml` + `memory-map` XML) rendered dynamically via Rinja.
 pub fn build_arm_cortex_m_register_layout(
     arch: ProcessorArch,
     has_fpu: bool,
@@ -153,6 +193,7 @@ pub fn build_arm_cortex_m_register_layout(
             gdb_alias_regnum: None,
             hw_reg_id: idx as u16,
             reg_type: "uint32",
+            reg_group: "general",
             is_pc: false,
         });
     }
@@ -163,6 +204,7 @@ pub fn build_arm_cortex_m_register_layout(
         gdb_alias_regnum: None,
         hw_reg_id: 13,
         reg_type: "data_ptr",
+        reg_group: "general",
         is_pc: false,
     });
     core_regs.push(RegisterDescriptor {
@@ -172,6 +214,7 @@ pub fn build_arm_cortex_m_register_layout(
         gdb_alias_regnum: None,
         hw_reg_id: 14,
         reg_type: "int",
+        reg_group: "general",
         is_pc: false,
     });
     core_regs.push(RegisterDescriptor {
@@ -181,6 +224,7 @@ pub fn build_arm_cortex_m_register_layout(
         gdb_alias_regnum: None,
         hw_reg_id: DCRSR_PC,
         reg_type: "code_ptr",
+        reg_group: "general",
         is_pc: true,
     });
     core_regs.push(RegisterDescriptor {
@@ -190,6 +234,7 @@ pub fn build_arm_cortex_m_register_layout(
         gdb_alias_regnum: Some(16),
         hw_reg_id: DCRSR_XPSR,
         reg_type: "uint32",
+        reg_group: "general",
         is_pc: false,
     });
 
@@ -201,6 +246,7 @@ pub fn build_arm_cortex_m_register_layout(
             gdb_alias_regnum: Some(17),
             hw_reg_id: DCRSR_MSP,
             reg_type: "data_ptr",
+            reg_group: "system",
             is_pc: false,
         },
         RegisterDescriptor {
@@ -210,6 +256,7 @@ pub fn build_arm_cortex_m_register_layout(
             gdb_alias_regnum: Some(18),
             hw_reg_id: DCRSR_PSP,
             reg_type: "data_ptr",
+            reg_group: "system",
             is_pc: false,
         },
     ];
@@ -235,6 +282,7 @@ pub fn build_arm_cortex_m_register_layout(
                 gdb_alias_regnum: None,
                 hw_reg_id: DCRSR_S0_BASE + idx as u16,
                 reg_type: "ieee_single",
+                reg_group: "float",
                 is_pc: false,
             });
         }
@@ -245,6 +293,7 @@ pub fn build_arm_cortex_m_register_layout(
             gdb_alias_regnum: None,
             hw_reg_id: DCRSR_FPSCR,
             reg_type: "int",
+            reg_group: "float",
             is_pc: false,
         });
         features.push(RegisterFeatureGroup {
@@ -253,7 +302,7 @@ pub fn build_arm_cortex_m_register_layout(
         });
     }
 
-    TargetRegisterLayout::new(arch, features)
+    TargetRegisterLayout::new(arch, features, build_arm_cortex_m_memory_regions())
 }
 
 /// Compute `(dirty_gpr_mask, dirty_xpsr)` for a 16-bit Thumb instruction (`hw < 0xE800`) stepped
@@ -1067,8 +1116,12 @@ pub mod probe_backend {
             with_session_core(self.session, core_idx, |core| {
                 // Write `DHCSR = DBGKEY | C_DEBUGEN` directly rather than calling `probe_rs::Core::run()`,
                 // because `probe-rs` `armv6m::run()` unconditionally invokes `self.step()?` with
-                // `C_MASKINTS = 1` first—which hangs and fails with `Timeout` whenever the core was
-                // halted on a `WFE`/`WFI` instruction (`WORM-LITHE-ENCHYTRAEID-678`).
+                // Clear `C_MASKINTS` while `C_HALT = 1` first (ARMv6-M requires `C_HALT == 1`
+                // whenever modifying `C_MASKINTS`), then release `C_HALT` via `DHCSR` without calling
+                // `probe_rs::Core::run()`, which writes `C_MASKINTS = 1` and hangs on `WFE`/`WFI` (`WORM-LITHE-ENCHYTRAEID-678`).
+                if core.core_halted().unwrap_or(false) {
+                    let _ = core.write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_HALT);
+                }
                 core.write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_ENABLE)
                     .map_err(|e| format!("{:?}", e))?;
                 core.flush().map_err(|e| format!("{:?}", e))?;
@@ -1172,6 +1225,7 @@ pub mod probe_backend {
                             .map_err(|e| format!("{:?}", e))?;
                     }
                 }
+                core.flush().map_err(|e| format!("{:?}", e))?;
                 Ok(true)
             })
         }
@@ -1650,6 +1704,8 @@ pub mod probe_backend {
             }
 
             let step_res = (|| -> Result<u32, String> {
+                let _ =
+                    core.write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_HALT_MASKINTS);
                 core.write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_STEP_MASKINTS)
                     .map_err(|e| format!("{:?}", e))?;
                 let dhcsr = core
@@ -1672,10 +1728,13 @@ pub mod probe_backend {
                     .map_err(|e| format!("{:?}", e))?;
                 Ok(new_pc & !1)
             })();
+            // Always clear `C_MASKINTS` while `C_HALT == 1` so subsequent `continue` runs with IRQs unmasked!
+            let _ = core.write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_HALT);
 
             for slot_idx in disarmed_slots {
                 let _ = core.set_hw_breakpoint_unit(slot_idx, pc);
             }
+            let _ = core.flush();
             Ok((step_res?, false))
         }
 

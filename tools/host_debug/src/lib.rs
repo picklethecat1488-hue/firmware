@@ -15,12 +15,14 @@ pub mod server;
 pub mod session;
 
 pub use arch::{
+    parse_expedited_regnums_from_target_xml, MemoryRegionDescriptor, MemoryRegionKind,
     ProcessorArch, RegisterDescriptor, RegisterFeatureGroup, TargetArchProfile,
     TargetRegisterLayout,
 };
 pub use arm::{
-    build_arm_cortex_m_register_layout, supports_arm_hw_breakpoint_at, thumb16_dirty_core_regs,
-    ArmBreakpointManager, ArmCoreBreakpoints, ArmHardwareOps,
+    build_arm_cortex_m_memory_regions, build_arm_cortex_m_register_layout,
+    supports_arm_hw_breakpoint_at, thumb16_dirty_core_regs, ArmBreakpointManager,
+    ArmCoreBreakpoints, ArmHardwareOps,
 };
 pub use rsp::{
     decode_hex, encode_hex, extract_next_rsp_frame, format_rsp_packet, RspAction, RspCoreHandler,

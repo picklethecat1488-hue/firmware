@@ -34,6 +34,7 @@ struct MockCoreState {
     hw_comparators: Vec<Option<u64>>,
     pending_target_pcs: Vec<u32>,
     fail_reg_writes: bool,
+    fail_halt: bool,
 }
 
 impl MockCoreState {
@@ -70,6 +71,7 @@ impl MockCoreState {
             hw_comparators: vec![None; bp_units],
             pending_target_pcs: Vec::new(),
             fail_reg_writes: false,
+            fail_halt: false,
         }
     }
 }
@@ -307,6 +309,9 @@ impl DebugBackend for MockDualCoreBackend {
     fn halt_core(&mut self, core_idx: usize) -> Result<u32, String> {
         let mut guard = self.state.lock().unwrap();
         let core = &mut guard.cores[core_idx];
+        if core.fail_halt {
+            return Err("Arm(Dap(NoAcknowledge))".to_string());
+        }
         core.halted = true;
         Ok(*core.regs.get(&15).unwrap_or(&0))
     }
@@ -546,9 +551,9 @@ fn test_rsp_framing_rinja_target_xml_sram_sw_breakpoints_and_arch_limits() {
     // Verify Rinja-rendered XML for ARMv8-M with FPU single-sources every register number.
     let v8m_layout = build_arm_cortex_m_register_layout(ProcessorArch::Armv8m, true);
     assert!(v8m_layout.target_xml().contains("org.gnu.gdb.arm.vfp"));
-    assert!(v8m_layout
-        .target_xml()
-        .contains("<reg name=\"fpscr\" bitsize=\"32\" regnum=\"64\" type=\"int\"/>"));
+    assert!(v8m_layout.target_xml().contains(
+        "<reg name=\"fpscr\" bitsize=\"32\" regnum=\"64\" type=\"int\" group=\"float\"/>"
+    ));
     assert_eq!(
         v8m_layout.lookup_gdb_register(64).map(|r| r.hw_reg_id),
         Some(33)
@@ -1746,4 +1751,134 @@ fn test_worm_slithering_snail_823_idle_ctrl_c_memory_map_and_restart_never_desyn
         "host_debug log_file should record failed breakpoint insertion address, got: {}",
         logged
     );
+}
+
+#[test]
+fn test_xml_driven_expedited_registers_templated_memory_map_and_secondary_halt_deferral() {
+    use host_debug::{
+        build_arm_cortex_m_memory_regions, parse_expedited_regnums_from_target_xml,
+        MemoryRegionDescriptor, MemoryRegionKind, RegisterDescriptor, RegisterFeatureGroup,
+    };
+
+    // 1. Verify ARMv8-M + FPU `target.xml` renders `group="general"` on core registers (`0..=15, 25`)
+    // and `parse_expedited_regnums_from_target_xml` parses them directly from XML while excluding `msp`/`psp`/`s0..s31`.
+    let arm_fpu_layout = build_arm_cortex_m_register_layout(ProcessorArch::Armv8m, true);
+    let parsed_arm_regnums = parse_expedited_regnums_from_target_xml(arm_fpu_layout.target_xml());
+    let mut expected_arm: Vec<u32> = (0..=15).collect();
+    expected_arm.push(25);
+    assert_eq!(parsed_arm_regnums, expected_arm);
+
+    let arm_mem_xml = arm_fpu_layout.memory_map_xml();
+    assert!(
+        arm_mem_xml.contains("<memory type=\"rom\" start=\"0x00000000\" length=\"0x20000000\"/>")
+    );
+    assert!(
+        arm_mem_xml.contains("<memory type=\"ram\" start=\"0x20000000\" length=\"0x20000000\"/>")
+    );
+    assert_eq!(build_arm_cortex_m_memory_regions().len(), 3);
+
+    // 2. Verify custom non-ARM register names (`x1`, `sp_custom`, `pc_custom`) rendered via `TargetRegisterLayout`
+    // are parsed out of `target.xml` by `RspCoreHandler::format_trap_stop_reply` with zero hardcoded ARM names,
+    // and empty `memory_regions` omits `qXfer:memory-map:read+`.
+    let custom_layout = TargetRegisterLayout::new(
+        ProcessorArch::Armv6m,
+        vec![
+            RegisterFeatureGroup {
+                name: "org.example.custom.core",
+                registers: vec![
+                    RegisterDescriptor {
+                        name: "x1".to_string(),
+                        bitsize: 32,
+                        gdb_regnum: 4,
+                        gdb_alias_regnum: None,
+                        hw_reg_id: 1,
+                        reg_type: "uint32",
+                        reg_group: "general",
+                        is_pc: false,
+                    },
+                    RegisterDescriptor {
+                        name: "pc_custom".to_string(),
+                        bitsize: 32,
+                        gdb_regnum: 9,
+                        gdb_alias_regnum: None,
+                        hw_reg_id: 15,
+                        reg_type: "code_ptr",
+                        reg_group: "general",
+                        is_pc: true,
+                    },
+                ],
+            },
+            RegisterFeatureGroup {
+                name: "org.example.custom.sys",
+                registers: vec![RegisterDescriptor {
+                    name: "csr_status".to_string(),
+                    bitsize: 32,
+                    gdb_regnum: 42,
+                    gdb_alias_regnum: None,
+                    hw_reg_id: 17,
+                    reg_type: "uint32",
+                    reg_group: "system",
+                    is_pc: false,
+                }],
+            },
+        ],
+        Vec::<MemoryRegionDescriptor>::new(),
+    );
+    assert_eq!(custom_layout.memory_map_xml(), "");
+
+    let (mut backend, shared) = MockDualCoreBackend::new();
+    {
+        let mut guard = shared.lock().unwrap();
+        guard.cores[0].regs.insert(1, 0xAABB_CCDD);
+        guard.cores[0].regs.insert(15, 0x1000_0421);
+        guard.cores[1].fail_halt = true;
+    }
+    let mut custom_handler = RspCoreHandler::new(0, custom_layout, None);
+    let qsup = custom_handler
+        .handle_stateless_packet(b"qSupported:hwbreak+")
+        .expect("qSupported");
+    assert_eq!(
+        qsup,
+        RspAction::Reply(
+            "PacketSize=4096;qXfer:features:read+;QStartNoAckMode+;vContSupported+;hwbreak+;swbreak+"
+                .to_string()
+        )
+    );
+    assert_eq!(
+        custom_handler.handle_stateless_packet(b"qXfer:memory-map:read::0,100"),
+        Some(RspAction::status(RspReplyCode::Empty))
+    );
+    let _ = custom_handler.handle_stateless_packet(b"qXfer:features:read:target.xml:0,fff");
+    assert!(custom_handler.target_xml_complete);
+    let stop_pkt = custom_handler.format_trap_stop_reply(&mut backend);
+    assert_eq!(
+        stop_pkt, "T0504:ddccbbaa;09:20040010;thread:01;",
+        "Expected T05 expedited registers parsed directly from custom target.xml"
+    );
+
+    // 3. Verify custom Flash memory region rendering and secondary core (`core_idx = 1`) `monitor halt`
+    // returning `OK` (`secondary_awaiting_boot = true`) when Core 1's DAP is held in reset (`NoAcknowledge`).
+    let flash_layout = TargetRegisterLayout::new(
+        ProcessorArch::Armv6m,
+        arm_fpu_layout.features().to_vec(),
+        vec![MemoryRegionDescriptor {
+            kind: MemoryRegionKind::Flash,
+            start: 0x1000_0000,
+            length: 0x0020_0000,
+        }],
+    );
+    assert!(flash_layout
+        .memory_map_xml()
+        .contains("<memory type=\"flash\" start=\"0x10000000\" length=\"0x00200000\"/>"));
+
+    let mut c1_handler = RspCoreHandler::new(1, flash_layout, None);
+    let halt_rcmd = format!("qRcmd,{}", encode_hex(b"halt"));
+    let c1_halt_res = c1_handler.handle_packet(halt_rcmd.as_bytes(), &mut backend);
+    assert_eq!(c1_halt_res, RspAction::status(RspReplyCode::Ok));
+    assert!(c1_handler.secondary_awaiting_boot);
+
+    let mut c0_handler = RspCoreHandler::new(0, arm_fpu_layout, None);
+    shared.lock().unwrap().cores[0].fail_halt = true;
+    let c0_halt_res = c0_handler.handle_packet(halt_rcmd.as_bytes(), &mut backend);
+    assert_eq!(c0_halt_res, RspAction::status(RspReplyCode::ErrTargetState));
 }

@@ -1890,6 +1890,13 @@ def test_symbolic_test_debugging_dap_breakpoint_and_vscode_config(
                 "monitor reset halt",
                 "maintenance flush register-cache",
             ], f"cortex-debug config {cfg['name']!r} must flush GDB register cache after monitor reset halt"
+            assert cfg.get("runToEntryPoint") == "", (
+                f"cortex-debug config {cfg['name']!r} must clear default runToEntryPoint='main' "
+                "so VS Code Restart does not halt prematurely at __cortex_m_rt_main_trampoline"
+            )
+            assert cfg.get("postRestartSessionCommands") == ["-exec-continue"], (
+                f"cortex-debug config {cfg['name']!r} must auto-continue to user breakpoints on Restart"
+            )
         pre_task = cfg.get("preLaunchTask")
         if pre_task:
             assert pre_task in defined_tasks, f"Missing preLaunchTask {pre_task!r} in .vscode/tasks.json"

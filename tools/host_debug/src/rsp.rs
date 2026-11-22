@@ -1,26 +1,13 @@
 //! Architecture-independent GDB Remote Serial Protocol (RSP) packet framing,
 //! typed reply status codes, XML/exec-file transfer chunking, and command dispatch.
 
-use crate::arch::{TargetArchProfile, TargetRegisterLayout};
+use crate::arch::{
+    parse_expedited_regnums_from_target_xml, TargetArchProfile, TargetRegisterLayout,
+};
 use crate::server::{DebugBackend, MAX_RANGE_STEPS_PER_PACKET};
-
-/// Cortex-M `EXC_RETURN` / System Control Space non-instruction address threshold (`0xF000_0000`).
-pub const CORTEX_M_NON_CODE_THRESHOLD: u64 = 0xF000_0000;
 
 /// Maximum single RSP memory read chunk size in bytes.
 pub const MAX_RSP_MEMORY_READ_BYTES: usize = 4096;
-
-/// Canonical Cortex-M GDB `memory-map` XML marking `< 0x2000_0000` as hardware-breakpoint ROM/Flash.
-pub const CORTEX_M_MEMORY_MAP_XML: &str = concat!(
-    "<?xml version=\"1.0\"?>\n",
-    "<!DOCTYPE memory-map PUBLIC \"+//IDN gnu.org//DTD GDB Memory Map V1.0//EN\" ",
-    "\"http://sourceware.org/gdb/gdb-memory-map.dtd\">\n",
-    "<memory-map>\n",
-    "  <memory type=\"rom\" start=\"0x00000000\" length=\"0x20000000\"/>\n",
-    "  <memory type=\"ram\" start=\"0x20000000\" length=\"0x20000000\"/>\n",
-    "  <memory type=\"ram\" start=\"0x40000000\" length=\"0xC0000000\"/>\n",
-    "</memory-map>\n",
-);
 
 fn select_vcont_clause_for_core(vcont_body: &str) -> &str {
     let mut fallback_unthreaded: Option<&str> = None;
@@ -309,18 +296,17 @@ impl RspCoreHandler {
     }
 
     /// Build a `SIGTRAP` stop-reply string (`T05...;thread:01;` with expedited general registers
-    /// once `target.xml` has been transferred to GDB, or `"S05"` for minimal raw RSP clients).
+    /// parsed directly from the backend's rendered `target.xml` once transferred to GDB, or `"S05"`
+    /// for minimal raw RSP clients).
     pub fn format_trap_stop_reply<B: DebugBackend + ?Sized>(&mut self, backend: &mut B) -> String {
-        const EXPEDITED_STOP_REG_NAMES: &[&str] = &[
-            "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "sp",
-            "lr", "pc", "xpsr",
-        ];
         if !self.target_xml_complete {
             return RspReplyCode::SigTrap.as_reply_string();
         }
-        let mut descs = Vec::with_capacity(EXPEDITED_STOP_REG_NAMES.len());
-        for reg in self.arch_profile.general_registers() {
-            if EXPEDITED_STOP_REG_NAMES.contains(&reg.name.as_str()) {
+        let expedited_regnums =
+            parse_expedited_regnums_from_target_xml(self.arch_profile.target_xml());
+        let mut descs = Vec::with_capacity(expedited_regnums.len());
+        for regnum in expedited_regnums {
+            if let Some(reg) = self.arch_profile.lookup_gdb_register(regnum) {
                 descs.push(reg.clone());
             }
         }
@@ -381,9 +367,11 @@ impl RspCoreHandler {
             return Some(RspAction::status(RspReplyCode::Ok));
         }
         if cmd.starts_with("qSupported") {
-            let mut caps = String::from(
-                "PacketSize=4096;qXfer:features:read+;qXfer:memory-map:read+;QStartNoAckMode+;vContSupported+;hwbreak+;swbreak+",
-            );
+            let mut caps = String::from("PacketSize=4096;qXfer:features:read+");
+            if !self.arch_profile.memory_map_xml().is_empty() {
+                caps.push_str(";qXfer:memory-map:read+");
+            }
+            caps.push_str(";QStartNoAckMode+;vContSupported+;hwbreak+;swbreak+");
             if self.exec_file_path.is_some() {
                 caps.push_str(";qXfer:exec-file:read+");
             }
@@ -429,10 +417,11 @@ impl RspCoreHandler {
             return Some(RspAction::Reply(chunk));
         }
         if let Some(xfer_args) = cmd.strip_prefix("qXfer:memory-map:read::") {
-            return Some(RspAction::Reply(slice_qxfer_blob(
-                CORTEX_M_MEMORY_MAP_XML,
-                xfer_args,
-            )));
+            let mem_xml = self.arch_profile.memory_map_xml();
+            if mem_xml.is_empty() {
+                return Some(RspAction::status(RspReplyCode::Empty));
+            }
+            return Some(RspAction::Reply(slice_qxfer_blob(mem_xml, xfer_args)));
         }
         if let Some(rest) = cmd.strip_prefix("qXfer:exec-file:read:") {
             if let Some((_, xfer_args)) = rest.split_once(':') {
@@ -856,7 +845,7 @@ impl RspCoreHandler {
             Ok(a) => a,
             Err(_) => return RspReplyCode::ErrBadRequest,
         };
-        if is_sw_bp && addr >= CORTEX_M_NON_CODE_THRESHOLD {
+        if is_sw_bp && self.arch_profile.is_non_code_address(addr) {
             return RspReplyCode::Empty;
         }
         match backend.insert_breakpoint(self.core_idx, addr, allow_sw_ram) {
@@ -1069,6 +1058,18 @@ impl RspCoreHandler {
                 Ok(_) => {
                     self.secondary_awaiting_boot = false;
                     self.record_stop_pc(backend);
+                    RspAction::status(RspReplyCode::Ok)
+                }
+                Err(err) if self.core_idx > 0 => {
+                    self.last_reported_stop_pc = None;
+                    self.secondary_awaiting_boot = true;
+                    self.push_diagnostic(
+                        "INFO",
+                        format!(
+                            "Core {} monitor 'halt' deferred (secondary core held in reset awaiting Core 0 boot: {})",
+                            self.core_idx, err
+                        ),
+                    );
                     RspAction::status(RspReplyCode::Ok)
                 }
                 Err(err) => {
