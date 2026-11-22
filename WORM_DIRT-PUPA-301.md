@@ -2,12 +2,13 @@
 
 - **UUID**: `e2f8d954-dbdb-43a5-8080-c2d52af5d8bf`
 - **ID**: `WORM-DIRT-PUPA-301`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-21 23:52:20 UTC`
 - **Resolved**: `2026-11-22 02:27:15 UTC`
+- **Accepted**: `2026-11-22 02:27:18 UTC`
 
 #### Description
 
