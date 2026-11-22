@@ -7,7 +7,7 @@
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-21 23:54:29 UTC`
-- **Resolved**: `2026-11-22 02:52:14 UTC`
+- **Resolved**: `2026-11-22 02:52:18 UTC`
 
 #### Description
 
