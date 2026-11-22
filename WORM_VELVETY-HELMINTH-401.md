@@ -86,6 +86,7 @@ The system LED is yellow after hours of charging. The `battery status` command r
 #### Attached Commits
 
 - `5b8c85af`
+- `3458c84b`
 
 #### Review Tasks & Functional Checklist
 
