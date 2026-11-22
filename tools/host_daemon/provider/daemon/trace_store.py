@@ -55,6 +55,18 @@ class TraceSessionStore:
         with self._lock:
             return self._recording
 
+    @property
+    def session_epoch(self) -> int:
+        """Return the current monotonically increasing trace session epoch."""
+        with self._lock:
+            return self._session_epoch
+
+    @property
+    def event_count(self) -> int:
+        """Return the number of currently buffered trace items."""
+        with self._lock:
+            return len(self._items)
+
     def set_recording(self, active: bool) -> bool:
         """Pause (`False`) or resume (`True`) live trace capture and return the new state."""
         with self._lock:

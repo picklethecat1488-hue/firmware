@@ -66,6 +66,46 @@ def _resolve_runner_device_ts(runner: Any) -> str:
     return f"{max(0.0, now - float(anchor)):.6f}s"
 
 
+HIGH_FREQUENCY_POLL_PATHS: frozenset[str] = frozenset(
+    {
+        "/api/status",
+        "/api/sync",
+        "/api/sync/status",
+        "/api/logs",
+        "/api/cli/output",
+        "/api/fs/output",
+        "/api/manual_prompt",
+        "/api/tests/status",
+        "/api/trace/events",
+    }
+)
+
+
+def _record_runner_api_call(
+    server: Any,
+    method: str,
+    path: str,
+    status: int,
+    duration_ms: float,
+    detail: str = "",
+) -> None:
+    """Log `/api/*` invocations to `runner.log_api_invocation`, rate-limiting high-frequency UI pollers."""
+    if not path.startswith("/api/"):
+        return
+    runner = getattr(server, "runner", None)
+    if runner is None or not hasattr(runner, "log_api_invocation"):
+        return
+    if method == "GET" and path in HIGH_FREQUENCY_POLL_PATHS and status < 400:
+        seen = getattr(server, "_seen_poll_paths", None)
+        if not isinstance(seen, set):
+            seen = set()
+            setattr(server, "_seen_poll_paths", seen)
+        if path in seen:
+            return
+        seen.add(path)
+    runner.log_api_invocation(method, path, status, duration_ms, detail)
+
+
 class HostDaemonRequestHandler(BaseHTTPRequestHandler):
     """HTTP request handler for host daemon web workstation and IPC APIs."""
 
@@ -74,6 +114,27 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args) -> None:  # noqa: A002
         """Suppress default HTTP logging to keep console clean."""
         return
+
+    def send_response(self, code: int, message: Any = None) -> None:
+        """Record HTTP status code for structured API telemetry before delegating to BaseHTTPRequestHandler."""
+        self._last_http_status = int(code)
+        super().send_response(code, message)
+
+    def _flush_api_log_once(self) -> None:
+        """Flush structured `/api/*` telemetry to `host_daemon.log` before socket write completes."""
+        if getattr(self, "_api_logged", True):
+            return
+        self._api_logged = True
+        start_t = getattr(self, "_req_start_mono", None)
+        elapsed_ms = (time.monotonic() - float(start_t)) * 1000.0 if start_t is not None else 0.0
+        _record_runner_api_call(
+            self.server,
+            str(getattr(self, "_req_method", "GET")),
+            str(getattr(self, "_req_path", "")),
+            int(getattr(self, "_last_http_status", 200)),
+            elapsed_ms,
+            str(getattr(self, "_req_detail", "")),
+        )
 
     def _send_json(self, data: Any, status: int = 200) -> None:
         payload = json.dumps(data).encode("utf-8")
@@ -84,6 +145,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
+        self._flush_api_log_once()
         self.wfile.write(payload)
 
     def do_OPTIONS(self) -> None:  # noqa: N802
@@ -97,7 +159,19 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         """Handle GET requests for UI and telemetry APIs."""
-        path = self.path.split("?")[0]
+        self._req_start_mono = time.monotonic()
+        self._req_method = "GET"
+        self._req_path = self.path.split("?")[0]
+        self._req_detail = ""
+        self._last_http_status = 200
+        self._api_logged = False
+        try:
+            self._handle_get(self._req_path)
+        finally:
+            self._flush_api_log_once()
+
+    def _handle_get(self, path: str) -> None:
+        """Dispatch GET requests across UI, static, and telemetry endpoints."""
         runner = self.server.runner
 
         if path in ("/", "/index.html"):
@@ -337,7 +411,19 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         """Handle POST requests for command execution and controls."""
-        path = self.path.split("?")[0]
+        self._req_start_mono = time.monotonic()
+        self._req_method = "POST"
+        self._req_path = self.path.split("?")[0]
+        self._req_detail = ""
+        self._last_http_status = 200
+        self._api_logged = False
+        try:
+            self._req_detail = self._handle_post(self._req_path)
+        finally:
+            self._flush_api_log_once()
+
+    def _handle_post(self, path: str) -> str:
+        """Dispatch POST requests across target control, CLI/FS, debug, trace, and bug report endpoints."""
         runner = self.server.runner
 
         content_len = int(self.headers.get("Content-Length", 0))
@@ -346,6 +432,18 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             payload = json.loads(body) if body else {}
         except Exception:
             payload = {}
+
+        api_detail = ""
+        if isinstance(payload, dict):
+            if "mode" in payload and path == "/api/mode":
+                api_detail = f"mode={payload.get('mode')}"
+            elif "action" in payload and path == "/api/trace/control":
+                api_detail = f"action={payload.get('action')}"
+            elif "command" in payload and path in ("/api/cli/execute", "/api/fs/execute"):
+                api_detail = f"cmd={str(payload.get('command'))[:64]!r}"
+            elif path in ("/api/sync", "/api/target/configure") and (payload.get("bin") or payload.get("bin_name")):
+                api_detail = f"bin={payload.get('bin') or payload.get('bin_name')}"
+        self._req_detail = api_detail
 
         if path == "/api/sync":
             if payload:
@@ -413,7 +511,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 )
             except ValueError as exc:
                 self._send_json({"error": str(exc)}, status=400)
-                return
+                return api_detail
 
             if not tgt:
                 tgt = infer_arm_target(pkg, bin_name, chip=chp, repo_root=runner.repo_root)
@@ -581,6 +679,8 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                         "trace_mode": _get_runner_trace_mode(runner).value,
                     }
                 self._send_json(res)
+                if hasattr(runner, "log") and not hasattr(runner, "control_trace_session"):
+                    runner.log(f"Trace session control '{action}' applied", channel="trace")
             except ValueError as exc:
                 self._send_json({"error": str(exc)}, status=400)
         elif path == "/api/trace/export":
@@ -639,7 +739,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 )
             except ValueError as exc:
                 self._send_json({"error": str(exc)}, status=400)
-                return
+                return api_detail
             self._send_json({"success": True, "status": status})
         elif path == "/api/tests/cancel":
             status = _get_test_manager(runner).cancel_run()
@@ -670,13 +770,13 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     raise ValueError("Manual prompt responder is not supported on this runner")
             except ValueError as exc:
                 self._send_json({"error": str(exc)}, status=400)
-                return
+                return api_detail
             self._send_json({"success": True, "manual_prompt": state})
         elif path == "/api/target_bug":
             title = str(payload.get("title") or "").strip()
             if not title:
                 self._send_json({"error": "Bug title is required"}, status=400)
-                return
+                return api_detail
             result = create_target_worm_report(
                 runner.repo_root,
                 payload,
@@ -694,6 +794,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             threading.Thread(target=_shutdown, daemon=True).start()
         else:
             self.send_error(404, "Unknown endpoint")
+        return api_detail
 
 
 class HostDaemonServer(ThreadingHTTPServer):

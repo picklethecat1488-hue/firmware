@@ -654,7 +654,7 @@ fn test_exhaustive_rsp_handler_packets_fpu_registers_binary_writes_and_live_gdb_
     assert_eq!(
         handler.handle_packet(b"qSupported:multiprocess+", &mut backend),
         RspAction::Reply(
-            "PacketSize=4096;qXfer:features:read+;QStartNoAckMode+;vContSupported+;hwbreak+;swbreak+;qXfer:exec-file:read+"
+            "PacketSize=4096;qXfer:features:read+;qXfer:memory-map:read+;QStartNoAckMode+;vContSupported+;hwbreak+;swbreak+;qXfer:exec-file:read+"
                 .to_string()
         )
     );
@@ -1558,4 +1558,143 @@ fn test_debug_server_log_file_forwards_ready_client_and_stopped_events() {
         logged
     );
     assert!(logged.contains("\"event\":\"stopped\""), "{}", logged);
+}
+
+#[test]
+fn test_worm_slithering_snail_823_idle_ctrl_c_memory_map_and_restart_never_desync_rsp() {
+    let (backend, shared) = MockDualCoreBackend::new();
+    {
+        let mut guard = shared.lock().unwrap();
+        guard.cores[0].pending_target_pcs.push(0x1000_8ACA);
+    }
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let log_path = std::env::temp_dir().join(format!(
+        "host_debug_worm_823_{}_{}.log",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_file(&log_path);
+
+    let config = DebugServerConfig {
+        bind_host: "127.0.0.1".to_string(),
+        gdb_core0_port: 0,
+        gdb_core1_port: Some(0),
+        rtt_bridge_port: None,
+        halted_on_reset: true,
+        exec_file_path: None,
+        json_events: false,
+        log_file: Some(log_path.clone()),
+    };
+
+    let handle =
+        start_debug_server_with_backend(backend, &config, shutdown).expect("start debug server");
+    let mut c0 = TestRspClient::connect(handle.gdb_core0_port);
+    let mut c1 = TestRspClient::connect(handle.gdb_core1_port.expect("core1 port"));
+
+    // 1. qSupported must advertise qXfer:memory-map:read+ so GDB uses Z1 hwbreak on XIP Flash.
+    let caps = c0.send_cmd("qSupported:multiprocess+;swbreak+;hwbreak+");
+    assert!(
+        caps.contains("qXfer:memory-map:read+"),
+        "qSupported must advertise qXfer:memory-map:read+, got: {}",
+        caps
+    );
+    let mem_map = c0.send_cmd("qXfer:memory-map:read::0,400");
+    assert!(
+        mem_map.starts_with('l') && mem_map.contains("<memory type=\"rom\""),
+        "Expected complete <memory-map> XML with ROM region, got: {}",
+        mem_map
+    );
+
+    assert_eq!(c0.send_cmd("QStartNoAckMode"), "OK");
+    assert_eq!(c1.send_cmd("QStartNoAckMode"), "OK");
+    assert_eq!(c0.send_cmd("?"), "S05");
+
+    // 2. Sending redundant Ctrl-C (0x03) while already halted (or pipelined immediately ahead of
+    // vCont;c / breakpoint insertion / monitor reset halt) MUST NOT inject an unsolicited S02 packet!
+    c0.stream
+        .write_all(&[0x03])
+        .expect("write redundant Ctrl-C");
+    c0.stream.flush().expect("flush redundant Ctrl-C");
+    assert_eq!(c0.send_cmd("Z1,10008aca,2"), "OK");
+    assert_eq!(c0.send_cmd("Z1,10008e42,2"), "OK");
+
+    let mut vcont_pkt = format_rsp_packet("vCont;c");
+    let _ = &mut vcont_pkt;
+    c0.stream.write_all(&vcont_pkt).expect("write vCont;c");
+    c0.stream.flush().expect("flush vCont;c");
+    let stop_reply = c0.read_packet_reply();
+    assert!(
+        stop_reply.starts_with("S05") || stop_reply.starts_with("T05"),
+        "vCont;c must receive breakpoint trap S05/T05 (not stale S02!), got: {}",
+        stop_reply
+    );
+
+    // Subsequent $g read after redundant Ctrl-C + vCont;c must receive hex registers, NOT a shifted S05!
+    let regs_hex = c0.send_cmd("g");
+    assert!(
+        regs_hex.len() >= 16 * 8 && regs_hex.chars().all(|ch| ch.is_ascii_hexdigit()),
+        "Expected valid hex register bank for $g (zero packet shift), got: {}",
+        regs_hex
+    );
+
+    // 3. Dual-core restart sequence: Core 0 runs `monitor reset halt`, Core 1 runs `monitor reset secondary`
+    // without re-clobbering Core 0's PC if Core 0 has already stepped!
+    let reset_cmd = format!("qRcmd,{}", encode_hex(b"reset halt"));
+    let first_pkt = c0.send_cmd(&reset_cmd);
+    let ok_pkt = if first_pkt.starts_with('O') {
+        c0.read_packet_reply()
+    } else {
+        first_pkt
+    };
+    assert_eq!(ok_pkt, "OK");
+    {
+        let mut guard = shared.lock().unwrap();
+        guard.cores[0].regs.insert(15, CORE0_MAIN_LOC_ADDR);
+    }
+
+    let sec_reset_cmd = format!("qRcmd,{}", encode_hex(b"reset halt"));
+    let sec_first = c1.send_cmd(&sec_reset_cmd);
+    let sec_ok = if sec_first.starts_with('O') {
+        c1.read_packet_reply()
+    } else {
+        sec_first
+    };
+    assert_eq!(sec_ok, "OK");
+    assert_eq!(
+        shared.lock().unwrap().cores[0].regs.get(&15).copied(),
+        Some(CORE0_MAIN_LOC_ADDR),
+        "monitor reset halt on Core 1 while Core 0 GDB is connected must not double-reset Core 0"
+    );
+
+    // Re-inserting breakpoints after restart must succeed cleanly.
+    assert_eq!(c0.send_cmd("Z1,10008aca,2"), "OK");
+    assert_eq!(c0.send_cmd("Z1,10008e42,2"), "OK");
+
+    // Trigger breakpoint slot exhaustion (5th breakpoint on 4-unit ARMv6-M) to verify log_file records it.
+    assert_eq!(c0.send_cmd("Z1,10009000,2"), "OK");
+    assert_eq!(c0.send_cmd("Z1,10009100,2"), "OK");
+    assert_eq!(c0.send_cmd("Z1,10009200,2"), "E0E");
+
+    assert_eq!(c0.send_cmd("D"), "OK");
+    assert_eq!(c1.send_cmd("D"), "OK");
+    drop(c0);
+    drop(c1);
+    std::thread::sleep(Duration::from_millis(25));
+    handle.stop();
+
+    let logged = std::fs::read_to_string(&log_path).expect("read host_debug log");
+    let _ = std::fs::remove_file(&log_path);
+    assert!(
+        logged.contains("reset halt"),
+        "host_debug log_file should record monitor reset halt command, got: {}",
+        logged
+    );
+    assert!(
+        logged.contains("0x10009200") || logged.contains("10009200"),
+        "host_debug log_file should record failed breakpoint insertion address, got: {}",
+        logged
+    );
 }

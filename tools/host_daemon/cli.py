@@ -1847,7 +1847,12 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         eff_log_dir = Path(args.log_dir) if getattr(args, "log_dir", None) else resolve_default_host_log_dir(repo_root)
         eff_log_dir.mkdir(parents=True, exist_ok=True)
-        log_path = eff_log_dir / f"{HostLogStream.DAEMON.value}.log"
+        log_path = (
+            eff_log_dir.parent / f"{HostLogStream.DAEMON.value}.log"
+            if eff_log_dir.name == "logs"
+            else eff_log_dir / f"{HostLogStream.DAEMON.value}.log"
+        )
+        log_path.parent.mkdir(parents=True, exist_ok=True)
         log_file = open(log_path, "a", encoding="utf-8")
 
         child_args = (

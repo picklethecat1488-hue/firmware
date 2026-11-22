@@ -260,6 +260,12 @@ class DaemonRunner:
         """Return the log file path for a specific `HostLogStream` under `self.log_dir`."""
         return self.log_dir / f"{stream.value}.log"
 
+    def get_canonical_daemon_log_path(self) -> Path:
+        """Return the top-level `<target_dir>/host_daemon.log` path mirrored when `log_dir` is `<target_dir>/logs`."""
+        if self.log_dir.name == "logs":
+            return self.log_dir.parent / f"{HostLogStream.DAEMON.value}.log"
+        return self.get_stream_log_path(HostLogStream.DAEMON)
+
     def get_log_files(self) -> Dict[str, str]:
         """Return a mapping of logical stream names (`daemon`, `debug`, `defmt`, `cli`, `fs`) to log file paths."""
         return {
@@ -275,13 +281,35 @@ class DaemonRunner:
         cleaned = ANSI_ESCAPE_RE.sub("", line).rstrip("\r\n")
         if not cleaned:
             return
-        log_path = self.get_stream_log_path(stream)
-        try:
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            with log_path.open("a", encoding="utf-8") as fh:
-                fh.write(cleaned + "\n")
-        except OSError:
-            pass
+        targets = [self.get_stream_log_path(stream)]
+        if stream == HostLogStream.DAEMON:
+            canonical_path = self.get_canonical_daemon_log_path()
+            if canonical_path != targets[0]:
+                targets.append(canonical_path)
+        for log_path in targets:
+            try:
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with log_path.open("a", encoding="utf-8") as fh:
+                    fh.write(cleaned + "\n")
+            except OSError:
+                pass
+
+    def log_api_invocation(
+        self,
+        method: str,
+        path: str,
+        status: int,
+        duration_ms: float,
+        detail: str = "",
+    ) -> None:
+        """Record an HTTP API invocation in `host_daemon.log` without flooding the target defmt console."""
+        ts = datetime.now(timezone.utc).isoformat()
+        lvl = "WARN" if status >= 400 else "INFO"
+        suffix = f" {detail}" if detail else ""
+        self._append_stream_log_line(
+            HostLogStream.DAEMON,
+            f"[{ts}] [{lvl}] [api] {method} {path} -> {status} ({duration_ms:.1f}ms){suffix}",
+        )
 
     def log_sync_console(self, line: str) -> None:
         """Append a line to the sync console log buffer and update sync_status."""
@@ -336,9 +364,17 @@ class DaemonRunner:
     def _record_lifecycle(self, phase: str, detail: str, *, mark_recent: bool = True) -> None:
         """Record a thread-safe target lifecycle event (`flashing`, `mode_switch`, `rebooting`, `idle`)."""
         with self._lock:
+            prev_phase = self._lifecycle_phase
+            prev_detail = self._lifecycle_detail
             self._lifecycle_phase = phase
             self._lifecycle_detail = detail
             self._lifecycle_updated_at = time.monotonic() if mark_recent else 0.0
+        if phase != prev_phase or (mark_recent and detail != prev_detail):
+            ts = datetime.now(timezone.utc).isoformat()
+            self._append_stream_log_line(
+                HostLogStream.DAEMON,
+                f"[{ts}] [INFO] [daemon] [STATE] lifecycle: {prev_phase} -> {phase} ({detail})",
+            )
 
     def get_target_activity(self) -> Dict[str, Any]:
         """Return a thread-safe snapshot of target flash, mode-switch, reboot, and command telemetry."""
@@ -653,6 +689,10 @@ class DaemonRunner:
             self._append_stream_log_line(HostLogStream.DEFMT, f"[{entry['timestamp']}] {message}")
         elif channel == "debug":
             self._append_stream_log_line(HostLogStream.DEBUG, f"[{entry['timestamp']}] [{level}] {message}")
+            self._append_stream_log_line(
+                HostLogStream.DAEMON,
+                f"[{entry['timestamp']}] [{level}] [debug] {message}",
+            )
         else:
             self._append_stream_log_line(
                 HostLogStream.DAEMON,
@@ -710,6 +750,7 @@ class DaemonRunner:
             self.active_mode = mode
             self.mode_switch_count += 1
         self._record_lifecycle("mode_switch", f"Switched target mode from {prev_mode} to {mode}")
+        self.log(f"[STATE] Active workstation mode changed: {prev_mode} -> {mode}", channel="daemon")
         if mode == "FS":
             self.log("Switching to Filesystem mode (stopping RTT streaming to release probe)...", channel="system")
             self.stop_rtt_streaming()
@@ -1400,10 +1441,16 @@ class DaemonRunner:
                                     key = f"gdb_core{core_idx}_connected"
                                     with self._lock:
                                         self.debug_server_info[key] = bool(ev.get("connected", False))
-                                    self.log(f"GDB client {ev_name} on Core {core_idx}", channel="debug")
+                                    self.log(f"[STATE] GDB client {ev_name} on Core {core_idx}", channel="debug")
+                                elif ev_name == "diagnostic":
+                                    diag_lvl = str(ev.get("level") or "INFO").upper()
+                                    diag_msg = str(ev.get("message") or "").strip()
+                                    if diag_msg:
+                                        self.log(diag_msg, level=diag_lvl, channel="debug")
                                 elif ev_name == "stopped":
                                     with self._lock:
                                         self.debug_server_active = False
+                                    self.log("[STATE] Target GDB server stopped", channel="debug")
                                 continue
                         startup_error.append(stripped)
                         self.log(stripped, level="WARN", channel="debug")
@@ -1790,8 +1837,17 @@ class DaemonRunner:
                         self._last_device_ts_sec = float(raw_ts_us) / 1_000_000.0
                         self._last_device_ts_mono = time.monotonic()
                 if self.should_ingest_trace_event(ev_obj):
+                    was_empty = self.trace_store.event_count == 0
                     self.trace_store.ingest_event(ev_obj)
+                    if was_empty and self.trace_store.event_count > 0:
+                        self.log(
+                            f"Trace backend receiving live {self.trace_mode.value} stream "
+                            f"(epoch={self.trace_store.session_epoch})",
+                            channel="trace",
+                        )
             elif ev_type == "session_disconnected":
+                if self.is_connected:
+                    self.log("[STATE] Target RTT session disconnected", level="WARN", channel="daemon")
                 self.is_connected = False
 
         def _stream_worker() -> None:
@@ -2156,6 +2212,11 @@ class DaemonRunner:
             self.trace_store.set_recording(True)
         else:
             raise ValueError(f"Unsupported trace control action '{action}'. Expected: clear, pause, resume.")
+        self.log(
+            f"Trace session control '{cleaned}' -> recording={self.trace_store.recording} "
+            f"(trace_mode={self.trace_mode.value})",
+            channel="trace",
+        )
         return {
             "success": True,
             "action": cleaned,
@@ -2166,13 +2227,18 @@ class DaemonRunner:
     def export_trace_session(self, fmt: str, path: Optional[str] = None) -> Dict[str, Any]:
         """Export the active buffered trace session to disk in `'csv'` or `'perfetto'` format."""
         stem = f"{self.bin_name or 'target'}_{self.trace_mode.value.lower()}"
-        return self.trace_store.export_to_disk(
+        res = self.trace_store.export_to_disk(
             self.repo_root,
             fmt,
             path,
             chip=self.chip,
             default_stem=stem,
         )
+        self.log(
+            f"Exported trace session format={fmt} path={res.get('path')} events={res.get('event_count', 0)}",
+            channel="trace",
+        )
+        return res
 
     def open_trace_in_rerun(
         self,
@@ -2186,8 +2252,13 @@ class DaemonRunner:
             raw = Path(str(save_rrd_path).strip())
             rrd_path = raw if raw.is_absolute() else (self.repo_root / raw)
         app_id = f"{self.bin_name or 'xerxes'}_{self.trace_mode.value.lower()}"
+        events = self.trace_store.snapshot_all()
+        self.log(
+            f"Opening {len(events)} trace events in Rerun (app_id={app_id}, spawn={spawn})",
+            channel="trace",
+        )
         return open_trace_in_rerun(
-            self.trace_store.snapshot_all(),
+            events,
             app_id=app_id,
             spawn=spawn,
             save_rrd_path=rrd_path,

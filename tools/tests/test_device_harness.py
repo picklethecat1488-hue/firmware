@@ -1463,6 +1463,7 @@ def test_worm_inching_millipede_969_no_white_scrollbar_gutter_artifact(tmp_path:
     import re
     import shutil
     import urllib.request
+    from host_daemon.provider.daemon.runner import DaemonRunner
 
     chrome_candidates = [
         Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
@@ -2137,7 +2138,7 @@ def test_host_py_bug_cli_online_and_offline_reporting(
         online_res = json.loads(capsys.readouterr().out)
         assert online_res["success"] is True
         assert online_res["source"] == "daemon"
-        assert online_res["attachments_count"] == 4
+        assert online_res["attachments_count"] == 5
 
         online_md = Path(online_res["file_path"])
         assert online_md.is_file()
@@ -3453,6 +3454,101 @@ def test_per_stream_host_log_files_and_logs_cli_subcommand(
         assert any("> battery status" in ln for ln in tails["cli"])
         assert any("SOC: 98%" in ln for ln in tails["cli"])
         assert any("calibration.bin (64 B)" in ln for ln in tails["fs"])
+    finally:
+        server.shutdown()
+        server.server_close()
+        runner.stop()
+
+
+def test_worm_slithering_snail_823_daemon_log_captures_api_state_debug_trace_and_attaches_to_bug(
+    tmp_path: Path,
+) -> None:
+    """Verify `target/host_daemon.log` records API calls, state transitions, debug/trace backends, and attaches to bug reports."""
+    import urllib.request
+    from host_daemon.provider.daemon.runner import DaemonRunner
+
+    fake_repo = _copy_resource_tree("fake_workspace", tmp_path / "repo")
+    (fake_repo / "attachments").mkdir(parents=True, exist_ok=True)
+    (fake_repo / "feedback").mkdir(parents=True, exist_ok=True)
+    elf_file = fake_repo / "target" / "thumbv6m-none-eabi" / "debug" / "cat_detector_shell"
+    elf_file.parent.mkdir(parents=True, exist_ok=True)
+    elf_file.write_bytes(b"\x7fELF")
+
+    fake_dbg = _make_resource_launcher(tmp_path / "host_debug_mock", "mock_host_debug.py")
+    fake_cli = _make_resource_launcher(tmp_path / "host_cli_mock", "mock_host_cli.py")
+
+    runner = DaemonRunner(
+        repo_root=fake_repo,
+        target="thumbv6m-none-eabi",
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+        chip="rp2040",
+        trace_mode="PERF",
+        gdb_core0_port=4533,
+        gdb_core1_port=4534,
+        log_dir=fake_repo / "target" / "logs",
+    )
+    runner.elf_path = elf_file
+    runner.host_debug_path = fake_dbg
+    runner.host_cli_path = fake_cli
+
+    server, daemon_port = _start_ephemeral_daemon(runner)
+    base_url = f"http://127.0.0.1:{daemon_port}"
+
+    def _api(method: str, path: str, body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        data = json.dumps(body).encode("utf-8") if body is not None else None
+        headers = {"Content-Type": "application/json"} if data is not None else {}
+        req = urllib.request.Request(f"{base_url}{path}", data=data, headers=headers, method=method)
+        with urllib.request.urlopen(req, timeout=10.0) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    try:
+        _api("POST", "/api/mode", {"mode": "TRACE"})
+        _api("POST", "/api/debug/start", {"gdb_core0_port": 4533, "gdb_core1_port": 4534, "reset": False})
+        _api("POST", "/api/trace/control", {"action": "pause"})
+        _api("POST", "/api/trace/control", {"action": "resume"})
+        _api("GET", "/api/boot_status")
+
+        canonical_daemon_log = fake_repo / "target" / "host_daemon.log"
+        stream_daemon_log = fake_repo / "target" / "logs" / "host_daemon.log"
+        assert canonical_daemon_log.is_file(), "target/host_daemon.log must be populated directly"
+        assert stream_daemon_log.is_file(), "target/logs/host_daemon.log must also be populated"
+
+        daemon_log_text = canonical_daemon_log.read_text(encoding="utf-8")
+        assert "/api/mode" in daemon_log_text, daemon_log_text
+        assert "/api/debug/start" in daemon_log_text, daemon_log_text
+        assert "/api/trace/control" in daemon_log_text, daemon_log_text
+        assert "/api/boot_status" in daemon_log_text, daemon_log_text
+        assert "[STATE]" in daemon_log_text, f"Expected [STATE] transitions in host_daemon.log:\n{daemon_log_text}"
+        assert "[debug]" in daemon_log_text.lower(), (
+            f"Expected debug backend logs in host_daemon.log:\n{daemon_log_text}"
+        )
+        assert "[trace]" in daemon_log_text.lower(), (
+            f"Expected trace backend logs in host_daemon.log:\n{daemon_log_text}"
+        )
+
+        bug_res = _api(
+            "POST",
+            "/api/target_bug",
+            {
+                "title": "Synthetic RSP restart verification bug",
+                "severity": "MEDIUM",
+                "category": "FIRMWARE",
+                "component": "target",
+                "description": "Verify host_daemon.log attachment on active runner bug reports",
+                "attach_system_logs": True,
+            },
+        )
+        assert bug_res["success"] is True
+        worm_id = bug_res["worm_id"]
+        att_dir = fake_repo / "attachments" / worm_id
+        daemon_att = att_dir / f"host_daemon_{worm_id}.log"
+        assert daemon_att.is_file(), (
+            f"Expected {daemon_att} to be attached to host bug report; got {[p.name for p in att_dir.iterdir()]}"
+        )
+        attached_daemon_text = daemon_att.read_text(encoding="utf-8")
+        assert "/api/debug/start" in attached_daemon_text
+        assert "[STATE]" in attached_daemon_text
     finally:
         server.shutdown()
         server.server_close()

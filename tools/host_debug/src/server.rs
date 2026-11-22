@@ -204,6 +204,15 @@ pub enum DebugServerEvent {
         /// Whether a GDB client is currently connected.
         connected: bool,
     },
+    /// Operational or warning diagnostic from RSP command processing (e.g. `monitor reset halt`, breakpoint failure).
+    Diagnostic {
+        /// Severity level (`"INFO"`, `"WARN"`, `"ERROR"`).
+        level: &'static str,
+        /// Associated target core index, if any.
+        core: Option<usize>,
+        /// Human-readable diagnostic description.
+        message: String,
+    },
     /// Server stopped cleanly and released the debug probe session.
     Stopped,
 }
@@ -233,6 +242,17 @@ impl DebugServerEvent {
                 "event": if *connected { "gdb_connected" } else { "gdb_disconnected" },
                 "core": core,
                 "connected": connected,
+            })
+            .to_string(),
+            Self::Diagnostic {
+                level,
+                core,
+                message,
+            } => json!({
+                "event": "diagnostic",
+                "level": level,
+                "core": core,
+                "message": message,
             })
             .to_string(),
             Self::Stopped => json!({ "event": "stopped" }).to_string(),
@@ -375,6 +395,7 @@ pub fn start_debug_server_with_backend<B: DebugBackend + 'static>(
     let shared_backend = Arc::new(Mutex::new(backend));
     let clock_origin = Instant::now();
     let gdb_priority_until_ms = Arc::new(AtomicU64::new(0));
+    let core0_client_connected = Arc::new(AtomicBool::new(false));
     let json_events = config.json_events;
     let exec_file_path = config.exec_file_path.clone();
     let log_sink = match config.log_file.as_deref() {
@@ -388,6 +409,7 @@ pub fn start_debug_server_with_backend<B: DebugBackend + 'static>(
         let shutdown_c0 = Arc::clone(&shutdown);
         let exec_c0 = exec_file_path.clone();
         let prio_c0 = Arc::clone(&gdb_priority_until_ms);
+        let c0_conn = Arc::clone(&core0_client_connected);
         let sink_c0 = log_sink.clone();
         threads.push(thread::spawn(move || {
             run_core_gdb_listener(
@@ -399,6 +421,7 @@ pub fn start_debug_server_with_backend<B: DebugBackend + 'static>(
                 shutdown_c0,
                 clock_origin,
                 prio_c0,
+                c0_conn,
                 json_events,
                 sink_c0,
             );
@@ -410,6 +433,7 @@ pub fn start_debug_server_with_backend<B: DebugBackend + 'static>(
         let shutdown_c1 = Arc::clone(&shutdown);
         let exec_c1 = exec_file_path;
         let prio_c1 = Arc::clone(&gdb_priority_until_ms);
+        let c0_conn = Arc::clone(&core0_client_connected);
         let sink_c1 = log_sink.clone();
         threads.push(thread::spawn(move || {
             run_core_gdb_listener(
@@ -421,6 +445,7 @@ pub fn start_debug_server_with_backend<B: DebugBackend + 'static>(
                 shutdown_c1,
                 clock_origin,
                 prio_c1,
+                c0_conn,
                 json_events,
                 sink_c1,
             );
@@ -487,6 +512,7 @@ fn run_core_gdb_listener<B: DebugBackend + 'static>(
     shutdown: Arc<AtomicBool>,
     clock_origin: Instant,
     gdb_priority_until_ms: Arc<AtomicU64>,
+    core0_client_connected: Arc<AtomicBool>,
     json_events: bool,
     log_sink: Option<Arc<Mutex<File>>>,
 ) {
@@ -495,6 +521,9 @@ fn run_core_gdb_listener<B: DebugBackend + 'static>(
             Ok((stream, _peer)) => {
                 let _ = stream.set_nonblocking(false);
                 let _ = stream.set_nodelay(true);
+                if core_idx == 0 {
+                    core0_client_connected.store(true, Ordering::Release);
+                }
                 emit_event(
                     &DebugServerEvent::ClientState {
                         core: core_idx,
@@ -512,7 +541,13 @@ fn run_core_gdb_listener<B: DebugBackend + 'static>(
                     &shutdown,
                     clock_origin,
                     &gdb_priority_until_ms,
+                    &core0_client_connected,
+                    json_events,
+                    log_sink.as_ref(),
                 );
+                if core_idx == 0 {
+                    core0_client_connected.store(false, Ordering::Release);
+                }
                 gdb_priority_until_ms.store(0, Ordering::Release);
                 if !detached_cleanly && !shutdown.load(Ordering::SeqCst) {
                     if let Ok(mut back_guard) = backend.lock() {
@@ -565,6 +600,9 @@ fn serve_core_gdb_client<B: DebugBackend>(
     shutdown: &Arc<AtomicBool>,
     clock_origin: Instant,
     gdb_priority_until_ms: &Arc<AtomicU64>,
+    core0_client_connected: &Arc<AtomicBool>,
+    json_events: bool,
+    log_sink: Option<&Arc<Mutex<File>>>,
 ) -> bool {
     let _ = stream.set_read_timeout(Some(Duration::from_millis(ACCEPT_POLL_INTERVAL_MS)));
     let mut handler = RspCoreHandler::new(core_idx, arch_layout, exec_file_path);
@@ -589,15 +627,28 @@ fn serve_core_gdb_client<B: DebugBackend>(
                     }
                 }
                 RspFrame::CtrlC => {
+                    // In GDB all-stop RSP, stop replies (`S02`/`T05`) are strictly synchronous
+                    // responses to `?`, `c`, `s`, or `vCont`. Emitting an unsolicited `S02` when
+                    // the core is already stopped (not in `WaitForHalt`) shifts every subsequent
+                    // GDB packet/reply by +1 (`WORM-SLITHERING-SNAIL-823`).
                     if let Ok(mut guard) = backend.lock() {
-                        let _ = guard.halt_core(core_idx);
+                        if !handler.secondary_awaiting_boot
+                            && !guard.core_halted(core_idx).unwrap_or(true)
+                        {
+                            let _ = guard.halt_core(core_idx);
+                        }
                         handler.record_stop_pc(&mut *guard);
                     }
-                    let sig = RspReplyCode::SigInt.as_str();
-                    last_sent_reply = Some(sig.to_string());
-                    if send_rsp_reply(&mut stream, sig).is_err() {
-                        return false;
-                    }
+                    emit_event(
+                        &DebugServerEvent::Diagnostic {
+                            level: "INFO",
+                            core: Some(core_idx),
+                            message: "Ignored redundant Ctrl-C while core was already stopped"
+                                .to_string(),
+                        },
+                        json_events,
+                        log_sink,
+                    );
                 }
                 RspFrame::Packet {
                     payload,
@@ -619,6 +670,8 @@ fn serve_core_gdb_client<B: DebugBackend>(
                         continue;
                     }
 
+                    handler.peer_core0_connected =
+                        core_idx > 0 && core0_client_connected.load(Ordering::Acquire);
                     let action =
                         if let Some(stateless_act) = handler.handle_stateless_packet(&payload) {
                             stateless_act
@@ -634,6 +687,18 @@ fn serve_core_gdb_client<B: DebugBackend>(
                             };
                             handler.handle_packet(&payload, &mut *back_guard)
                         };
+
+                    for (level, message) in handler.take_diagnostics() {
+                        emit_event(
+                            &DebugServerEvent::Diagnostic {
+                                level,
+                                core: Some(core_idx),
+                                message,
+                            },
+                            json_events,
+                            log_sink,
+                        );
+                    }
 
                     if handler.no_ack_mode {
                         last_unacked_rx_payload = None;
@@ -745,14 +810,52 @@ fn drain_running_rx_frames<B: DebugBackend>(
                 payload,
                 checksum_valid,
             } => {
-                if !handler.no_ack_mode {
-                    let ack = if checksum_valid { b"+" } else { b"-" };
-                    if stream.write_all(ack).is_err() || stream.flush().is_err() {
+                if !checksum_valid {
+                    if !handler.no_ack_mode
+                        && (stream.write_all(b"-").is_err() || stream.flush().is_err())
+                    {
                         return Some(RunningWaitOutcome::StreamClosed);
                     }
-                }
-                if !checksum_valid {
                     continue;
+                }
+                let cmd = std::str::from_utf8(&payload).unwrap_or("");
+                let is_detach_or_kill = cmd == "D"
+                    || cmd.starts_with("D;")
+                    || cmd == "vKill"
+                    || cmd.starts_with("vKill;")
+                    || cmd == "k";
+
+                if !is_detach_or_kill {
+                    // Re-queue the unconsumed packet at the front of `rx_buf`, halt the core, and
+                    // emit the `vCont`/`c` stop reply so `serve_core_gdb_client` processes `payload`
+                    // cleanly on the next iteration without dropping its reply!
+                    let checksum: u8 = payload.iter().fold(0u8, |acc, &b| acc.wrapping_add(b));
+                    let mut raw_pkt = Vec::with_capacity(payload.len() + 4);
+                    raw_pkt.push(b'$');
+                    raw_pkt.extend_from_slice(&payload);
+                    raw_pkt.extend_from_slice(format!("#{:02x}", checksum).as_bytes());
+                    raw_pkt.append(rx_buf);
+                    *rx_buf = raw_pkt;
+
+                    let trap = if let Ok(mut back_guard) = backend.lock() {
+                        let _ = back_guard.halt_core(core_idx);
+                        handler.record_stop_pc(&mut *back_guard);
+                        handler.format_trap_stop_reply(&mut *back_guard)
+                    } else {
+                        RspReplyCode::SigTrap.as_reply_string()
+                    };
+                    *last_sent_reply = Some(trap.clone());
+                    return if send_rsp_reply(stream, &trap).is_ok() {
+                        Some(RunningWaitOutcome::HaltedOrInterrupted)
+                    } else {
+                        Some(RunningWaitOutcome::StreamClosed)
+                    };
+                }
+
+                if !handler.no_ack_mode
+                    && (stream.write_all(b"+").is_err() || stream.flush().is_err())
+                {
+                    return Some(RunningWaitOutcome::StreamClosed);
                 }
                 if !handler.no_ack_mode
                     && last_unacked_rx_payload.as_deref() == Some(payload.as_slice())
@@ -763,19 +866,6 @@ fn drain_running_rx_frames<B: DebugBackend>(
                     *last_unacked_rx_payload = Some(payload.clone());
                 }
 
-                let cmd = std::str::from_utf8(&payload).unwrap_or("");
-                if cmd == "D"
-                    || cmd.starts_with("D;")
-                    || cmd == "vKill"
-                    || cmd.starts_with("vKill;")
-                {
-                    if let Ok(mut back_guard) = backend.lock() {
-                        let _ = back_guard.clear_all_breakpoints(core_idx);
-                        let _ = back_guard.resume_core(core_idx);
-                    }
-                    let _ = send_rsp_reply(stream, RspReplyCode::Ok.as_str());
-                    return Some(RunningWaitOutcome::DisconnectClient);
-                }
                 if cmd == "k" {
                     if let Ok(mut back_guard) = backend.lock() {
                         let _ = back_guard.clear_all_breakpoints(core_idx);
@@ -785,16 +875,11 @@ fn drain_running_rx_frames<B: DebugBackend>(
                 }
 
                 if let Ok(mut back_guard) = backend.lock() {
-                    let _ = back_guard.halt_core(core_idx);
-                    handler.record_stop_pc(&mut *back_guard);
+                    let _ = back_guard.clear_all_breakpoints(core_idx);
+                    let _ = back_guard.resume_core(core_idx);
                 }
-                let trap = RspReplyCode::SigTrap.as_str();
-                *last_sent_reply = Some(trap.to_string());
-                return if send_rsp_reply(stream, trap).is_ok() {
-                    Some(RunningWaitOutcome::HaltedOrInterrupted)
-                } else {
-                    Some(RunningWaitOutcome::StreamClosed)
-                };
+                let _ = send_rsp_reply(stream, RspReplyCode::Ok.as_str());
+                return Some(RunningWaitOutcome::DisconnectClient);
             }
         }
     }

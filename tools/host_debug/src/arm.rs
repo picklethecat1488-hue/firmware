@@ -946,18 +946,29 @@ pub mod probe_backend {
             slot_idx: usize,
             addr: u64,
         ) -> Result<(), String> {
-            with_session_core(self.session, core_idx, |core| {
-                if let Ok(dhcsr) = core.read_word_32(CORTEX_M_DHCSR_ADDR) {
-                    if (dhcsr & 1) == 0 {
-                        let _ =
-                            core.write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_ENABLE);
+            let program_slot = |session: &mut Session| -> Result<(), String> {
+                with_session_core(session, core_idx, |core| {
+                    if let Ok(dhcsr) = core.read_word_32(CORTEX_M_DHCSR_ADDR) {
+                        if (dhcsr & 1) == 0 {
+                            let _ = core
+                                .write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_ENABLE);
+                        }
                     }
+                    core.write_word_32(CORTEX_M_BP_CTRL_ADDR, CORTEX_M_BP_CTRL_KEY_ENABLE)
+                        .map_err(|e| format!("{:?}", e))?;
+                    core.set_hw_breakpoint_unit(slot_idx, addr)
+                        .map_err(|e| format!("{:?}", e))?;
+                    core.flush().map_err(|e| format!("{:?}", e))
+                })
+            };
+            match program_slot(self.session) {
+                Ok(()) => Ok(()),
+                Err(_) if core_idx == 0 => {
+                    let _ = self.session.core(0);
+                    program_slot(self.session)
                 }
-                let _ = core.write_word_32(CORTEX_M_BP_CTRL_ADDR, CORTEX_M_BP_CTRL_KEY_ENABLE);
-                let _ = core.flush();
-                core.set_hw_breakpoint_unit(slot_idx, addr)
-                    .map_err(|e| format!("{:?}", e))
-            })
+                Err(err) => Err(err),
+            }
         }
 
         fn clear_hw_breakpoint_slot(
