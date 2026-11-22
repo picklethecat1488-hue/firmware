@@ -6,7 +6,7 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Review Date** | `2026-11-22 20:36:46 UTC` |
+| **Review Date** | `2026-11-22 02:54:26 UTC` |
 | **Revisions** | `0010e3c8f1d7cca6dbdccafdc5fe3e5d1d21723e` |
 | **Overall Verdict** | **`CHANGES_REQUESTED`** |
 | **Review Progress** | `0/14 files reviewed (0%)` |
@@ -27,6 +27,7 @@
 #### **[MUST FIX]** [controller/shell.toml:L141-L145](file:///Users/<username>/gh/firmware/controller/shell.toml#L141-L145)
 <!-- comment-uuid: 73be315a-84a6-42e0-a319-8fbced67cadb -->
 <!-- comment-commit: 0010e3c8f1d7cca6dbdccafdc5fe3e5d1d21723e -->
+<!-- comment-status: RESOLVED -->
 
 ```
 { name = "reg16", type = "bool", attributes = ["#[arg(long = \"reg16\")]"], help = "Use 16-bit big-endian register address" },
@@ -38,11 +39,14 @@
 
 > **Reviewer (Reviewer)**: can we build the flag attribute more sensibly? e.g., add a short_flag and long_flag JSON key that gets converted into a rust attribute by the codegen template?
 
+> **Resolution**: Replaced raw #[arg(...)] strings in shell.toml with typed short_flag and long_flag keys on CliArg rendered into #[arg(...)] by generated_controllers.rs.jinja.
+
 ### [`tools/host_debug/tests/host_debug_tests.rs`](file:///Users/<username>/gh/firmware/tools/host_debug/tests/host_debug_tests.rs) — ⏳ `PENDING`
 
 #### **[MUST FIX]** [tools/host_debug/tests/host_debug_tests.rs:L1891-L1908](file:///Users/<username>/gh/firmware/tools/host_debug/tests/host_debug_tests.rs#L1891-L1908)
 <!-- comment-uuid: 9a615d05-5a24-47ea-a4b7-9b507c7026e2 -->
 <!-- comment-commit: 0010e3c8f1d7cca6dbdccafdc5fe3e5d1d21723e -->
+<!-- comment-status: RESOLVED -->
 
 ```
 // 4. Verify DOM-based `parse_expedited_regnums_from_target_xml` ignores XML comments, supports
@@ -67,7 +71,9 @@
 
 > **Reviewer (Reviewer)**: pls follow the python best practices wrt embedding test resources in tests as separate files
 
+> **Resolution**: Extracted inline XML fixtures into standalone files under tools/host_debug/tests/resources/ loaded at test runtime.
+
 ## Action Items Checklist
 
-- [ ] **[MUST FIX]** [`controller/shell.toml:L141-L145`](file:///Users/<username>/gh/firmware/controller/shell.toml#L141-L145): can we build the flag attribute more sensibly? e.g., add a short_flag and long_flag JSON key that gets converted into a rust attribute by the codegen template? <!-- uuid:73be315a-84a6-42e0-a319-8fbced67cadb -->
-- [ ] **[MUST FIX]** [`tools/host_debug/tests/host_debug_tests.rs:L1891-L1908`](file:///Users/<username>/gh/firmware/tools/host_debug/tests/host_debug_tests.rs#L1891-L1908): pls follow the python best practices wrt embedding test resources in tests as separate files <!-- uuid:9a615d05-5a24-47ea-a4b7-9b507c7026e2 -->
+- [x] **[MUST FIX]** [`controller/shell.toml:L141-L145`](file:///Users/<username>/gh/firmware/controller/shell.toml#L141-L145): can we build the flag attribute more sensibly? e.g., add a short_flag and long_flag JSON key that gets converted into a rust attribute by the codegen template? <!-- uuid:73be315a-84a6-42e0-a319-8fbced67cadb -->
+- [x] **[MUST FIX]** [`tools/host_debug/tests/host_debug_tests.rs:L1891-L1908`](file:///Users/<username>/gh/firmware/tools/host_debug/tests/host_debug_tests.rs#L1891-L1908): pls follow the python best practices wrt embedding test resources in tests as separate files <!-- uuid:9a615d05-5a24-47ea-a4b7-9b507c7026e2 -->

@@ -1,12 +1,13 @@
-# 🔴 `[WORM-SEGMENTED-COCOON-284]` “Open in perfetto” did not work
+# 🟢 `[WORM-SEGMENTED-COCOON-284]` “Open in perfetto” did not work
 
 - **UUID**: `b33f3c4c-516e-41de-a3ef-8622377ff9f6`
 - **ID**: `WORM-SEGMENTED-COCOON-284`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-21 23:54:29 UTC`
+- **Resolved**: `2026-11-22 21:26:48 UTC`
 - **Rejected**: `2026-11-22 20:43:32 UTC`
 
 #### Description
@@ -98,7 +99,7 @@ I didn’t see a “perfetto.ui” tab open in my browser when I clicked “Open
 
 #### Resolution Notes
 
-Served buffered Perfetto JSON over a dedicated localhost:9001 HTTP bridge matching ui.perfetto.dev CSP connect-src rules (404ing /status RPC probes with full CORS/PNA headers) and foregrounded the macOS system browser via /usr/bin/open when launched from pywebview or CLI.
+Replaced https://ui.perfetto.dev/#!/?url=http://127.0.0.1:9001/... mixed-content fetch (blocked in Safari with TypeError: Load failed) with a same-origin http://127.0.0.1:<port>/perfetto bridge page hosting <iframe src='https://ui.perfetto.dev'> that fetches /api/trace/perfetto.json same-origin and pushes the ArrayBuffer over Perfetto's PING/PONG postMessage protocol.
 
 #### Rejection Feedback
 
