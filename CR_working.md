@@ -9,7 +9,7 @@
 | **Review Date** | `2026-11-22 02:54:26 UTC` |
 | **Revisions** | `working` |
 | **Overall Verdict** | **`CHANGES_REQUESTED`** |
-| **Review Progress** | `0/13 files reviewed (0%)` |
+| **Review Progress** | `0/5 files reviewed (0%)` |
 | **Total Comments** | `2 findings` |
 
 ## Findings by Severity
