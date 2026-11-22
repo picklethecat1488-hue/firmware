@@ -7,7 +7,7 @@
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-21 23:54:29 UTC`
-- **Resolved**: `2026-11-22 17:37:55 UTC`
+- **Resolved**: `2026-11-22 20:43:24 UTC`
 - **Rejected**: `2026-11-22 02:52:20 UTC`
 
 #### Description
@@ -85,6 +85,7 @@ I didn’t see a “perfetto.ui” tab open in my browser when I clicked “Open
 | Type | Filename | Description |
 | :--- | :--- | :--- |
 | `screenshot` | [screenshot_paste_3679.0000000000005_wzdp2.png](attachments/WORM-SEGMENTED-COCOON-284/screenshot_paste_3679.0000000000005_wzdp2.png) | Pasted screenshot screenshot_paste_3679.0000000000005_wzdp2.png |
+| `screenshot` | [screenshot_paste_6386_l5s9i.png](attachments/WORM-SEGMENTED-COCOON-284/screenshot_paste_6386_l5s9i.png) | Pasted screenshot screenshot_paste_6386_l5s9i.png |
 
 #### Attached Commits
 
