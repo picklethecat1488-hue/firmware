@@ -365,6 +365,13 @@ def _add_root_daemon_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Optional probe selector (VID:PID or VID:PID:SERIAL) for multi-target benches.",
     )
+    parser.add_argument(
+        "--log-dir",
+        dest="log_dir",
+        type=str,
+        default=None,
+        help="Directory receiving per-stream host log files (default: target/logs).",
+    )
 
 
 def _add_cli_subparser(subparsers: Any) -> None:
@@ -509,6 +516,35 @@ def _add_lifecycle_subparsers(subparsers: Any) -> None:
         "--json",
         action="store_true",
         help="Format boot status output as JSON.",
+    )
+    logs_parser = subparsers.add_parser(
+        "logs",
+        help="List per-stream host log file paths or tail a specific log stream (daemon, debug, defmt, cli, fs)",
+    )
+    logs_parser.add_argument(
+        "--stream",
+        "-s",
+        choices=["all", "daemon", "debug", "defmt", "cli", "fs"],
+        default="all",
+        help="Log stream to inspect (default: all).",
+    )
+    logs_parser.add_argument(
+        "--lines",
+        "-n",
+        type=int,
+        default=0,
+        help="Print the last N lines of the selected log file(s) (0 prints paths only).",
+    )
+    logs_parser.add_argument(
+        "--host-port",
+        type=int,
+        default=None,
+        help="Optional explicit TCP port of a running host.py daemon.",
+    )
+    logs_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Format output as JSON.",
     )
     subparsers.add_parser("stop", help="Stop running host daemon")
 
@@ -1220,6 +1256,55 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
         return 0
 
+    if args.subcommand == "logs":
+        files_map: Dict[str, str] = {}
+        try:
+            res = send_daemon_request(
+                "/api/logs/files",
+                None,
+                port=getattr(args, "host_port", None),
+                host=args.host,
+            )
+            raw_files = res.get("files") if isinstance(res, dict) else None
+            if isinstance(raw_files, dict):
+                files_map = {str(k): str(v) for k, v in raw_files.items()}
+        except Exception:
+            from host_daemon.provider.daemon.runner import HostLogStream, resolve_default_host_log_dir
+
+            eff_dir = Path(args.log_dir) if getattr(args, "log_dir", None) else resolve_default_host_log_dir(repo_root)
+            files_map = {
+                "daemon": str(eff_dir / f"{HostLogStream.DAEMON.value}.log"),
+                "debug": str(eff_dir / f"{HostLogStream.DEBUG.value}.log"),
+                "defmt": str(eff_dir / f"{HostLogStream.DEFMT.value}.log"),
+                "cli": str(eff_dir / f"{HostLogStream.CLI.value}.log"),
+                "fs": str(eff_dir / f"{HostLogStream.FS.value}.log"),
+            }
+
+        req_stream = str(getattr(args, "stream", "all") or "all")
+        selected = files_map if req_stream == "all" else {req_stream: files_map.get(req_stream, "")}
+        tail_n = max(0, int(getattr(args, "lines", 0) or 0))
+        tails: Dict[str, List[str]] = {}
+        if tail_n > 0:
+            for key, fpath in selected.items():
+                p = Path(fpath) if fpath else None
+                if p and p.is_file():
+                    tails[key] = p.read_text(encoding="utf-8", errors="replace").splitlines()[-tail_n:]
+                else:
+                    tails[key] = []
+
+        if getattr(args, "json", False):
+            payload: Dict[str, Any] = {"files": selected}
+            if tail_n > 0:
+                payload["tails"] = tails
+            print(json.dumps(payload, indent=2))
+        else:
+            for key, fpath in selected.items():
+                print(f"{key:<8}: {fpath}")
+                if tail_n > 0:
+                    for ln in tails.get(key, []):
+                        print(f"  {ln}")
+        return 0
+
     if args.subcommand == "trace":
         action = str(getattr(args, "trace_action", "status") or "status").lower()
         try:
@@ -1758,9 +1843,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Detach from terminal unless --no-detach / --foreground is requested
     if not getattr(args, "no_detach", False):
-        log_dir = repo_root / "target" if (repo_root / "target").exists() else repo_root / "build"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        log_path = log_dir / "host_daemon.log"
+        from host_daemon.provider.daemon.runner import HostLogStream, resolve_default_host_log_dir
+
+        eff_log_dir = Path(args.log_dir) if getattr(args, "log_dir", None) else resolve_default_host_log_dir(repo_root)
+        eff_log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = eff_log_dir / f"{HostLogStream.DAEMON.value}.log"
         log_file = open(log_path, "a", encoding="utf-8")
 
         child_args = (
@@ -1817,6 +1904,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         rtt_bridge_port=int(getattr(args, "rtt_bridge_port", 50000)),
         probe_selector=getattr(args, "probe_selector", None),
         trace_mode=getattr(args, "trace_mode", None),
+        log_dir=Path(args.log_dir) if getattr(args, "log_dir", None) else None,
     )
     atexit.register(runner.stop)
     atexit.register(remove_lock_file)

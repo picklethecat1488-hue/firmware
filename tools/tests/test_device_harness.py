@@ -3375,3 +3375,85 @@ def test_boot_status_cli_and_uniform_boot_readiness_without_shell_binary_heurist
         server.shutdown()
         server.server_close()
         runner.stop()
+
+
+def test_per_stream_host_log_files_and_logs_cli_subcommand(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify `DaemonRunner` separates daemon, debug, defmt, cli, and fs streams into `log_dir` files and serves `host.py logs`."""
+    from host_daemon import cli as host_cli_mod
+    from host_daemon.provider.daemon.runner import DaemonRunner, HostLogStream
+
+    fake_repo = _copy_resource_tree("fake_workspace", tmp_path / "repo")
+    elf_file = fake_repo / "target" / "thumbv6m-none-eabi" / "debug" / "cat_detector_shell"
+    elf_file.parent.mkdir(parents=True, exist_ok=True)
+    elf_file.write_bytes(b"\x7fELF")
+
+    custom_log_dir = tmp_path / "logs_out"
+    dbg_argv_log = tmp_path / "dbg_argv.json"
+    fake_dbg = _make_resource_launcher(
+        tmp_path / "host_debug_mock",
+        "mock_host_debug.py",
+        env_overrides={"XERXES_MOCK_DEBUG_ARGV_LOG": str(dbg_argv_log)},
+    )
+    fake_cli = _make_resource_launcher(tmp_path / "host_cli_mock", "mock_host_cli.py")
+
+    runner = DaemonRunner(
+        repo_root=fake_repo,
+        target="thumbv6m-none-eabi",
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+        chip="rp2040",
+        enable_debug_server=True,
+        gdb_core0_port=4433,
+        gdb_core1_port=4434,
+        log_dir=custom_log_dir,
+    )
+    runner.elf_path = elf_file
+    runner.host_debug_path = fake_dbg
+    runner.host_cli_path = fake_cli
+
+    runner.set_mode("TRACE")
+    runner.enable_live_debug_server(gdb_core0_port=4433, gdb_core1_port=4434, reset=False)
+    assert runner.is_connected is True, "enable_live_debug_server must keep RTT streaming connected in TRACE mode"
+    runner.log("\x1b[32m0.125000 INFO Booting Cat Detector\x1b[0m", level="INFO", channel="target")
+    runner.log_cli("battery status", is_input=True)
+    runner.log_cli("SOC: 98%")
+    runner.log_fs("ls /", is_input=True)
+    runner.log_fs("calibration.bin (64 B)")
+
+    dbg_args = json.loads(dbg_argv_log.read_text(encoding="utf-8"))
+    assert "--log-file" in dbg_args
+    assert dbg_args[dbg_args.index("--log-file") + 1] == str(runner.get_stream_log_path(HostLogStream.DEBUG))
+
+    server, daemon_port = _start_ephemeral_daemon(runner)
+    try:
+        capsys.readouterr()
+        rc = host_cli_mod.main(
+            [
+                "--host",
+                "127.0.0.1",
+                "logs",
+                "--stream",
+                "all",
+                "--lines",
+                "10",
+                "--host-port",
+                str(daemon_port),
+                "--json",
+            ]
+        )
+        assert rc == 0
+        payload = json.loads(capsys.readouterr().out)
+        tails = payload["tails"]
+        assert any("RTT streaming process connected" in ln for ln in tails["daemon"])
+        assert any('"event": "ready"' in ln or "Target GDB server ready" in ln for ln in tails["debug"])
+        assert any("0.125000 INFO Booting Cat Detector" in ln and "\x1b[" not in ln for ln in tails["defmt"])
+        assert any("> battery status" in ln for ln in tails["cli"])
+        assert any("SOC: 98%" in ln for ln in tails["cli"])
+        assert any("calibration.bin (64 B)" in ln for ln in tails["fs"])
+    finally:
+        server.shutdown()
+        server.server_close()
+        runner.stop()

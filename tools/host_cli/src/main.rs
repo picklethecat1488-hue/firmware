@@ -111,6 +111,10 @@ pub struct Cli {
     #[arg(long, value_name = "FILE")]
     pub trace: Option<String>,
 
+    /// Optional log file path receiving decoded RTT defmt and CLI output instead of stdout/stderr
+    #[arg(long, value_name = "LOG_FILE")]
+    pub log_file: Option<PathBuf>,
+
     /// Trace collection duration in seconds. Required when --trace is specified.
     #[arg(long, value_name = "SECONDS")]
     pub duration: Option<u64>,
@@ -192,8 +196,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // Initialize the progress spinner (hidden in structured JSON event mode)
-    let spinner = if cli.json_events {
+    // Initialize the progress spinner (hidden in structured JSON event or file-redirection mode)
+    let spinner = if cli.json_events || cli.log_file.is_some() {
         indicatif::ProgressBar::hidden()
     } else {
         let pb = indicatif::ProgressBar::new_spinner();
@@ -244,6 +248,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         trace: cli.trace.is_some(),
         duration: cli.duration,
         speed,
+        log_file: cli.log_file.as_deref(),
     })?;
 
     // Drop the tracing guard to ensure the trace file is written and flushed

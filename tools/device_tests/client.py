@@ -179,6 +179,7 @@ class AsyncHostSessionClient:
         runner: Any = None,
         prior_target_config: Optional[Dict[str, Any]] = None,
         prior_debug_server: Optional[Dict[str, Any]] = None,
+        prior_mode: Optional[str] = None,
         spawned_proc: Optional[subprocess.Popen[Any]] = None,
     ) -> None:
         """Initialize client state for either HTTP IPC or direct in-process DaemonRunner."""
@@ -191,6 +192,7 @@ class AsyncHostSessionClient:
         self._runner = runner
         self._prior_target_config = prior_target_config
         self._prior_debug_server = prior_debug_server
+        self._prior_mode = prior_mode
         self._spawned_proc = spawned_proc
         self._reconfigured_existing_daemon = False
         self._reconfigured_debug_server = False
@@ -259,6 +261,7 @@ class AsyncHostSessionClient:
                         )
                         if isinstance(targets_info, dict):
                             prior_cfg = dict(targets_info.get("current", {}))
+                    cur_mode = str(status.get("mode") or "CLI").upper()
                     client = cls(
                         repo_root=repo_root,
                         host=host,
@@ -267,7 +270,10 @@ class AsyncHostSessionClient:
                         manual_enabled=manual_enabled,
                         prior_target_config=prior_cfg,
                         prior_debug_server=prior_dbg,
+                        prior_mode=cur_mode,
                     )
+                    if cur_mode not in ("CLI", "TEST"):
+                        await client._request("/api/mode", {"mode": "TEST"}, timeout=5.0)
                     if enable_debug_server is not None:
                         cur_enabled = bool((prior_dbg or {}).get("enabled", False))
                         if enable_debug_server and not cur_enabled:
@@ -783,6 +789,12 @@ class AsyncHostSessionClient:
                     )
                 else:
                     await self.stop_debug_server()
+            except (OSError, RuntimeError):
+                pass
+
+        if self._prior_mode and self._prior_mode not in ("CLI", "TEST"):
+            try:
+                await self._request("/api/mode", {"mode": self._prior_mode}, timeout=5.0)
             except (OSError, RuntimeError):
                 pass
 

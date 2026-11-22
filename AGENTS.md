@@ -75,6 +75,7 @@ Host anvil
 
 ### 6. Fast Search & Tooling Hygiene
 * **Silver Searcher (`ag`) Mandate**: For file, text, and code symbol searches across the codebase, always use The Silver Searcher (`ag`) instead of recursive `grep -rn` or unbounded `find .`. `ag` automatically respects `.gitignore` rules, ignores `target/` and build artifacts, and executes synchronously without spawning long-running background tasks.
+* **Host Output & Probe Log File Redirection**: `tools/host.py` automatically separates host and target streams into dedicated log files under `target/logs/` (`host_daemon.log`, `host_debug.log`, `target_defmt.log`, `target_cli.log`, `host_fs.log`; inspectable via `python tools/host.py logs --stream <stream> --lines <N>`). When invoking standalone `host_debug serve`, `host_cli`, or `arm-none-eabi-gdb` diagnostic commands, always forward verbose probe/RTT/GDB output to a log file (`--log-file <path>`, e.g. `target/logs/host_debug.log` or `/tmp/rp2040.log`) instead of streaming raw multi-kilobyte probe output or target ASCII banners to stdout/stderr, and inspect exit codes plus bounded line slices (`StartLine`/`EndLine` or `python tools/host.py logs --lines 40`).
 
 ---
 

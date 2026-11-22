@@ -40,20 +40,33 @@ To provide deterministic, zero-allocation structured telemetry on embedded targe
   # Query current target firmware boot status across any binary without resetting:
   cargo host-cli boot-status --elf target/active_target.elf --json
   python tools/host.py boot-status --json
+
+  # Forward RTT defmt + CLI output to a dedicated log file instead of terminal stdout:
+  cargo host-cli --elf target/active_target.elf --log-file target/logs/rtt_session.log
   ```
 * **Target GDB Server, Symbol Resolver & USB Probe Status (`tools/host_debug` / `cargo host-debug`)**: Subcommand CLI (`serve`, `resolve`, `probe-status`) providing the dual-core `probe-rs` GDB RSP server (`:3333` Core 0, `:3334` Core 1), `:50000` non-halting RTT bridge, DWARF breakpoint resolution, and non-resetting USB probe availability inspection managed by `tools/host.py`:
   ```bash
-  cargo host-debug serve --elf target/thumbv6m-none-eabi/debug/cat_detector_shell --gdb-core0-port 3333 --gdb-core1-port 3334
+  cargo host-debug serve --elf target/thumbv6m-none-eabi/debug/cat_detector_shell --gdb-core0-port 3333 --gdb-core1-port 3334 --log-file target/logs/host_debug.log
   cargo host-debug resolve --elf target/thumbv6m-none-eabi/debug/cat_detector_shell Reset_Handler app/src/cat_detector_shell.rs:102
   cargo host-debug probe-status --json
   ```
-* **Host Daemon & Live Target Synchronization (`tools/host.py`)**:
+* **Host Daemon, Per-Stream Log Files & Live Target Synchronization (`tools/host.py`)**:
+  `tools/host.py` automatically forwards each host/target stream into its own ANSI-sanitized log file under `target/logs/` (override via `--log-dir <DIR>`) rather than multiplexing raw probe/RTT output onto stdout/stderr:
+  * `target/logs/host_daemon.log` — Daemon lifecycle, build/flash/sync progress, and `host_cli` stderr diagnostics.
+  * `target/logs/host_debug.log` — `host_debug` GDB RSP lifecycle events (`--log-file`) and `probe-rs` SWD diagnostics.
+  * `target/logs/target_defmt.log` — Decoded target `defmt` log frames.
+  * `target/logs/target_cli.log` — Interactive target `shell>` commands and responses.
+  * `target/logs/host_fs.log` — Flash filesystem (`host_fs`) command transcripts.
   ```bash
   # Launch workstation daemon:
   python tools/host.py --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
 
   # Trigger incremental compilation, probe-rs flashing, and RTT reconnection without daemon restart:
   python tools/host.py sync
+
+  # Inspect per-stream log file paths or tail specific streams cleanly:
+  python tools/host.py logs
+  python tools/host.py logs --stream debug --lines 30
 
   # Query sync status:
   curl -s http://127.0.0.1:8899/api/sync/status

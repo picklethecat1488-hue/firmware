@@ -109,6 +109,10 @@ mod host_main {
         #[arg(long, visible_alias = "json")]
         pub json_events: bool,
 
+        /// Forward server lifecycle and probe diagnostic output to `<LOG_FILE>` instead of stdout/stderr.
+        #[arg(long, value_name = "LOG_FILE")]
+        pub log_file: Option<PathBuf>,
+
         /// Terminate cleanly and release the USB probe session when stdin reaches EOF.
         #[arg(long)]
         pub exit_on_stdin_eof: bool,
@@ -208,6 +212,7 @@ mod host_main {
             halted_on_reset: args.halt_on_reset,
             exec_file_path: resolved_exec_file,
             json_events: args.json_events,
+            log_file: args.log_file,
         };
 
         run_debug_server_with_backend(backend, &config, shutdown)

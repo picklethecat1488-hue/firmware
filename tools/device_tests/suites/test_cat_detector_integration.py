@@ -156,7 +156,7 @@ async def test_system_activity_async_log_watcher(host: AsyncHostSessionClient) -
 )
 async def test_dual_core_gdb_reset_handler_to_loc(host: AsyncHostSessionClient) -> None:
     """Verify breaking at `Reset_Handler` -> Rust LOC on Core 0 and `Core1_Reset_Handler` -> Rust LOC on Core 1 via `host_debug`."""
-    core0_loc_spec = "app/src/cat_detector_shell.rs:100"
+    core0_loc_spec = "app/src/cat_detector_shell.rs:101"
     core1_loc_spec = "app/src/cat_detector.rs:181"
 
     prior_status = await host.get_status()
@@ -302,7 +302,7 @@ async def test_dual_core_gdb_reset_handler_to_loc(host: AsyncHostSessionClient) 
                 "-ex",
                 "maintenance flush register-cache",
                 "-ex",
-                "hbreak app/src/cat_detector_shell.rs:60",
+                "hbreak app/src/cat_detector_shell.rs:61",
                 "-ex",
                 "continue",
             ]

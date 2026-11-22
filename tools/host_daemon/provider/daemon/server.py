@@ -133,6 +133,11 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(runner.query_boot_status(refresh_probe=True))
             else:
                 self._send_json({"state": "unknown", "boot_ready": False})
+        elif path == "/api/logs/files":
+            if hasattr(runner, "get_log_files"):
+                self._send_json({"log_dir": str(getattr(runner, "log_dir", "")), "files": runner.get_log_files()})
+            else:
+                self._send_json({"log_dir": "", "files": {}})
         elif path == "/api/targets":
             from host_daemon.provider.daemon.config import discover_target_packages, load_last_session
 

@@ -7,8 +7,10 @@ use crate::rsp::{
     RspAction, RspCoreHandler, RspFrame, RspReplyCode, MAX_RSP_MEMORY_READ_BYTES,
 };
 use serde_json::json;
+use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -158,6 +160,8 @@ pub struct DebugServerConfig {
     pub exec_file_path: Option<String>,
     /// Emit structured line-delimited JSON lifecycle events to stdout.
     pub json_events: bool,
+    /// Optional file path receiving structured server lifecycle events instead of printing banners to stdout.
+    pub log_file: Option<PathBuf>,
 }
 
 impl Default for DebugServerConfig {
@@ -170,6 +174,7 @@ impl Default for DebugServerConfig {
             halted_on_reset: false,
             exec_file_path: None,
             json_events: false,
+            log_file: None,
         }
     }
 }
@@ -245,6 +250,7 @@ pub struct DebugServerHandle {
     pub rtt_bridge_port: Option<u16>,
     shutdown: Arc<AtomicBool>,
     threads: Vec<JoinHandle<()>>,
+    log_sink: Option<Arc<Mutex<File>>>,
 }
 
 impl DebugServerHandle {
@@ -254,33 +260,63 @@ impl DebugServerHandle {
         for handle in self.threads.drain(..) {
             let _ = handle.join();
         }
+        emit_event(&DebugServerEvent::Stopped, false, self.log_sink.as_ref());
     }
 }
 
-fn emit_event(event: &DebugServerEvent, json_events: bool) {
+fn open_server_log_file(path: &Path) -> Result<Arc<Mutex<File>>, String> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "Failed to create log directory '{}': {}",
+                    parent.display(),
+                    e
+                )
+            })?;
+        }
+    }
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| format!("Failed to open debug log file '{}': {}", path.display(), e))?;
+    Ok(Arc::new(Mutex::new(file)))
+}
+
+fn emit_event(event: &DebugServerEvent, json_events: bool, log_sink: Option<&Arc<Mutex<File>>>) {
+    let json_line = event.to_json_line();
+    if let Some(sink) = log_sink {
+        if let Ok(mut guard) = sink.lock() {
+            let _ = writeln!(guard, "{}", json_line);
+            let _ = guard.flush();
+        }
+    }
     if json_events {
         let mut out = std::io::stdout().lock();
-        let _ = writeln!(out, "{}", event.to_json_line());
+        let _ = writeln!(out, "{}", json_line);
         let _ = out.flush();
-    } else if let DebugServerEvent::Ready {
-        chip,
-        cores,
-        gdb_core0_port,
-        gdb_core1_port,
-        rtt_bridge_port,
-        halted_on_reset,
-    } = event
-    {
-        let core1_desc = gdb_core1_port
-            .map(|p| format!(", Core 1 GDB :{}", p))
-            .unwrap_or_default();
-        let rtt_desc = rtt_bridge_port
-            .map(|p| format!(", RTT bridge :{}", p))
-            .unwrap_or_default();
-        println!(
-            "host_debug ready on '{}' ({} cores): Core 0 GDB :{}{}{} (halted_on_reset={})",
-            chip, cores, gdb_core0_port, core1_desc, rtt_desc, halted_on_reset
-        );
+    } else if log_sink.is_none() {
+        if let DebugServerEvent::Ready {
+            chip,
+            cores,
+            gdb_core0_port,
+            gdb_core1_port,
+            rtt_bridge_port,
+            halted_on_reset,
+        } = event
+        {
+            let core1_desc = gdb_core1_port
+                .map(|p| format!(", Core 1 GDB :{}", p))
+                .unwrap_or_default();
+            let rtt_desc = rtt_bridge_port
+                .map(|p| format!(", RTT bridge :{}", p))
+                .unwrap_or_default();
+            println!(
+                "host_debug ready on '{}' ({} cores): Core 0 GDB :{}{}{} (halted_on_reset={})",
+                chip, cores, gdb_core0_port, core1_desc, rtt_desc, halted_on_reset
+            );
+        }
     }
 }
 
@@ -341,6 +377,10 @@ pub fn start_debug_server_with_backend<B: DebugBackend + 'static>(
     let gdb_priority_until_ms = Arc::new(AtomicU64::new(0));
     let json_events = config.json_events;
     let exec_file_path = config.exec_file_path.clone();
+    let log_sink = match config.log_file.as_deref() {
+        Some(path) => Some(open_server_log_file(path)?),
+        None => None,
+    };
     let mut threads = Vec::new();
 
     {
@@ -348,6 +388,7 @@ pub fn start_debug_server_with_backend<B: DebugBackend + 'static>(
         let shutdown_c0 = Arc::clone(&shutdown);
         let exec_c0 = exec_file_path.clone();
         let prio_c0 = Arc::clone(&gdb_priority_until_ms);
+        let sink_c0 = log_sink.clone();
         threads.push(thread::spawn(move || {
             run_core_gdb_listener(
                 core0_listener,
@@ -359,6 +400,7 @@ pub fn start_debug_server_with_backend<B: DebugBackend + 'static>(
                 clock_origin,
                 prio_c0,
                 json_events,
+                sink_c0,
             );
         }));
     }
@@ -368,6 +410,7 @@ pub fn start_debug_server_with_backend<B: DebugBackend + 'static>(
         let shutdown_c1 = Arc::clone(&shutdown);
         let exec_c1 = exec_file_path;
         let prio_c1 = Arc::clone(&gdb_priority_until_ms);
+        let sink_c1 = log_sink.clone();
         threads.push(thread::spawn(move || {
             run_core_gdb_listener(
                 listener,
@@ -379,6 +422,7 @@ pub fn start_debug_server_with_backend<B: DebugBackend + 'static>(
                 clock_origin,
                 prio_c1,
                 json_events,
+                sink_c1,
             );
         }));
     }
@@ -402,6 +446,7 @@ pub fn start_debug_server_with_backend<B: DebugBackend + 'static>(
             halted_on_reset: config.halted_on_reset,
         },
         json_events,
+        log_sink.as_ref(),
     );
 
     Ok(DebugServerHandle {
@@ -410,6 +455,7 @@ pub fn start_debug_server_with_backend<B: DebugBackend + 'static>(
         rtt_bridge_port: actual_rtt_port,
         shutdown,
         threads,
+        log_sink,
     })
 }
 
@@ -425,7 +471,9 @@ pub fn run_debug_server_with_backend<B: DebugBackend + 'static>(
         thread::sleep(Duration::from_millis(ACCEPT_POLL_INTERVAL_MS));
     }
     handle.stop();
-    emit_event(&DebugServerEvent::Stopped, json_events);
+    if json_events {
+        emit_event(&DebugServerEvent::Stopped, true, None);
+    }
     Ok(())
 }
 
@@ -440,6 +488,7 @@ fn run_core_gdb_listener<B: DebugBackend + 'static>(
     clock_origin: Instant,
     gdb_priority_until_ms: Arc<AtomicU64>,
     json_events: bool,
+    log_sink: Option<Arc<Mutex<File>>>,
 ) {
     while !shutdown.load(Ordering::SeqCst) {
         match listener.accept() {
@@ -452,6 +501,7 @@ fn run_core_gdb_listener<B: DebugBackend + 'static>(
                         connected: true,
                     },
                     json_events,
+                    log_sink.as_ref(),
                 );
                 let detached_cleanly = serve_core_gdb_client(
                     stream,
@@ -476,6 +526,7 @@ fn run_core_gdb_listener<B: DebugBackend + 'static>(
                         connected: false,
                     },
                     json_events,
+                    log_sink.as_ref(),
                 );
             }
             Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {

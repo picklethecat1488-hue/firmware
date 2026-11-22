@@ -61,6 +61,7 @@ CLI_COMPLETION_SETTLE_SEC: float = 0.25
 ANSI_CLEAR_LINE_SEQ: str = "\x1b[2K"
 SHELL_PROMPT_PREFIX: str = "shell>"
 BOOT_STATUS_QUERY_TIMEOUT_SEC: float = 5.0
+RTT_STREAMING_MODES: tuple[str, ...] = ("CLI", "TEST", "TRACE")
 
 
 class BootState(str, Enum):
@@ -71,6 +72,26 @@ class BootState(str, Enum):
     READY = "ready"
     FAULTED = "faulted"
     UNKNOWN = "unknown"
+
+
+class HostLogStream(str, Enum):
+    """Dedicated per-stream log file basenames written under `DaemonRunner.log_dir` (`target/logs/`)."""
+
+    DAEMON = "host_daemon"
+    DEBUG = "host_debug"
+    DEFMT = "target_defmt"
+    CLI = "target_cli"
+    FS = "host_fs"
+
+
+def resolve_default_host_log_dir(repo_root: Path) -> Path:
+    """Resolve the canonical `target/logs` directory for per-stream host log files."""
+    if (repo_root / "Cargo.toml").is_file():
+        try:
+            return get_cargo_target_directory(repo_root) / "logs"
+        except (OSError, RuntimeError, ValueError):
+            pass
+    return repo_root / "target" / "logs"
 
 
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
@@ -110,9 +131,11 @@ class DaemonRunner:
         rtt_bridge_port: int = DEFAULT_RTT_BRIDGE_PORT,
         probe_selector: Optional[str] = None,
         trace_mode: Optional[str] = None,
+        log_dir: Optional[Path] = None,
     ) -> None:
         """Initialize DaemonRunner with workspace configuration and build parameters."""
         self.repo_root = repo_root
+        self.log_dir: Path = Path(log_dir) if log_dir is not None else resolve_default_host_log_dir(repo_root)
 
         resolved_pkg = package
         resolved_bin = bin_name
@@ -233,11 +256,39 @@ class DaemonRunner:
         }
         self._sync_thread: Optional[threading.Thread] = None
 
+    def get_stream_log_path(self, stream: HostLogStream) -> Path:
+        """Return the log file path for a specific `HostLogStream` under `self.log_dir`."""
+        return self.log_dir / f"{stream.value}.log"
+
+    def get_log_files(self) -> Dict[str, str]:
+        """Return a mapping of logical stream names (`daemon`, `debug`, `defmt`, `cli`, `fs`) to log file paths."""
+        return {
+            "daemon": str(self.get_stream_log_path(HostLogStream.DAEMON)),
+            "debug": str(self.get_stream_log_path(HostLogStream.DEBUG)),
+            "defmt": str(self.get_stream_log_path(HostLogStream.DEFMT)),
+            "cli": str(self.get_stream_log_path(HostLogStream.CLI)),
+            "fs": str(self.get_stream_log_path(HostLogStream.FS)),
+        }
+
+    def _append_stream_log_line(self, stream: HostLogStream, line: str) -> None:
+        """Append a single ANSI-sanitized line to the dedicated per-stream log file on disk."""
+        cleaned = ANSI_ESCAPE_RE.sub("", line).rstrip("\r\n")
+        if not cleaned:
+            return
+        log_path = self.get_stream_log_path(stream)
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(cleaned + "\n")
+        except OSError:
+            pass
+
     def log_sync_console(self, line: str) -> None:
         """Append a line to the sync console log buffer and update sync_status."""
         with self._lock:
             self.sync_logs.append(line)
             self.sync_status["console"] = list(self.sync_logs)
+        self._append_stream_log_line(HostLogStream.DAEMON, f"[SYNC] {line}")
 
     def cancel_sync(self) -> Dict[str, Any]:
         """Abort running synchronization process and mark status cancelled."""
@@ -598,6 +649,16 @@ class DaemonRunner:
             }
             self.logs.append(entry)
 
+        if channel == "target":
+            self._append_stream_log_line(HostLogStream.DEFMT, f"[{entry['timestamp']}] {message}")
+        elif channel == "debug":
+            self._append_stream_log_line(HostLogStream.DEBUG, f"[{entry['timestamp']}] [{level}] {message}")
+        else:
+            self._append_stream_log_line(
+                HostLogStream.DAEMON,
+                f"[{entry['timestamp']}] [{level}] [{channel}] {message}",
+            )
+
     def log_cli(self, message: str, is_input: bool = False) -> None:
         """Append a line to the CLI console output buffer and stream device-timestamped lines to active test runs."""
         device_ts = self.get_device_timestamp_str()
@@ -611,6 +672,9 @@ class DaemonRunner:
                 "text": message,
             }
             self.cli_outputs.append(entry)
+
+        prefix = "> " if is_input else ""
+        self._append_stream_log_line(HostLogStream.CLI, f"[{device_ts}] {prefix}{message}")
 
         stripped_msg = message.replace(ANSI_CLEAR_LINE_SEQ, "").strip()
         if stripped_msg and (is_input or not stripped_msg.startswith(RTT_SESSION_BANNER_PREFIXES)):
@@ -629,6 +693,9 @@ class DaemonRunner:
                 "text": message,
             }
             self.fs_outputs.append(entry)
+
+        prefix = "> " if is_input else ""
+        self._append_stream_log_line(HostLogStream.FS, f"[{device_ts}] {prefix}{message}")
 
         if message.strip():
             self.test_manager.record_device_cli_line(message, is_input=is_input, device_ts=device_ts)
@@ -1132,7 +1199,7 @@ class DaemonRunner:
                         self._cached_metadata_elf = target_elf
                 return res
             finally:
-                if rtt_was_running and self.active_mode in ("CLI", "TEST", "TRACE"):
+                if rtt_was_running and self.active_mode in RTT_STREAMING_MODES:
                     time.sleep(PROBE_RELEASE_SETTLE_SEC)
                     self.start_rtt_streaming(reset_on_attach=False)
                 self._record_lifecycle("idle", "Target metadata probe complete", mark_recent=False)
@@ -1246,6 +1313,7 @@ class DaemonRunner:
 
         self.stop_debug_server()
         effective_halt = self.halt_on_reset if halt_on_reset is None else bool(halt_on_reset)
+        debug_log_path = self.get_stream_log_path(HostLogStream.DEBUG)
         debug_speed_khz = max(int(self.speed), MIN_DEBUG_SERVER_SWD_SPEED_KHZ)
         cmd = [
             *self._resolve_host_debug_cmd_prefix(),
@@ -1261,6 +1329,8 @@ class DaemonRunner:
             "--rtt-bridge-port",
             str(self.rtt_bridge_port),
             "--json-events",
+            "--log-file",
+            str(debug_log_path),
             "--exit-on-stdin-eof",
         ]
         if self.chip:
@@ -1280,13 +1350,16 @@ class DaemonRunner:
         startup_error: List[str] = []
 
         def _debug_worker() -> None:
+            debug_err_fh = None
             try:
+                debug_log_path.parent.mkdir(parents=True, exist_ok=True)
+                debug_err_fh = debug_log_path.open("a", encoding="utf-8")
                 self.debug_process = subprocess.Popen(
                     cmd,
                     cwd=str(self.repo_root),
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
+                    stderr=debug_err_fh,
                     text=True,
                     bufsize=1,
                     env=run_env,
@@ -1338,6 +1411,11 @@ class DaemonRunner:
                 startup_error.append(str(exc))
                 self.log(f"host_debug error: {exc}", level="ERROR", channel="debug")
             finally:
+                if debug_err_fh is not None:
+                    try:
+                        debug_err_fh.close()
+                    except OSError:
+                        pass
                 with self._lock:
                     self.debug_server_active = False
                 ready_event.set()
@@ -1346,6 +1424,16 @@ class DaemonRunner:
         self._debug_thread.start()
         ready_event.wait(timeout=DEBUG_SERVER_STARTUP_TIMEOUT_SEC)
         if not self.debug_server_active:
+            if not startup_error and debug_log_path.is_file():
+                try:
+                    tail_lines = [
+                        ln.strip()
+                        for ln in debug_log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+                        if ln.strip() and not ln.lstrip().startswith("{")
+                    ]
+                    startup_error.extend(tail_lines[-3:])
+                except OSError:
+                    pass
             detail = "; ".join(startup_error[-3:]) if startup_error else "timed out waiting for host_debug ready event"
             self.stop_debug_server()
             raise RuntimeError(f"Failed to start target debug server: {detail}")
@@ -1421,7 +1509,7 @@ class DaemonRunner:
                         self.host_cli_path = cand
                 except (OSError, RuntimeError, ValueError):
                     pass
-            if self.active_mode in ("CLI", "TEST"):
+            if self.active_mode in RTT_STREAMING_MODES:
                 self.start_rtt_streaming(reset_on_attach=False)
             status = self.get_debug_status()
             if resolve:
@@ -1447,7 +1535,7 @@ class DaemonRunner:
             self.stop_debug_server()
             if was_active:
                 time.sleep(PROBE_RELEASE_SETTLE_SEC)
-            if self.active_mode in ("CLI", "TEST") and self.elf_path and self.elf_path.exists():
+            if self.active_mode in RTT_STREAMING_MODES and self.elf_path and self.elf_path.exists():
                 self.start_rtt_streaming(reset_on_attach=False)
             return self.get_debug_status()
 
@@ -1708,12 +1796,16 @@ class DaemonRunner:
 
         def _stream_worker() -> None:
             nonlocal session_ready
+            rtt_err_fh = None
             try:
+                daemon_log_path = self.get_stream_log_path(HostLogStream.DAEMON)
+                daemon_log_path.parent.mkdir(parents=True, exist_ok=True)
+                rtt_err_fh = daemon_log_path.open("a", encoding="utf-8")
                 self.rtt_process = subprocess.Popen(
                     cmd,
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
+                    stderr=rtt_err_fh,
                     text=True,
                     bufsize=1,
                 )
@@ -1765,6 +1857,11 @@ class DaemonRunner:
                 boot_ready_event.set()
                 self.log(f"RTT stream error: {e}", level="WARN")
             finally:
+                if rtt_err_fh is not None:
+                    try:
+                        rtt_err_fh.close()
+                    except OSError:
+                        pass
                 started_event.set()
                 boot_ready_event.set()
                 self.is_connected = False
@@ -2013,7 +2110,7 @@ class DaemonRunner:
                 out = out.strip() or f"Completed {subcmd} (exit code {ret})"
                 return out
             finally:
-                if rtt_was_running and self.active_mode in ("CLI", "TEST", "TRACE"):
+                if rtt_was_running and self.active_mode in RTT_STREAMING_MODES:
                     time.sleep(PROBE_RELEASE_SETTLE_SEC)
                     self.start_rtt_streaming(reset_on_attach=False)
                 self._record_lifecycle("idle", f"Completed host_fs ({subcmd})", mark_recent=False)
@@ -2116,6 +2213,7 @@ class DaemonRunner:
             "manual_prompt": self.manual_prompt.to_dict(),
             "boot_status": self.query_boot_status(refresh_probe=False),
             "debug_server": self.get_debug_status(),
+            "log_files": self.get_log_files(),
         }
 
     def stop(self) -> None:

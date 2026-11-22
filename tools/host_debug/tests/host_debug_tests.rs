@@ -832,6 +832,7 @@ fn test_exhaustive_rsp_handler_packets_fpu_registers_binary_writes_and_live_gdb_
             halted_on_reset: true,
             exec_file_path: None,
             json_events: false,
+            log_file: None,
         };
         let srv = start_debug_server_with_backend(gdb_backend, &cfg, shutdown)
             .expect("start gdb integration server");
@@ -911,6 +912,7 @@ fn test_dual_core_tcp_reset_handler_to_loc_core1_psm_rearm_and_rtt_bridge() {
         halted_on_reset: true,
         exec_file_path: None,
         json_events: false,
+        log_file: None,
     };
 
     let handle =
@@ -1007,6 +1009,7 @@ fn test_worm_glowing_burrower_8_ack_retransmit_running_detach_and_reset_rearm() 
         halted_on_reset: true,
         exec_file_path: None,
         json_events: false,
+        log_file: None,
     };
 
     let handle =
@@ -1153,6 +1156,7 @@ fn test_worm_bristly_roundworm_431_gdb_zero_warnings_on_exec_file_and_reg_cache_
         halted_on_reset: true,
         exec_file_path: Some(tmp_elf.to_string_lossy().to_string()),
         json_events: false,
+        log_file: None,
     };
     let srv = start_debug_server_with_backend(gdb_backend, &cfg, shutdown)
         .expect("start WORM-431 gdb server");
@@ -1404,6 +1408,7 @@ fn test_worm_lithe_enchytraeid_678_single_step_across_wfe_wfi_and_abrupt_client_
         halted_on_reset: true,
         exec_file_path: None,
         json_events: false,
+        log_file: None,
     };
     let handle =
         start_debug_server_with_backend(backend, &config, shutdown).expect("start debug server");
@@ -1507,4 +1512,50 @@ fn test_frontend_probe_attach_retry_recovers_transient_errors_and_surfaces_exhau
         exhausted.as_ref().err().map(String::as_str),
         Some("probe claim failed #3")
     );
+}
+
+#[test]
+fn test_debug_server_log_file_forwards_ready_client_and_stopped_events() {
+    let (backend, _shared) = MockDualCoreBackend::new();
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let log_path = std::env::temp_dir().join(format!(
+        "host_debug_log_test_{}_{}.log",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_file(&log_path);
+
+    let config = DebugServerConfig {
+        bind_host: "127.0.0.1".to_string(),
+        gdb_core0_port: 0,
+        gdb_core1_port: None,
+        rtt_bridge_port: None,
+        halted_on_reset: true,
+        exec_file_path: None,
+        json_events: false,
+        log_file: Some(log_path.clone()),
+    };
+
+    let handle =
+        start_debug_server_with_backend(backend, &config, shutdown).expect("start debug server");
+    let mut gdb = TestRspClient::connect(handle.gdb_core0_port);
+    assert_eq!(gdb.send_cmd("?"), "S05");
+    assert_eq!(gdb.send_cmd("D"), "OK");
+    drop(gdb);
+    std::thread::sleep(Duration::from_millis(25));
+    handle.stop();
+
+    let logged = std::fs::read_to_string(&log_path).expect("read host_debug log file");
+    let _ = std::fs::remove_file(&log_path);
+    assert!(logged.contains("\"event\":\"ready\""), "{}", logged);
+    assert!(logged.contains("\"event\":\"gdb_connected\""), "{}", logged);
+    assert!(
+        logged.contains("\"event\":\"gdb_disconnected\""),
+        "{}",
+        logged
+    );
+    assert!(logged.contains("\"event\":\"stopped\""), "{}", logged);
 }

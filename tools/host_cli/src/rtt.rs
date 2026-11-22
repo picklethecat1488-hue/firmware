@@ -346,6 +346,8 @@ pub struct RttOptions<'a> {
     pub duration: Option<u64>,
     /// Probe protocol speed in kHz
     pub speed: u32,
+    /// Optional log file path receiving decoded RTT defmt and CLI streams instead of terminal stdout
+    pub log_file: Option<&'a std::path::Path>,
 }
 
 /// Establish and run an RTT streaming session against the target device.
@@ -377,7 +379,23 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         trace,
         duration,
         speed,
+        log_file,
     } = opts;
+    let mut log_file_writer: Option<std::io::BufWriter<std::fs::File>> =
+        if let Some(path) = log_file {
+            if let Some(parent) = path.parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent)?;
+                }
+            }
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)?;
+            Some(std::io::BufWriter::new(file))
+        } else {
+            None
+        };
     // Locate Symbol Address first
     let rtt_symbol_addr = match tool_common::find_symbol_address(elf_path, "_SEGGER_RTT") {
         Ok(Some(addr)) => {
@@ -735,7 +753,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
 
-        if !json_events {
+        if !json_events && log_file_writer.is_none() {
             println!("\nRTT Session Started (Press Ctrl+C to exit):");
             if cli_up_channel.is_some() && cli_down_channel.is_some() {
                 println!("Interactive RTT console active. Type commands and press Enter.");
@@ -889,6 +907,13 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                                     format!("{}{}", module_context, line_str);
                                             }
                                         }
+                                        if let Some(ref mut lw) = log_file_writer {
+                                            use std::io::Write as _;
+                                            if !line_str.contains("Device Telemetry: ") {
+                                                let _ = writeln!(lw, "[DEFMT] {}", plain_line);
+                                                let _ = lw.flush();
+                                            }
+                                        }
                                         if json_events {
                                             if !line_str.contains("Device Telemetry: ") {
                                                 emit_json(&host_cli::HostCliEvent::Defmt {
@@ -910,7 +935,9 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                             {
                                                 pending_completions.push(comp_ev);
                                             }
-                                        } else if !line_str.contains("Device Telemetry: ") {
+                                        } else if log_file_writer.is_none()
+                                            && !line_str.contains("Device Telemetry: ")
+                                        {
                                             if !stdout_at_bol {
                                                 println!();
                                             }
@@ -944,11 +971,15 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                             did_work = true;
                             let write_buf = host_cli::cancel_echo(&rtt_buf[..n], &mut sent_buffer);
                             if !write_buf.is_empty() {
+                                if let Some(ref mut lw) = log_file_writer {
+                                    let _ = lw.write_all(&write_buf);
+                                    let _ = lw.flush();
+                                }
                                 if json_events {
                                     for ev in cli_chunk_parser.push_bytes(&write_buf) {
                                         emit_json(&ev);
                                     }
-                                } else {
+                                } else if log_file_writer.is_none() {
                                     if let Some(&last) = write_buf.last() {
                                         stdout_at_bol = last == b'\n';
                                     }
