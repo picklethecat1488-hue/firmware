@@ -80,3 +80,7 @@ The system LED is yellow after hours of charging. The `battery status` command r
 | :--- | :--- | :--- |
 | `log` | [target_system_logs_WORM-VELVETY-HELMINTH-401.log](attachments/WORM-VELVETY-HELMINTH-401/target_system_logs_WORM-VELVETY-HELMINTH-401.log) | Target system and defmt logs from host daemon session |
 | `reference` | [target_telemetry_WORM-VELVETY-HELMINTH-401.json](attachments/WORM-VELVETY-HELMINTH-401/target_telemetry_WORM-VELVETY-HELMINTH-401.json) | Target telemetry export retrieved via host_fs |
+
+#### Review Tasks & Functional Checklist
+
+- [ ] Inspect live MAX17048 HIBRT (0x0a == 0x0000), MODE (0x06 == 0x0000), and rounded battery status via i2c peek16 + battery status | `python tools/host.py --package cat_detector --bin cat_detector_shell --no-browser && python tools/host.py cli 'i2c peek16 0x36 0x0a' && python tools/host.py cli 'i2c peek16 0x36 0x06' && python tools/host.py cli 'battery status'` <!-- id:1d15fc35 -->
