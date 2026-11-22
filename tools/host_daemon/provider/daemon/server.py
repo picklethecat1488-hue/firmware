@@ -16,9 +16,10 @@ if str(dashboard_dir) not in sys.path:
     sys.path.insert(0, str(dashboard_dir))
 
 from host_daemon.model.trace_mode import (
+    PERFETTO_BRIDGE_ROUTE,
     TRACE_MODE_DESCRIPTORS,
     TraceMode,
-    build_perfetto_deep_link,
+    build_perfetto_bridge_url,
     get_external_trace_viewer,
     normalize_trace_mode,
 )
@@ -206,6 +207,30 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
             except Exception as e:
                 self.send_error(500, f"Template rendering error: {e}")
+        elif path == PERFETTO_BRIDGE_ROUTE:
+            try:
+                store = _get_trace_store(runner)
+                active_tmode = _get_runner_trace_mode(runner)
+                bin_stem = str(getattr(runner, "bin_name", None) or "firmware")
+                ts_ms = int(time.time() * 1000)
+                template = self.server.jinja_env.get_template("perfetto_bridge.html.j2")
+                html = template.render(
+                    trace_title=f"{bin_stem} ({active_tmode.value})",
+                    trace_filename=f"{bin_stem}_{active_tmode.value.lower()}.perfetto.json",
+                    trace_url=f"/api/trace/perfetto.json?ts={ts_ms}",
+                    event_count=len(store.snapshot_all()),
+                )
+                body = html.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as e:
+                self.send_error(500, f"Perfetto bridge template error: {e}")
         elif path == "/api/status":
             self._send_json(runner.get_status())
         elif path == "/api/boot_status":
@@ -723,11 +748,11 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     )
                 else:
                     store = _get_trace_store(runner)
-                    trace_url, perfetto_url = build_perfetto_deep_link(server_host)
-                    opened = open_url_in_system_browser(perfetto_url)
+                    trace_url, bridge_url = build_perfetto_bridge_url(server_host, server_port)
+                    opened = open_url_in_system_browser(bridge_url)
                     res = {
                         "success": opened,
-                        "url": perfetto_url,
+                        "url": bridge_url,
                         "trace_url": trace_url,
                         "event_count": len(store.snapshot_all()),
                     }

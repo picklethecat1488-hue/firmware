@@ -3,12 +3,12 @@
 from enum import Enum
 import time
 from typing import Any, Dict, List, Optional, Tuple
-import urllib.parse
 
 PERFETTO_UI_ORIGIN: str = "https://ui.perfetto.dev"
 DEFAULT_LOCAL_DAEMON_HOST: str = "127.0.0.1"
-PERFETTO_CSP_ALLOWED_PORT: int = 9001
-DEFAULT_PERFETTO_TRACE_PATH: str = "/trace.perfetto.json"
+DEFAULT_DAEMON_HTTP_PORT: int = 8899
+PERFETTO_BRIDGE_ROUTE: str = "/perfetto"
+PERFETTO_TRACE_API_PATH: str = "/api/trace/perfetto.json"
 
 
 class TraceMode(str, Enum):
@@ -109,16 +109,14 @@ def get_external_trace_viewer(mode: TraceMode) -> ExternalTraceViewer:
     return TRACE_MODE_EXTERNAL_VIEWER.get(mode, ExternalTraceViewer.NONE)
 
 
-def build_perfetto_deep_link(
+def build_perfetto_bridge_url(
     daemon_host: str = DEFAULT_LOCAL_DAEMON_HOST,
-    daemon_port: int = PERFETTO_CSP_ALLOWED_PORT,
+    daemon_port: int = DEFAULT_DAEMON_HTTP_PORT,
     cache_bust_ms: Optional[int] = None,
-    trace_path: str = DEFAULT_PERFETTO_TRACE_PATH,
 ) -> Tuple[str, str]:
-    """Build `(trace_url, perfetto_url)` pointing `https://ui.perfetto.dev` at the CSP-allowed `:9001` trace bridge."""
+    """Build `(trace_url, bridge_url)` for the same-origin `/perfetto` `<iframe>` + `postMessage` bridge."""
     clean_host = DEFAULT_LOCAL_DAEMON_HOST if daemon_host in ("", "0.0.0.0", "::") else str(daemon_host)
     ts_ms = int(time.time() * 1000) if cache_bust_ms is None else int(cache_bust_ms)
-    norm_path = trace_path if str(trace_path).startswith("/") else f"/{trace_path}"
-    trace_url = f"http://{clean_host}:{int(daemon_port)}{norm_path}?ts={ts_ms}"
-    perfetto_url = f"{PERFETTO_UI_ORIGIN}/#!/?url={urllib.parse.quote(trace_url, safe='')}"
-    return trace_url, perfetto_url
+    trace_url = f"{PERFETTO_TRACE_API_PATH}?ts={ts_ms}"
+    bridge_url = f"http://{clean_host}:{int(daemon_port)}{PERFETTO_BRIDGE_ROUTE}?ts={ts_ms}"
+    return trace_url, bridge_url

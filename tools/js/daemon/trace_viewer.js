@@ -963,7 +963,6 @@ export class TraceViewerController {
         return backendOpened;
       }
 
-      const fallbackUrl = "http://127.0.0.1:9001/trace.perfetto.json";
       let opened = await this.ctx.openPerfettoTrace({
         loadBuffer: async () => {
           const response = await this.ctx.fetchRaw("/api/trace/perfetto.json");
@@ -975,7 +974,6 @@ export class TraceViewerController {
         },
         title: `${this.binName} (${this.traceMode})`,
         fileName: `${this.binName}_${this.traceMode.toLowerCase()}.perfetto.json`,
-        fallbackUrl,
       });
       if (!opened) {
         const res = await this.ctx.postJson("/api/trace/open_perfetto", {});

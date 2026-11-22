@@ -160,13 +160,24 @@ describe("Shared Core Modules (Sanitize, ANSI, Fuzzy, UI Scale, Progress, DOM)",
       buffer: '{"traceEvents":[]}',
       title: "Cat Detector Perf",
       fileName: "cat_detector.perfetto.json",
-      fallbackUrl: "http://127.0.0.1:8899/api/trace/perfetto.json",
     });
     assert.equal(openedTrace, true);
     assert.equal(ctx.openedPerfettoTraces.length, 1);
     assert.equal(ctx.openedPerfettoTraces[0].title, "Cat Detector Perf");
     assert.equal(ctx.openedPerfettoTraces[0].fileName, "cat_detector.perfetto.json");
     assert.ok(ctx.openedPerfettoTraces[0].byteLength > 0);
+
+    const mockIframe = createEl(ctx, "iframe", { id: "perfettoEmbedFrame" });
+    const streamedMockIframe = await ctx.streamPerfettoToIframe(mockIframe, {
+      loadBuffer: async () => '{"traceEvents":[{"name":"iframe_span"}]}',
+      title: "Embedded Perfetto Trace",
+      fileName: "embedded.perfetto.json",
+    });
+    assert.equal(streamedMockIframe, true);
+    assert.equal(ctx.streamedPerfettoFrames.length, 1);
+    assert.equal(ctx.streamedPerfettoFrames[0].title, "Embedded Perfetto Trace");
+    assert.equal(ctx.streamedPerfettoFrames[0].fileName, "embedded.perfetto.json");
+    assert.ok(ctx.streamedPerfettoFrames[0].byteLength > 0);
 
     // WORM-SEGMENTED-COCOON-284: Browser runtime returns false when popup is blocked (null)
     // and opens ui.perfetto.dev synchronously BEFORE awaiting loadBuffer().
@@ -175,7 +186,6 @@ describe("Shared Core Modules (Sanitize, ANSI, Fuzzy, UI Scale, Progress, DOM)",
     });
     const blockedRes = await blockedBrowserCtx.openPerfettoTrace({
       buffer: '{"traceEvents":[]}',
-      fallbackUrl: "http://127.0.0.1:8899/api/trace/perfetto.json",
     });
     assert.equal(blockedRes, false);
 
@@ -223,6 +233,55 @@ describe("Shared Core Modules (Sanitize, ANSI, Fuzzy, UI Scale, Progress, DOM)",
           entry.msg &&
           entry.msg.perfetto &&
           entry.msg.perfetto.title === "Live Perf Trace" &&
+          entry.msg.perfetto.buffer.byteLength > 0,
+      ),
+    );
+
+    // WORM-SEGMENTED-COCOON-284 (Safari mixed-content fix): streamPerfettoToIframe performs
+    // PING -> PONG handshake with iframeEl.contentWindow and posts { perfetto: { buffer } }.
+    let iframeMsgHandler = null;
+    const iframeMessages = [];
+    const iframeBrowserCtx = createBrowserRuntimeContext({
+      addEventListener: (evtType, fn) => {
+        if (evtType === "message") {
+          iframeMsgHandler = fn;
+        }
+      },
+      removeEventListener: () => {},
+      setInterval: () => 11,
+      clearInterval: () => {},
+      setTimeout: () => 12,
+      clearTimeout: () => {},
+    });
+    const fakeIframeWin = {
+      closed: false,
+      postMessage(msg, origin) {
+        iframeMessages.push({ msg, origin });
+        if (msg === "PING" && iframeMsgHandler) {
+          iframeMsgHandler({
+            origin: "https://ui.perfetto.dev",
+            source: fakeIframeWin,
+            data: "PONG",
+          });
+        }
+      },
+    };
+    const streamedToFrame = await iframeBrowserCtx.streamPerfettoToIframe(
+      { contentWindow: fakeIframeWin },
+      {
+        loadBuffer: async () => '{"traceEvents":[{"name":"safari_bridge_span"}]}',
+        title: "Safari Bridge Trace",
+        fileName: "safari_bridge.perfetto.json",
+      },
+    );
+    assert.equal(streamedToFrame, true);
+    assert.ok(
+      iframeMessages.some(
+        (entry) =>
+          entry.origin === "https://ui.perfetto.dev" &&
+          entry.msg &&
+          entry.msg.perfetto &&
+          entry.msg.perfetto.title === "Safari Bridge Trace" &&
           entry.msg.perfetto.buffer.byteLength > 0,
       ),
     );
