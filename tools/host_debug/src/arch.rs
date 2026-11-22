@@ -135,64 +135,42 @@ struct MemoryMapXmlTemplate<'a> {
     regions: &'a [MemoryRegionDescriptor],
 }
 
-fn extract_xml_attr<'a>(tag: &'a str, attr_name: &str) -> Option<&'a str> {
-    let pattern = format!("{}=\"", attr_name);
-    let mut search_rest = tag;
-    while let Some(pos) = search_rest.find(&pattern) {
-        let valid_boundary = pos == 0
-            || search_rest.as_bytes()[pos - 1].is_ascii_whitespace()
-            || search_rest.as_bytes()[pos - 1] == b'<';
-        let after_quote = &search_rest[pos + pattern.len()..];
-        if valid_boundary {
-            let end_quote = after_quote.find('"')?;
-            return Some(&after_quote[..end_quote]);
-        }
-        search_rest = after_quote;
-    }
-    None
-}
-
-/// Parse expedited `T05` stop-reply GDB `regnum`s directly out of a rendered GDB `target.xml` document.
+/// Parse expedited `T05` stop-reply GDB `regnum`s from a rendered GDB `target.xml` DOM tree.
 ///
-/// Selects all `<reg ...>` descriptors carrying `group="general"` in document order; if the XML
-/// omits `group` attributes, falls back to `<reg ...>` entries inside the primary (first) `<feature>` block.
+/// Loads `target_xml` into a [`roxmltree::Document`] DOM and selects `<reg>` elements carrying
+/// `group="general"` in document order; if the XML omits `group` attributes, falls back to `<reg>`
+/// elements nested inside the primary (first) `<feature>` element.
 pub fn parse_expedited_regnums_from_target_xml(target_xml: &str) -> Vec<u32> {
+    let parse_opts = roxmltree::ParsingOptions {
+        allow_dtd: true,
+        ..Default::default()
+    };
+    let Ok(doc) = roxmltree::Document::parse_with_options(target_xml, parse_opts) else {
+        return Vec::new();
+    };
+
     let mut general_group_regnums = Vec::new();
     let mut first_feature_regnums = Vec::new();
-    let mut feature_index = 0usize;
-    let mut inside_first_feature = false;
-    let mut cursor = target_xml;
 
-    while let Some(lt_pos) = cursor.find('<') {
-        let after_lt = &cursor[lt_pos + 1..];
-        let Some(gt_offset) = after_lt.find('>') else {
-            break;
-        };
-        let tag_body = after_lt[..gt_offset].trim();
-        cursor = &after_lt[gt_offset + 1..];
-
-        if tag_body.starts_with("feature")
-            && tag_body[7..].starts_with(|c: char| c.is_ascii_whitespace())
+    for (feature_idx, feature_node) in doc
+        .descendants()
+        .filter(|node| node.is_element() && node.has_tag_name("feature"))
+        .enumerate()
+    {
+        for reg_node in feature_node
+            .descendants()
+            .filter(|node| node.is_element() && node.has_tag_name("reg"))
         {
-            if feature_index == 0 {
-                inside_first_feature = true;
-            }
-            feature_index += 1;
-        } else if tag_body.starts_with("/feature") {
-            inside_first_feature = false;
-        } else if tag_body.starts_with("reg")
-            && tag_body[3..].starts_with(|c: char| c.is_ascii_whitespace())
-        {
-            let Some(regnum_str) = extract_xml_attr(tag_body, "regnum") else {
+            let Some(regnum) = reg_node
+                .attribute("regnum")
+                .and_then(|raw| raw.trim().parse::<u32>().ok())
+            else {
                 continue;
             };
-            let Ok(regnum) = regnum_str.parse::<u32>() else {
-                continue;
-            };
-            if extract_xml_attr(tag_body, "group") == Some("general") {
+            if reg_node.attribute("group") == Some("general") {
                 general_group_regnums.push(regnum);
             }
-            if inside_first_feature {
+            if feature_idx == 0 {
                 first_feature_regnums.push(regnum);
             }
         }

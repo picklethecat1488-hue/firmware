@@ -84,7 +84,7 @@ impl CliArg {
             "string" => "Option<&'a str>".to_string(),
             "int" => "Option<i32>".to_string(),
             "float" => "Option<f32>".to_string(),
-            "bool" => "Option<bool>".to_string(),
+            "bool" => "bool".to_string(),
             custom => resolve_crate_path(custom),
         }
     }

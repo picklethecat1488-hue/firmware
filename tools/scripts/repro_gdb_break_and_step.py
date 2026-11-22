@@ -22,7 +22,7 @@ import threading
 import time
 from typing import Dict, List, Optional, Tuple
 
-REPO_ROOT: Path = Path(__file__).resolve().parent.parent
+REPO_ROOT: Path = Path(__file__).resolve().parents[2]
 DEFAULT_PACKAGE: str = "cat_detector"
 DEFAULT_BIN: str = "cat_detector_shell"
 DEFAULT_ITERATIONS: int = 3

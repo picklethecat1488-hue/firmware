@@ -35,6 +35,7 @@ struct MockCoreState {
     pending_target_pcs: Vec<u32>,
     fail_reg_writes: bool,
     fail_halt: bool,
+    fail_next_rearm: bool,
 }
 
 impl MockCoreState {
@@ -72,6 +73,7 @@ impl MockCoreState {
             pending_target_pcs: Vec::new(),
             fail_reg_writes: false,
             fail_halt: false,
+            fail_next_rearm: false,
         }
     }
 }
@@ -227,6 +229,10 @@ impl ArmHardwareOps for SharedHwAdapter<'_> {
     ) -> Result<bool, String> {
         let mut guard = self.state.lock().unwrap();
         let core = &mut guard.cores[core_idx];
+        if core.fail_next_rearm {
+            core.fail_next_rearm = false;
+            return Err("Transient secondary-core DAP reset settle".to_string());
+        }
         if core.bp_ctrl_enabled && core.hw_comparators == slots {
             return Ok(false);
         }
@@ -1881,4 +1887,79 @@ fn test_xml_driven_expedited_registers_templated_memory_map_and_secondary_halt_d
     shared.lock().unwrap().cores[0].fail_halt = true;
     let c0_halt_res = c0_handler.handle_packet(halt_rcmd.as_bytes(), &mut backend);
     assert_eq!(c0_halt_res, RspAction::status(RspReplyCode::ErrTargetState));
+
+    // 4. Verify DOM-based `parse_expedited_regnums_from_target_xml` ignores XML comments, supports
+    // single-quoted attributes, falls back to the first `<feature>` when `group` is omitted, and handles invalid XML.
+    let commented_xml = r#"<?xml version="1.0"?>
+<target version="1.0">
+  <!-- <reg name="fake" bitsize="32" regnum="99" group="general"/> -->
+  <feature name='org.example.first'>
+    <reg group='general' regnum='3' name='r3' bitsize='32'/>
+    <reg name='sys0' bitsize='32' regnum='19' group='system'/>
+  </feature>
+  <feature name="org.example.second">
+    <reg name="pc" bitsize="32" group="general" regnum="15"/>
+  </feature>
+</target>"#;
+    assert_eq!(
+        parse_expedited_regnums_from_target_xml(commented_xml),
+        vec![3, 15]
+    );
+    let ungrouped_xml = r#"<target><feature name="primary"><reg name="a0" bitsize="32" regnum="10"/></feature><feature name="aux"><reg name="f0" bitsize="32" regnum="40"/></feature></target>"#;
+    assert_eq!(
+        parse_expedited_regnums_from_target_xml(ungrouped_xml),
+        vec![10]
+    );
+    assert!(parse_expedited_regnums_from_target_xml("<target><unclosed>").is_empty());
+
+    // 5. Verify `ArmBreakpointManager` keeps Core 0's `PSM.frce_off` helper trap armed if Core 1's FPB
+    // re-arm transiently fails on the first `spawn_core1` FIFO iteration, then succeeds and clears on the next hit.
+    const TRAP_ADDR: u64 = 0x1002_007C;
+    {
+        let mut guard = shared.lock().unwrap();
+        guard.memory.insert(TRAP_ADDR, 0xC0);
+        guard.memory.insert(TRAP_ADDR + 1, 0x46);
+        guard.cores[0].halted = true;
+        guard.cores[0].regs.insert(15, TRAP_ADDR as u32);
+        guard.cores[1].bp_ctrl_enabled = false;
+        guard.cores[1].hw_comparators = vec![None; 4];
+        guard.cores[1].fail_next_rearm = true;
+    }
+    let mut bp_mgr = ArmBreakpointManager::new(&[4, 4], Some(TRAP_ADDR));
+    {
+        let mut hw = SharedHwAdapter { state: &shared };
+        assert!(bp_mgr
+            .insert_breakpoint(&mut hw, 1, CORE1_RESET_HANDLER_ADDR as u64, false)
+            .unwrap());
+        // Simulate `PSM.frce_off.proc1` wiping Core 1's hardware comparators right before Core 0 hits `TRAP_ADDR`.
+        shared.lock().unwrap().cores[1].bp_ctrl_enabled = false;
+        shared.lock().unwrap().cores[1].hw_comparators = vec![None; 4];
+
+        // Hit #1: Core 1 re-arm transiently fails -> Core 0 steps past `TRAP_ADDR` & resumes, keeping trap slot 3 armed!
+        assert!(bp_mgr.poll_maintenance(&mut hw, 0));
+        assert_eq!(
+            shared.lock().unwrap().cores[0].hw_comparators[3],
+            Some(TRAP_ADDR)
+        );
+        assert!(shared.lock().unwrap().cores[1]
+            .hw_comparators
+            .iter()
+            .all(Option::is_none));
+
+        // Hit #2 (`cmds = [0, 0, ...]`, second `cmd == 0`): Core 1 re-arm succeeds -> Core 1 FPB armed & Core 0 trap cleared!
+        {
+            let mut guard = shared.lock().unwrap();
+            guard.cores[0].halted = true;
+            guard.cores[0].regs.insert(15, TRAP_ADDR as u32);
+        }
+        assert!(bp_mgr.poll_maintenance(&mut hw, 0));
+        assert!(shared.lock().unwrap().cores[0]
+            .hw_comparators
+            .iter()
+            .all(Option::is_none));
+        assert_eq!(
+            shared.lock().unwrap().cores[1].hw_comparators[0],
+            Some(CORE1_RESET_HANDLER_ADDR as u64)
+        );
+    }
 }

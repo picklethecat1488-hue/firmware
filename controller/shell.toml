@@ -138,7 +138,11 @@ async_cli = true
 handler = "platform::i2c::handle_i2c_cli"
 help = "I2C commands"
 args = [
-    { name = "bus", type = "string", help = "Target bus name" }
+    { name = "reg16", type = "bool", attributes = ["#[arg(long = \"reg16\")]"], help = "Use 16-bit big-endian register address" },
+    { name = "bus", type = "string", attributes = ["#[arg(short = 'b', long = \"bus\")]"], help = "Target bus name" },
+    { name = "arg1", type = "string", max_len = 16, attributes = [], help = "7-bit I2C device address (hex 0x.. or decimal)" },
+    { name = "arg2", type = "string", max_len = 16, attributes = [], help = "Register offset (8-bit or 16-bit hex 0x.. or decimal)" },
+    { name = "arg3", type = "string", max_len = 16, attributes = [], help = "Value to write for poke8/poke16 (hex 0x.. or decimal)" }
 ]
 
 [[cli_commands]]

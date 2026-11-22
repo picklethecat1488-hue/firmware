@@ -965,13 +965,20 @@ impl ArmBreakpointManager {
         if self.cores[0].hw_slots.contains(&Some(trap_addr)) {
             return false;
         }
+        let mut rearm_succeeded = true;
         if self.cores[1].has_active_hw_breakpoints() {
             let c1_slots = self.cores[1].hw_slots.clone();
-            let _ = hw.ensure_hw_breakpoints_active(1, &c1_slots);
+            rearm_succeeded = hw.ensure_hw_breakpoints_active(1, &c1_slots).is_ok();
         }
         hw.release_secondary_bootrom_if_halted();
-        let _ = hw.clear_hw_breakpoint_slot(0, slot_idx, trap_addr);
-        self.armed_core0_trap_slot = None;
+        if rearm_succeeded {
+            let _ = hw.clear_hw_breakpoint_slot(0, slot_idx, trap_addr);
+            self.armed_core0_trap_slot = None;
+        } else {
+            // Step Core 0 once past `trap_addr` while keeping `armed_core0_trap_slot` active so
+            // subsequent iterations of `spawn_core1` (`cmds = [0, 0, 1, ...]`) re-trap and retry.
+            let _ = self.step_core(hw, 0);
+        }
         let _ = hw.raw_resume_core(0);
         true
     }
@@ -985,6 +992,9 @@ pub mod probe_backend {
     use std::path::Path;
     use std::thread;
     use std::time::Duration;
+
+    const SECONDARY_FPB_REARM_MAX_ATTEMPTS: usize = 5;
+    const SECONDARY_FPB_REARM_RETRY_DELAY_MS: u64 = 1;
 
     fn with_session_core<T, F>(session: &mut Session, core_idx: usize, op: F) -> Result<T, String>
     where
@@ -1168,11 +1178,10 @@ pub mod probe_backend {
             addr: u64,
         ) -> Result<(), String> {
             with_session_core(self.session, core_idx, |core| {
-                if core.clear_hw_breakpoint(addr).is_err() {
-                    let comp_addr = CORTEX_M_BP_COMP0_ADDR + (slot_idx as u64) * 4;
-                    let _ = core.write_word_32(comp_addr, 0);
-                    let _ = core.flush();
-                }
+                let comp_addr = CORTEX_M_BP_COMP0_ADDR + (slot_idx as u64) * 4;
+                let _ = core.clear_hw_breakpoint(addr);
+                let _ = core.write_word_32(comp_addr, 0);
+                let _ = core.flush();
                 Ok(())
             })
         }
@@ -1185,13 +1194,60 @@ pub mod probe_backend {
             if !slots.iter().any(Option::is_some) {
                 return Ok(false);
             }
-            with_session_core(self.session, core_idx, |core| {
-                let bp_ctrl = core
-                    .read_word_32(CORTEX_M_BP_CTRL_ADDR)
-                    .map_err(|e| format!("{:?}", e))?;
+            let max_attempts = if core_idx > 0 {
+                SECONDARY_FPB_REARM_MAX_ATTEMPTS
+            } else {
+                1
+            };
+            let mut last_err = String::new();
 
-                let mut all_armed = (bp_ctrl & 1) != 0;
-                if all_armed {
+            for attempt in 0..max_attempts {
+                if attempt > 0 {
+                    thread::sleep(Duration::from_millis(SECONDARY_FPB_REARM_RETRY_DELAY_MS));
+                }
+                let res = with_session_core(self.session, core_idx, |core| {
+                    let bp_ctrl = core
+                        .read_word_32(CORTEX_M_BP_CTRL_ADDR)
+                        .map_err(|e| format!("{:?}", e))?;
+
+                    let mut all_armed = (bp_ctrl & 1) != 0;
+                    if all_armed {
+                        for (slot_idx, entry) in slots.iter().enumerate() {
+                            if entry.is_some() {
+                                let comp_addr = CORTEX_M_BP_COMP0_ADDR + (slot_idx as u64) * 4;
+                                let comp_val = core
+                                    .read_word_32(comp_addr)
+                                    .map_err(|e| format!("{:?}", e))?;
+                                if (comp_val & 1) == 0 {
+                                    all_armed = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if all_armed {
+                        return Ok(false);
+                    }
+
+                    if let Ok(dhcsr) = core.read_word_32(CORTEX_M_DHCSR_ADDR) {
+                        if (dhcsr & 1) == 0 {
+                            let _ = core
+                                .write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_ENABLE);
+                        }
+                    }
+                    core.write_word_32(CORTEX_M_BP_CTRL_ADDR, CORTEX_M_BP_CTRL_KEY_ENABLE)
+                        .map_err(|e| format!("{:?}", e))?;
+                    let _ = core.flush();
+
+                    for (slot_idx, entry) in slots.iter().enumerate() {
+                        if let Some(addr) = *entry {
+                            core.set_hw_breakpoint_unit(slot_idx, addr)
+                                .map_err(|e| format!("{:?}", e))?;
+                        }
+                    }
+                    core.flush().map_err(|e| format!("{:?}", e))?;
+
+                    // Read back every active FPB comparator to verify hardware latched `ENABLE` (`bit 0`).
                     for (slot_idx, entry) in slots.iter().enumerate() {
                         if entry.is_some() {
                             let comp_addr = CORTEX_M_BP_COMP0_ADDR + (slot_idx as u64) * 4;
@@ -1199,35 +1255,28 @@ pub mod probe_backend {
                                 .read_word_32(comp_addr)
                                 .map_err(|e| format!("{:?}", e))?;
                             if (comp_val & 1) == 0 {
-                                all_armed = false;
-                                break;
+                                return Err(format!(
+                                    "FPB comparator slot {} on Core {} read back unarmed (0x{:08x})",
+                                    slot_idx, core_idx, comp_val
+                                ));
                             }
                         }
                     }
-                }
-                if all_armed {
-                    return Ok(false);
-                }
-
-                if let Ok(dhcsr) = core.read_word_32(CORTEX_M_DHCSR_ADDR) {
-                    if (dhcsr & 1) == 0 {
-                        let _ =
-                            core.write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_ENABLE);
+                    Ok(true)
+                });
+                match res {
+                    Ok(rearmed) => {
+                        if core_idx > 0 {
+                            let _ = self.session.core(0);
+                        }
+                        return Ok(rearmed);
+                    }
+                    Err(err) => {
+                        last_err = err;
                     }
                 }
-                core.write_word_32(CORTEX_M_BP_CTRL_ADDR, CORTEX_M_BP_CTRL_KEY_ENABLE)
-                    .map_err(|e| format!("{:?}", e))?;
-                let _ = core.flush();
-
-                for (slot_idx, entry) in slots.iter().enumerate() {
-                    if let Some(addr) = *entry {
-                        core.set_hw_breakpoint_unit(slot_idx, addr)
-                            .map_err(|e| format!("{:?}", e))?;
-                    }
-                }
-                core.flush().map_err(|e| format!("{:?}", e))?;
-                Ok(true)
-            })
+            }
+            Err(last_err)
         }
 
         fn release_secondary_bootrom_if_halted(&mut self) {

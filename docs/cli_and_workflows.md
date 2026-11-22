@@ -65,6 +65,12 @@ python tools/host.py bug "ToF sensor NACK under motor load" --severity HIGH --ca
 # Forward shell commands directly to the running target over RTT
 python tools/host.py cli motor speed 100
 python tools/host.py cli battery status
+python tools/host.py cli i2c scan
+python tools/host.py cli i2c peek8 0x36 0x04
+python tools/host.py cli i2c peek16 0x36 0x0c --bus i2c0
+python tools/host.py cli i2c peek16 0x29 0x010f --reg16
+python tools/host.py cli i2c poke8 0x36 0x0c 0x97
+python tools/host.py cli i2c poke16 0x36 0x0c 0x971c --bus i2c0
 
 # Inspect or manipulate the target sequential-storage flash filesystem & USB probe status
 python tools/host.py fs ls
@@ -231,7 +237,7 @@ Target firmware debugging uses a unified `probe-rs` architecture across all supp
      - **`Host Daemon: Attach Core 0 (GDB)`**
      - **`Host Daemon: Attach Core 1 (GDB)`**
      - **`Host Daemon: Attach Dual-Core (GDB)`** (attaches Core 0 and Core 1 simultaneously)
-   - Clicking **Restart** in VS Code resets Core 0 to `Reset_Handler`, flushes GDB's register cache, and automatically continues directly to your active breakpoints (`runToEntryPoint: ""`, `postRestartSessionCommands: ["-exec-continue"]`). To stress-test or benchmark repeated restart + break-at-`main` + 10x single-step cycles from the CLI, run `python tools/repro_gdb_break_and_step.py --iterations 5 --steps 10` (raw MI2 packet logs are written to `target/logs/repro_gdb_break_and_step.log`).
+   - Clicking **Restart** in VS Code resets Core 0 to `Reset_Handler`, flushes GDB's register cache, and automatically continues directly to your active breakpoints (`runToEntryPoint: ""`, `postRestartSessionCommands: ["-exec-continue"]`). To stress-test or benchmark repeated restart + break-at-`main` + 10x single-step cycles from the CLI, run `python tools/scripts/repro_gdb_break_and_step.py --iterations 5 --steps 10` (raw MI2 packet logs are written to `target/logs/repro_gdb_break_and_step.log`).
    - Supports setting breakpoints from **`Reset_Handler`** (Core 0) and **`Core1_Reset_Handler`** (Core 1) to any Rust source LOC in Flash or SRAM across both Segger J-Link and CMSIS-DAP probes, and stress-testing on-device suites with or without symbolic debugging via `python tools/host.py test --debug-server` / `--no-debug-server`.
 2. **Secondary Interface — Standalone `probe-rs` (`probe-rs-debug`)**:
    - When debugging standalone without a running `host.py` daemon, stop `host.py` (`python tools/host.py stop` or VS Code task **`host: stop host.py daemon (release USB probe)`**) and launch **`probe-rs (Secondary): Debug Shell (RP2040)`**, **`probe-rs (Secondary): Debug Firmware (RP2040)`**, or **`probe-rs (Secondary): Debug Carrier Board Shell (MCXN947)`** (prompting for `debug` or `release` profile).
