@@ -79,6 +79,10 @@ There is an unterminated configure_alerts span in the output which is taking pla
 [] [target] [INFO] 104.791994 INFO [36m[controller::sensor_controller][0m GestureDetector West sensor: OUT OF RANGE (65535 mm)
 ```
 
+#### Attached Commits
+
+- `e243fa5d`
+
 #### Review Tasks & Functional Checklist
 
 - [ ] Launch cat_detector_app in PERF trace mode and export Perfetto trace JSON | `python tools/host.py --package cat_detector --bin cat_detector_app --trace-mode PERF --no-browser && sleep 4 && python tools/host.py trace export --format perfetto --json` <!-- id:41890dbb -->
