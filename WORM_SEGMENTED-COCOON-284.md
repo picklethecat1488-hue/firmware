@@ -81,3 +81,4 @@ I didn’t see a “perfetto.ui” tab open in my browser when I clicked “Open
 #### Review Tasks & Functional Checklist
 
 - [ ] Launch host.py in PERF trace mode and click Open in Perfetto in the TRACE tab to verify ui.perfetto.dev opens in the system browser | `python tools/host.py --package cat_detector --bin cat_detector_app --trace-mode PERF` <!-- id:c5101ffc -->
+- [ ] Open buffered Perfetto trace directly from the host.py CLI | `python tools/host.py trace open-perfetto` <!-- id:5bfb0706 -->
