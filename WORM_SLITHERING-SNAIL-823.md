@@ -1,12 +1,13 @@
-# 🔴 `[WORM-SLITHERING-SNAIL-823]` The RSP barfed out again
+# 🟢 `[WORM-SLITHERING-SNAIL-823]` The RSP barfed out again
 
 - **UUID**: `cbf5a1cd-bfa6-4e88-8b3a-e8232fbcc9f5`
 - **ID**: `WORM-SLITHERING-SNAIL-823`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-21 23:46:13 UTC`
+- **Resolved**: `2026-11-22 00:40:02 UTC`
 
 #### Description
 
@@ -178,3 +179,7 @@ This should log when any API is invoked, as well as when target state changes. T
 
 - [ ] Verify GDB restart, XIP hardware breakpoint insertion, and continue over gdb-proxy with zero warnings | `python tools/host.py --bin cat_detector_shell --debug-server && arm-none-eabi-gdb --nx --batch -ex 'set sysroot /' -ex 'source .vscode/cortex_debug_init.gdb' -ex 'target extended-remote | python3 -u tools/host.py debug gdb-proxy --core 0' -ex 'break app/src/cat_detector_shell.rs:61' -ex 'monitor reset halt' -ex 'maintenance flush register-cache' -ex 'continue' -ex 'detach' target/active_target.elf` <!-- id:96622b5b -->
 - [ ] Inspect API, state, debug, and trace entries in target/host_daemon.log | `python tools/host.py logs --stream daemon --lines 30` <!-- id:9d3ed243 -->
+
+#### Resolution Notes
+
+Eliminated unsolicited S02 stop replies on idle Ctrl-C and re-queued pipelined RSP frames during WaitForHalt to prevent packet-shift desynchronization; added Cortex-M qXfer:memory-map:read+ ROM advertisement, SWD FPB comparator flush/retry, and dual-core monitor reset halt coordination in host_debug; added structured API, state, debug, and trace logging to target/host_daemon.log and auto-attached host_daemon_<id>.log to host bug reports.
