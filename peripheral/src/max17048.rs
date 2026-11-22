@@ -20,6 +20,7 @@ impl Register {
     const VCELL: u8 = 0x02;
     const SOC: u8 = 0x04;
     const MODE: u8 = 0x06;
+    const HIBRT: u8 = 0x0A;
     const CONFIG: u8 = 0x0C;
     const VALRT: u8 = 0x14;
     const CRATE: u8 = 0x16;
@@ -28,8 +29,16 @@ impl Register {
     const CMD: u8 = 0xFE;
 }
 
+struct ModeMask;
+impl ModeMask {
+    const HIB_STAT: u16 = 1 << 12;
+    const EN_SLEEP: u16 = 1 << 13;
+    const QUICK_START: u16 = 1 << 14;
+}
+
 struct StatusMask;
 impl StatusMask {
+    const RI: u16 = 1 << 8;
     const VH: u16 = 1 << 10;
     const VL: u16 = 1 << 11;
     const HD: u16 = 1 << 13;
@@ -40,7 +49,13 @@ struct ConfigMask;
 impl ConfigMask {
     const ALRT: u16 = 1 << 5;
     const ALSC: u16 = 1 << 6;
+    const SLEEP: u16 = 1 << 7;
 }
+
+const HIBRT_DISABLED: u16 = 0x0000;
+const SOC_ROUND_HALF_LSB: u16 = 0x0080;
+const SOC_FRACTIONAL_BITS: u32 = 8;
+const MAX_SOC_PERCENT: u16 = 100;
 
 const MAX_CHARGE_COUNTER: i32 = 10;
 const VOLTAGE_CHANGE_STEP_THRESHOLD: i32 = 5;
@@ -75,25 +90,53 @@ impl<I: I2c> Max17048<I> {
         }
     }
 
-    /// Initialize the fuel gauge.
-    /// Checks the RI (Reset Indicator) bit in STATUS. If set, clears RI and triggers a Quick-Start.
+    /// Initialize the fuel gauge into continuous Active Mode.
+    ///
+    /// Ensures Hibernate Mode (`HIBRT = 0x0000`) and Sleep Mode (`CONFIG.SLEEP`, `MODE.EnSleep`) are
+    /// disabled so low-C-rate charging (e.g. 500 mA into a 3000+ mAh 18650 cell, `< 17%/hr` vs factory
+    /// `HIBThr = 26.62%/hr`) never traps ModelGauge in Hibernate (`MODE.HibStat = 1`, `CRATE = 0`).
+    /// Issues a one-shot `Quick-Start` (`MODE.QuickStart`) only when recovering from POR (`STATUS.RI`),
+    /// Hibernate (`MODE.HibStat`), or Sleep (`CONFIG.SLEEP`), preserving continuous tracking on warm reboots.
     #[tracing::instrument(level = "trace")]
     pub async fn init(&mut self) -> Result<(), PeripheralError> {
         let status = self.read_register(Register::STATUS).await?;
-        // RI is bit 8 (0x0100)
-        if (status & 0x0100) != 0 {
+        let mode = self.read_register(Register::MODE).await?;
+        let hibrt = self.read_register(Register::HIBRT).await?;
+        let config = self.read_register(Register::CONFIG).await?;
+
+        let ri_set = (status & StatusMask::RI) != 0;
+        let was_hibernating = (mode & ModeMask::HIB_STAT) != 0;
+        let was_sleeping = (config & ConfigMask::SLEEP) != 0;
+
+        if hibrt != HIBRT_DISABLED {
+            self.write_register(Register::HIBRT, HIBRT_DISABLED).await?;
+        }
+        if was_sleeping {
+            self.write_register(Register::CONFIG, config & !ConfigMask::SLEEP)
+                .await?;
+        }
+        if ri_set {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
             defmt::info!(
                 "Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start."
             );
-
-            // Clear RI bit by writing 0x00FF (clearing bit 8, keeping lower byte 0xFF)
-            self.write_register(Register::STATUS, status & !0x0100)
+            self.write_register(Register::STATUS, status & !StatusMask::RI)
                 .await?;
+        }
 
-            // Trigger Quick-Start by writing 0x4000 to MODE
-            let mode = self.read_register(Register::MODE).await?;
-            self.write_register(Register::MODE, mode | 0x4000).await?;
+        let cleaned_mode = mode & !(ModeMask::EN_SLEEP | ModeMask::HIB_STAT);
+        if ri_set || was_hibernating || was_sleeping {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            if was_hibernating || was_sleeping {
+                defmt::info!(
+                    "MAX17048 waking from Hibernate/Sleep (mode=0x{:04x}); forcing Active Mode and Quick-Start.",
+                    mode
+                );
+            }
+            self.write_register(Register::MODE, cleaned_mode | ModeMask::QUICK_START)
+                .await?;
+        } else if (mode & ModeMask::EN_SLEEP) != 0 {
+            self.write_register(Register::MODE, cleaned_mode).await?;
         }
         Ok(())
     }
@@ -147,8 +190,10 @@ impl<I: I2c> FuelGauge for Max17048<I> {
         Ok(voltage_mv)
     }
 
-    /// Reads the battery state of charge (percentage 0-100).
-    /// Formula: High byte is percentage integer, low byte is fractional.
+    /// Reads the battery state of charge rounded to the nearest integer percentage (`0..=100`).
+    ///
+    /// MAX17048 `SOC` (`0x04`) is an unsigned `8.8` fixed-point percentage (`1/256%` per LSB);
+    /// rounding (`+ 0x0080`) avoids truncating full-charge values such as `0x4F9B` (`79.61%`) to `79%`.
     #[tracing::instrument(level = "trace")]
     async fn read_state_of_charge(&mut self) -> Result<u8, Self::Error> {
         let res = self.read_register(Register::SOC).await;
@@ -160,8 +205,9 @@ impl<I: I2c> FuelGauge for Max17048<I> {
             );
         }
         let reg_val = res?;
-        let soc = (reg_val >> 8) as u8;
-        Ok(soc)
+        let rounded_pct = (reg_val.saturating_add(SOC_ROUND_HALF_LSB) >> SOC_FRACTIONAL_BITS)
+            .min(MAX_SOC_PERCENT);
+        Ok(rounded_pct as u8)
     }
 
     /// Configure voltage and state of charge alerts.

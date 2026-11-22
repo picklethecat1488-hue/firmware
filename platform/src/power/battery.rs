@@ -86,15 +86,16 @@ impl BatteryManager {
         self.soc_hysteresis = val;
     }
 
-    /// Maps the battery SoC to the correct LED state.
+    /// Maps the battery SoC to the monotonic 4-band system LED state (`Critical -> BlinkRed`,
+    /// `< mid_soc -> SolidOrange`, `mid_soc..high_soc -> SolidYellow`, `>= high_soc -> SolidGreen`).
     pub const fn get_soc_led_state(&self) -> SystemLedState {
         if self.battery_critical {
             SystemLedState::BlinksRedOncePerThirtySeconds
-        } else if self.latest_state_of_charge <= self.low_soc_threshold {
-            SystemLedState::SolidOrange
-        } else if self.latest_state_of_charge >= self.mid_soc_threshold
-            && self.latest_state_of_charge < self.high_soc_threshold
+        } else if self.latest_state_of_charge <= self.low_soc_threshold
+            || self.latest_state_of_charge < self.mid_soc_threshold
         {
+            SystemLedState::SolidOrange
+        } else if self.latest_state_of_charge < self.high_soc_threshold {
             SystemLedState::SolidYellow
         } else {
             SystemLedState::SolidGreen
