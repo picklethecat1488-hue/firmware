@@ -77,3 +77,7 @@ I didn’t see a “perfetto.ui” tab open in my browser when I clicked “Open
 [] [target] [DEBUG] 75.503980 DEBUG [36m[controller::sensor_controller][0m Object in range (proximity active)
 [] [target] [INFO] 75.706994 INFO [36m[controller::sensor_controller][0m GestureDetector North sensor: IN RANGE (196 mm)
 ```
+
+#### Review Tasks & Functional Checklist
+
+- [ ] Launch host.py in PERF trace mode and click Open in Perfetto in the TRACE tab to verify ui.perfetto.dev opens in the system browser | `python tools/host.py --package cat_detector --bin cat_detector_app --trace-mode PERF` <!-- id:c5101ffc -->
