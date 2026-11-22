@@ -2,12 +2,13 @@
 
 - **UUID**: `cbf5a1cd-bfa6-4e88-8b3a-e8232fbcc9f5`
 - **ID**: `WORM-SLITHERING-SNAIL-823`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-21 23:46:13 UTC`
 - **Resolved**: `2026-11-22 01:38:34 UTC`
+- **Accepted**: `2026-11-22 01:38:36 UTC`
 
 #### Description
 
