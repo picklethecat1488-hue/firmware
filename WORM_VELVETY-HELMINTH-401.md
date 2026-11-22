@@ -84,3 +84,4 @@ The system LED is yellow after hours of charging. The `battery status` command r
 #### Review Tasks & Functional Checklist
 
 - [ ] Inspect live MAX17048 HIBRT (0x0a == 0x0000), MODE (0x06 == 0x0000), and rounded battery status via i2c peek16 + battery status | `python tools/host.py --package cat_detector --bin cat_detector_shell --no-browser && python tools/host.py cli 'i2c peek16 0x36 0x0a' && python tools/host.py cli 'i2c peek16 0x36 0x06' && python tools/host.py cli 'battery status'` <!-- id:1d15fc35 -->
+- [ ] Sync cat_detector_app and confirm System LED transitions to SolidGreen at >= 80% SoC | `python tools/host.py --package cat_detector --bin cat_detector_app --release --no-browser && sleep 3 && python tools/host.py logs --stream defmt --lines 25` <!-- id:74a7aee3 -->
