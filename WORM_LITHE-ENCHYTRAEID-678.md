@@ -2,12 +2,13 @@
 
 - **UUID**: `4261aba6-717f-4502-be63-7e8e0112c637`
 - **ID**: `WORM-LITHE-ENCHYTRAEID-678`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-11-21 19:20:51 UTC`
 - **Resolved**: `2026-11-22 01:38:28 UTC`
+- **Accepted**: `2026-11-22 01:38:30 UTC`
 
 #### Description
 
