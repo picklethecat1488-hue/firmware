@@ -2,12 +2,13 @@
 
 - **UUID**: `9becc1a3-9073-4ebc-9600-ea56deb439ca`
 - **ID**: `WORM-VELVETY-HELMINTH-401`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-21 23:59:20 UTC`
 - **Resolved**: `2026-11-22 20:35:58 UTC`
+- **Accepted**: `2026-11-22 20:36:00 UTC`
 
 #### Description
 
