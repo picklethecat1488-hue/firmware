@@ -7,7 +7,7 @@
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-11-21 19:20:51 UTC`
-- **Resolved**: `2026-11-21 22:51:21 UTC`
+- **Resolved**: `2026-11-22 01:05:45 UTC`
 
 #### Description
 
@@ -298,6 +298,10 @@ shell>
 SEND [↵]
 ```
 
+#### Attached Commits
+
+- `5c9e8b81`
+
 #### Review Tasks & Functional Checklist
 
 - [ ] Start host.py with --debug-server on cat_detector_shell and verify active GDB ports | `python tools/host.py --bin cat_detector_shell --debug-server && python tools/host.py debug status` <!-- id:ed9aba67 -->
@@ -305,4 +309,4 @@ SEND [↵]
 
 #### Resolution Notes
 
-Advanced PC deterministically across Thumb/Thumb-2 WFE and WFI sleep-hint instructions during single-step and step-over resume, bypassed probe-rs armv6m::run() masked pre-step on resume/detach, added vCont;r range-stepping, expedited T05 stop replies, ELF ROM caching, Thumb-16 unwind register preservation, and RTT bridge priority yielding so 10+ single steps complete well under 30s, and fixed gdb-proxy SIGINT/stdin-EOF handling + server disconnect cleanup so VS Code disconnects cleanly.
+Expedited all Cortex-M general-purpose registers (r0..r12, sp, lr, pc, xpsr) in T05 stop replies to eliminate 40ms per-instruction $g reads during inlined vCont;s single-stepping (completing 10 steps in ~5.3s); added Thumb-16 architectural dirty-register tracking across step_core, direct DCRSR/DCRDR register batching, an 8ms RP2040 TIMER.DBGPAUSE wake window when stepping across WFE/WFI so Embassy timers mature, and live Flash verification of ELF ROM segments.
