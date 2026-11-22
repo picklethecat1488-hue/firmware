@@ -77,9 +77,3 @@ I didn’t see a “perfetto.ui” tab open in my browser when I clicked “Open
 [] [target] [DEBUG] 75.503980 DEBUG [36m[controller::sensor_controller][0m Object in range (proximity active)
 [] [target] [INFO] 75.706994 INFO [36m[controller::sensor_controller][0m GestureDetector North sensor: IN RANGE (196 mm)
 ```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-SEGMENTED-COCOON-284.log](attachments/WORM-SEGMENTED-COCOON-284/target_system_logs_WORM-SEGMENTED-COCOON-284.log) | Target system and defmt logs from host daemon session |
