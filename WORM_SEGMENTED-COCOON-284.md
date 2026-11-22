@@ -7,7 +7,7 @@
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-21 23:54:29 UTC`
-- **Resolved**: `2026-11-22 02:43:10 UTC`
+- **Resolved**: `2026-11-22 02:43:43 UTC`
 
 #### Description
 
@@ -78,6 +78,10 @@ I didn’t see a “perfetto.ui” tab open in my browser when I clicked “Open
 [] [target] [DEBUG] 75.503980 DEBUG [36m[controller::sensor_controller][0m Object in range (proximity active)
 [] [target] [INFO] 75.706994 INFO [36m[controller::sensor_controller][0m GestureDetector North sensor: IN RANGE (196 mm)
 ```
+
+#### Attached Commits
+
+- `66eb2a4d`
 
 #### Review Tasks & Functional Checklist
 
