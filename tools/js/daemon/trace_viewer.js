@@ -1207,12 +1207,17 @@ export class TraceViewerController {
         const openEdgeUs = playheadUs !== null ? playheadUs : this.maxTsUs || 0;
         for (const ev of track.items) {
           const startUs = Number(ev.ts_us) || 0;
+          const hasClosedPhase = ev.ph === "X";
           const rawEnd =
-            typeof ev.end_ts_us === "number" && ev.end_ts_us > startUs
+            typeof ev.end_ts_us === "number" &&
+            (ev.end_ts_us > startUs || (hasClosedPhase && ev.end_ts_us >= startUs))
               ? ev.end_ts_us
-              : typeof ev.end_us === "number"
+              : typeof ev.end_us === "number" &&
+                  (ev.end_us > startUs || (hasClosedPhase && ev.end_us >= startUs))
                 ? ev.end_us
-                : null;
+                : hasClosedPhase
+                  ? startUs + Math.max(0, Number(ev.dur_us) || 0)
+                  : null;
           const endUs =
             rawEnd !== null
               ? rawEnd

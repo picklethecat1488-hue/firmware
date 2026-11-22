@@ -3560,3 +3560,116 @@ def test_worm_slithering_snail_823_daemon_log_captures_api_state_debug_trace_and
         server.shutdown()
         server.server_close()
         runner.stop()
+
+
+def test_worm_dirt_pupa_301_trace_store_closes_parameterized_and_sibling_spans() -> None:
+    """Verify `TraceSessionStore` closes parameterized `configure_alerts(...)` spans and unwinds unclosed siblings."""
+    from host_daemon.provider.daemon.trace_store import TraceSessionStore
+
+    store = TraceSessionStore()
+    store.ingest_event(
+        {
+            "ts_us": 33_050,
+            "track": "CPU Core 0",
+            "ph": "B",
+            "category": "span",
+            "name": "BATTERY_CHANNEL",
+            "span_id": "0f",
+            "parent_id": "0000000000000000",
+        }
+    )
+    store.ingest_event(
+        {
+            "ts_us": 33_211,
+            "track": "CPU Core 0",
+            "ph": "B",
+            "category": "span",
+            "name": "configure_alerts(voltage_min_mv=3000, voltage_max_mv=4200, soc_threshold_pct=10, enable_soc_change_alert=true)",
+            "span_id": "10",
+            "parent_id": "0f",
+        }
+    )
+    # Exit arrives with mismatched span_id and stripped parameter suffix `"configure_alerts"`
+    store.ingest_event(
+        {
+            "ts_us": 42_003,
+            "track": "CPU Core 0",
+            "ph": "E",
+            "category": "span",
+            "name": "configure_alerts",
+            "span_id": "stale_other_id",
+            "parent_id": "0f",
+        }
+    )
+    # Also test dropped exit: re-enter `configure_alerts` (`parent_id="0f"`), then enter sibling `battery_controller::update` (`parent_id="0f"`)
+    store.ingest_event(
+        {
+            "ts_us": 42_050,
+            "track": "CPU Core 0",
+            "ph": "B",
+            "category": "span",
+            "name": "configure_alerts",
+            "span_id": "10b",
+            "parent_id": "0f",
+        }
+    )
+    store.ingest_event(
+        {
+            "ts_us": 42_157,
+            "track": "CPU Core 0",
+            "ph": "B",
+            "category": "span",
+            "name": "battery_controller::update",
+            "span_id": "16",
+            "parent_id": "0f",
+        }
+    )
+    store.ingest_event(
+        {
+            "ts_us": 45_040,
+            "track": "CPU Core 0",
+            "ph": "E",
+            "category": "span",
+            "name": "battery_controller::update",
+            "span_id": "16",
+            "parent_id": "0f",
+        }
+    )
+    store.ingest_event(
+        {
+            "ts_us": 45_040,
+            "track": "CPU Core 0",
+            "ph": "E",
+            "category": "span",
+            "name": "BATTERY_CHANNEL",
+            "span_id": "0f",
+            "parent_id": "0000000000000000",
+            "args": {"suspended": True},
+        }
+    )
+    store.ingest_event(
+        {
+            "ts_us": 2_000_000,
+            "track": "Core 0 CPU Usage (%)",
+            "ph": "C",
+            "category": "cpu_usage",
+            "name": "Core 0 CPU Usage (%)",
+            "value": 0.5,
+            "unit": "%",
+        }
+    )
+
+    items = store.snapshot_all()
+    cfg_items = [it for it in items if str(it["name"]).startswith("configure_alerts")]
+    assert len(cfg_items) == 2
+    for cfg in cfg_items:
+        assert cfg["ph"] == "X", f"Expected configure_alerts to be closed (ph='X'), got {cfg}"
+        assert int(cfg["end_ts_us"]) <= 42_157, f"Expected configure_alerts to close before idle window, got {cfg}"
+
+    perfetto = json.loads(store.format_perfetto_json("rp2040"))
+    in_flight_cfg = [
+        ev
+        for ev in perfetto["traceEvents"]
+        if str(ev.get("name", "")).startswith("configure_alerts") and ev.get("args", {}).get("in_flight")
+    ]
+    assert in_flight_cfg == []

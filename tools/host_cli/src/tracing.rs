@@ -1101,14 +1101,24 @@ impl SpanEnterProcessor {
                 processed_events.push(implicit_exit);
             }
         } else {
-            // Check for recursive span enter due to lost exit events
-            if let Some(pos) = active.iter().position(|id| {
-                if let Some(n) = context.get_name(id) {
-                    n == span_name || is_span_name_match(&n, &span_name)
-                } else {
-                    false
-                }
-            }) {
+            // Check for recursive span enter or sibling enter beneath an already-open parent due to lost exit events
+            let unwind_from = active
+                .iter()
+                .position(|id| {
+                    if let Some(n) = context.get_name(id) {
+                        n == span_name || is_span_name_match(&n, &span_name)
+                    } else {
+                        false
+                    }
+                })
+                .or_else(|| {
+                    active
+                        .iter()
+                        .position(|id| id == &parent_id)
+                        .map(|parent_pos| parent_pos + 1)
+                        .filter(|&child_pos| child_pos < active.len())
+                });
+            if let Some(pos) = unwind_from {
                 while active.len() > pos {
                     if let Some(exited_id) = active.pop() {
                         let name = context
@@ -2096,15 +2106,28 @@ impl LiveTaskSpanStack {
             .map(|(id, _)| id.as_str())
     }
 
-    /// Push `(eff_id, entry)` onto the stack, unwinding and returning (in LIFO order) any stale duplicate frame and its descendants.
+    /// Push `(eff_id, entry)` onto the stack, unwinding and returning (in LIFO order) any stale duplicate or sibling frame and its descendants.
     pub fn push_dedup(&mut self, eff_id: String, entry: LiveSpanEntry) -> Vec<LiveSpanEntry> {
         let mut implicit_closed = Vec::new();
-        if let Some(dup_pos) = self.frames.iter().position(|(id, existing)| {
-            id == &eff_id
-                || existing.name == entry.name
-                || is_span_name_match(&existing.name, &entry.name)
-        }) {
-            while self.frames.len() > dup_pos {
+        let unwind_from = self
+            .frames
+            .iter()
+            .position(|(id, existing)| {
+                id == &eff_id
+                    || existing.name == entry.name
+                    || is_span_name_match(&existing.name, &entry.name)
+            })
+            .or_else(|| {
+                entry.parent_id().and_then(|parent_id| {
+                    self.frames
+                        .iter()
+                        .position(|(id, _)| id == parent_id)
+                        .map(|parent_pos| parent_pos + 1)
+                        .filter(|&child_pos| child_pos < self.frames.len())
+                })
+            });
+        if let Some(pos) = unwind_from {
+            while self.frames.len() > pos {
                 if let Some((_, popped_entry)) = self.frames.pop() {
                     implicit_closed.push(popped_entry);
                 }
@@ -2184,10 +2207,16 @@ impl LiveCoreSpanState {
         }
     }
 
-    /// Resolve an exiting span's effective ID either by exact `span_id` lookup or reverse name match across active task stacks.
+    /// Resolve an exiting span's effective ID either by exact active `span_id` lookup or reverse name match across active task stacks.
     pub fn find_open_span_id(&self, span_id: &str, cleaned_name: &str) -> Option<String> {
-        if !span_id.is_empty() && self.spans.contains_key(span_id) {
-            return Some(span_id.to_string());
+        if !span_id.is_empty() {
+            if let Some(entry) = self.spans.get(span_id) {
+                if self.is_span_on_task_stack(entry.task_key(), span_id)
+                    && (cleaned_name.is_empty() || is_span_name_match(&entry.name, cleaned_name))
+                {
+                    return Some(span_id.to_string());
+                }
+            }
         }
         for stack in self.task_stacks.values() {
             if let Some(found) = stack.find_matching_id_rev(cleaned_name) {
@@ -2318,6 +2347,11 @@ impl LiveCoreSpanState {
             .or_default()
             .push_dedup(eff_id.clone(), entry.clone());
         for popped_entry in &implicit_closed {
+            let popped_eff_id =
+                LiveSpanEntry::effective_id(&popped_entry.span_id, &popped_entry.name);
+            if popped_eff_id != eff_id {
+                self.spans.remove(&popped_eff_id);
+            }
             out_events.push(Self::emit_span_event(
                 core,
                 ts_us,
@@ -2374,24 +2408,39 @@ impl LiveCoreSpanState {
             return;
         }
 
-        self.switch_to_task(core, &task_key, ts_us, true, out_events);
+        let was_running = self.running_task() == Some(task_key.as_str());
         if let Some(mut stack) = self.task_stacks.remove(&task_key) {
             if let Some((implicit_children, target_entry)) = stack.pop_through(&target_id) {
                 for child_entry in &implicit_children {
-                    out_events.push(Self::emit_span_event(
-                        core,
-                        ts_us,
-                        "E",
-                        child_entry,
-                        Some("implicit"),
-                    ));
+                    let child_eff_id =
+                        LiveSpanEntry::effective_id(&child_entry.span_id, &child_entry.name);
+                    self.spans.remove(&child_eff_id);
+                    if was_running {
+                        out_events.push(Self::emit_span_event(
+                            core,
+                            ts_us,
+                            "E",
+                            child_entry,
+                            Some("implicit"),
+                        ));
+                    }
                 }
-                out_events.push(Self::emit_span_event(core, ts_us, "E", &target_entry, None));
+                let target_eff_id =
+                    LiveSpanEntry::effective_id(&target_entry.span_id, &target_entry.name);
+                self.spans.remove(&target_eff_id);
+                if was_running {
+                    out_events.push(Self::emit_span_event(core, ts_us, "E", &target_entry, None));
+                }
             }
             if stack.is_empty() {
-                self.running_task = None;
+                if was_running {
+                    self.running_task = None;
+                }
             } else {
-                self.task_stacks.insert(task_key, stack);
+                self.task_stacks.insert(task_key.clone(), stack);
+                if !was_running {
+                    self.switch_to_task(core, &task_key, ts_us, true, out_events);
+                }
             }
         }
     }

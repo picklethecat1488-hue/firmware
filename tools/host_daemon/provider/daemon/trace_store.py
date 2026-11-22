@@ -32,6 +32,25 @@ CSV_HEADER_COLUMNS: Tuple[str, ...] = (
 )
 
 
+def _is_root_parent_id(parent_id: Optional[str]) -> bool:
+    """Return `True` when `parent_id` is absent or denotes an all-zero root span ID."""
+    if not parent_id:
+        return True
+    stripped = parent_id.strip()
+    return not stripped or all(ch == "0" for ch in stripped)
+
+
+def _is_span_name_match(open_name: str, candidate_name: str) -> bool:
+    """Match span names ignoring trailing `(param=...)` formatting suffixes and `module::` prefixes."""
+    if not open_name or not candidate_name:
+        return False
+    base_open = open_name.split("(", 1)[0].strip()
+    base_cand = candidate_name.split("(", 1)[0].strip()
+    if base_open == base_cand:
+        return True
+    return base_open.endswith(f"::{base_cand}") or base_cand.endswith(f"::{base_open}")
+
+
 class TraceSessionStore:
     """Thread-safe store pairing streaming `B`/`E` spans and buffering counter/sensor trace events."""
 
@@ -136,11 +155,15 @@ class TraceSessionStore:
                     if matched_pos is None:
                         for idx in range(len(stack) - 1, -1, -1):
                             cand = self._items_by_id.get(stack[idx])
-                            if cand is not None and cand.get("name") == name:
+                            if cand is not None and (
+                                cand.get("name") == name or _is_span_name_match(str(cand.get("name") or ""), name)
+                            ):
                                 matched_pos = idx
                                 break
-                    if matched_pos is None:
+                    if matched_pos is None and span_id is None and not name:
                         matched_pos = len(stack) - 1
+                    if matched_pos is None:
+                        return None
 
                     # Implicitly close any nested child spans above `matched_pos`
                     while len(stack) > matched_pos:
@@ -157,6 +180,46 @@ class TraceSessionStore:
                     matched_item = self._items_by_id.get(popped_id) if "popped_id" in locals() else None
                     return dict(matched_item) if matched_item is not None else None
                 return None
+
+            if ph == "B":
+                stack = self._open_spans_by_track.setdefault(track, [])
+                if stack:
+                    unwind_pos: Optional[int] = None
+                    if _is_root_parent_id(parent_id) and ev_obj.get("parent_id") is not None:
+                        unwind_pos = 0
+                    else:
+                        for idx, open_id in enumerate(stack):
+                            cand = self._items_by_id.get(open_id)
+                            if cand is None:
+                                continue
+                            cand_span_id = cand.get("span_id")
+                            cand_name = str(cand.get("name") or "")
+                            if (
+                                (span_id is not None and cand_span_id == span_id)
+                                or cand_name == name
+                                or _is_span_name_match(cand_name, name)
+                            ):
+                                unwind_pos = idx
+                                break
+                        if unwind_pos is None and parent_id and not _is_root_parent_id(parent_id):
+                            for idx, open_id in enumerate(stack):
+                                cand = self._items_by_id.get(open_id)
+                                if cand is not None and cand.get("span_id") == parent_id:
+                                    if idx + 1 < len(stack):
+                                        unwind_pos = idx + 1
+                                    break
+                    if unwind_pos is not None:
+                        while len(stack) > unwind_pos:
+                            popped_id = stack.pop()
+                            open_item = self._items_by_id.get(popped_id)
+                            if open_item is not None:
+                                start_ts = int(open_item["ts_us"])
+                                end_ts = max(start_ts, ts_us)
+                                self._next_seq += 1
+                                open_item["ph"] = "X"
+                                open_item["end_ts_us"] = end_ts
+                                open_item["dur_us"] = end_ts - start_ts
+                                open_item["seq"] = self._next_seq
 
             self._evict_oldest_unlocked()
             self._next_id += 1

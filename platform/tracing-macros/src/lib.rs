@@ -23,6 +23,7 @@ pub fn instrument(args: TokenStream, item: TokenStream) -> TokenStream {
 
     let mut custom_name = None;
     let mut custom_domain = None;
+    let mut skip_all = false;
     let mut other_args = Vec::new();
 
     for meta in args_parsed {
@@ -60,8 +61,33 @@ pub fn instrument(args: TokenStream, item: TokenStream) -> TokenStream {
                     custom_domain = Some(lit.value());
                 }
             }
+        } else if path.is_ident("skip_all") {
+            skip_all = true;
+        } else if skip_all && path.is_ident("skip") {
+            // `skip_all` supersedes explicit `skip(...)` lists.
         } else {
             other_args.push(meta);
+        }
+    }
+
+    if skip_all {
+        other_args.retain(|m| !m.path().is_ident("skip"));
+        let param_idents: Vec<syn::Ident> = item_fn
+            .sig
+            .inputs
+            .iter()
+            .filter_map(|arg| {
+                if let syn::FnArg::Typed(pat_type) = arg {
+                    if let syn::Pat::Ident(pat_ident) = &*pat_type.pat {
+                        return Some(pat_ident.ident.clone());
+                    }
+                }
+                None
+            })
+            .collect();
+        if !param_idents.is_empty() {
+            let skip_meta: Meta = parse_quote! { skip(#(#param_idents),*) };
+            other_args.push(skip_meta);
         }
     }
 

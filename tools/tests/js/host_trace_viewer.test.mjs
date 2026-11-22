@@ -608,4 +608,93 @@ describe("Host Daemon Trace & Telemetry Workstation (TraceViewerController)", ()
 
     viewer.destroy();
   });
+
+  it("terminates 0-us closed ph='X' configure_alerts slices instead of stretching across Core 0 idle gaps (WORM-DIRT-PUPA-301)", async () => {
+    const ctx = createMockRuntimeContext({
+      fetchRoutes: {
+        "GET /api/trace/events?after_seq=0&limit=4000": {
+          status: 200,
+          body: {
+            trace_mode: "PERF",
+            session_epoch: 1,
+            recording: true,
+            cursor: 4,
+            total_events: 4,
+            min_ts_us: 33_050,
+            max_ts_us: 2_000_000,
+            events: [
+              {
+                id: 1,
+                seq: 1,
+                ts_us: 33_050,
+                end_ts_us: 33_978,
+                dur_us: 928,
+                depth: 0,
+                track: "CPU Core 0",
+                ph: "X",
+                category: "span",
+                name: "BATTERY_CHANNEL",
+              },
+              {
+                id: 2,
+                seq: 2,
+                ts_us: 33_211,
+                end_ts_us: 33_978,
+                dur_us: 767,
+                depth: 1,
+                track: "CPU Core 0",
+                ph: "X",
+                category: "span",
+                name: "configure_alerts",
+              },
+              {
+                id: 3,
+                seq: 3,
+                ts_us: 42_003,
+                end_ts_us: 42_003,
+                dur_us: 0,
+                depth: 1,
+                track: "CPU Core 0",
+                ph: "X",
+                category: "span",
+                name: "configure_alerts",
+                args: { core: 0, resumed: true },
+              },
+              {
+                id: 4,
+                seq: 4,
+                ts_us: 2_000_000,
+                track: "Core 0 CPU Usage (%)",
+                ph: "C",
+                category: "cpu_usage",
+                name: "Core 0 CPU Usage (%)",
+                value: 1.2,
+                unit: "%",
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    const dom = buildTraceViewerDom(ctx);
+    const viewer = createTraceViewer(ctx, {
+      initialTraceMode: "PERF",
+      initialBinName: "cat_detector_app",
+    });
+    viewer.init();
+    await viewer.pollEvents();
+    dom.fitBtn.click();
+
+    const zeroDurBox = viewer._hitBoxes.find((b) => b.eventId === 3);
+    assert.ok(zeroDurBox, "expected configure_alerts slice hitbox to exist at 42,003 us");
+    assert.ok(
+      zeroDurBox.w <= 6,
+      `expected terminated 0-us configure_alerts slice width <= 6px, got ${zeroDurBox.w}px stretching across Core 0 idle window`,
+    );
+    assert.equal(viewer.hitTestCanvas(550, zeroDurBox.y + 4), null);
+    assert.ok(!dom.canvas.id.includes("unused"));
+
+    viewer.destroy();
+  });
 });

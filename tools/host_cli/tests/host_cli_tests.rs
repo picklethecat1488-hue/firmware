@@ -1327,3 +1327,148 @@ fn test_target_boot_status_flags_and_poller_across_binaries() {
         })
     );
 }
+
+#[test]
+fn test_worm_dirt_pupa_301_configure_alerts_terminates_cleanly_across_async_yield_and_missed_exit()
+{
+    use host_cli::{HostCliEvent, LiveTraceStreamProcessor};
+
+    // Case 1: Async yield during `configure_alerts` (`0x10`) followed by wakeup exit whose `span_id`
+    // raced with an already-closed span (`0x11` on Core 0) must still close `configure_alerts` by name
+    // and never leave `configure_alerts` stuck on `BATTERY_CHANNEL`'s stack across `CPU Idle Core 0`.
+    let mut proc = LiveTraceStreamProcessor::new();
+    let mut emitted = Vec::new();
+
+    emitted.extend(proc.process_defmt_frame(
+        "0.033050 TRACE [cat_detector_app::__bootstrap_task_task] ctx=0f parent=0 span_enter: Core 0: BATTERY_CHANNEL",
+        "ctx=0f parent=0 span_enter: Core 0: BATTERY_CHANNEL",
+        Some("cat_detector_app::__bootstrap_task_task"),
+        Some(33_050.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "0.033211 TRACE [peripheral::max17048] ctx=10 parent=0f span_enter: Core 0: configure_alerts(voltage_min_mv=3000, voltage_max_mv=4200, soc_threshold_pct=10, enable_soc_change_alert=true)",
+        "ctx=10 parent=0f span_enter: Core 0: configure_alerts(voltage_min_mv=3000, voltage_max_mv=4200, soc_threshold_pct=10, enable_soc_change_alert=true)",
+        Some("peripheral::max17048"),
+        Some(33_211.0),
+    ));
+    // Yield to `SYSTEM_CHANNEL` (`0d`), which enters and exits `handle_thermal_action` (`11`)
+    emitted.extend(proc.process_defmt_frame(
+        "0.033978 TRACE [cat_detector_app::__bootstrap_task_task] ctx=0d parent=0 span_enter: Core 0: SYSTEM_CHANNEL",
+        "ctx=0d parent=0 span_enter: Core 0: SYSTEM_CHANNEL",
+        Some("cat_detector_app::__bootstrap_task_task"),
+        Some(33_978.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "0.033980 TRACE [controller::system_controller] ctx=11 parent=0d span_enter: Core 0: handle_thermal_action",
+        "ctx=11 parent=0d span_enter: Core 0: handle_thermal_action",
+        Some("controller::system_controller"),
+        Some(33_980.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "0.034041 TRACE [controller::system_controller] ctx=11 parent=0d span_exit: Core 0: handle_thermal_action",
+        "ctx=11 parent=0d span_exit: Core 0: handle_thermal_action",
+        Some("controller::system_controller"),
+        Some(34_041.0),
+    ));
+    // `configure_alerts` finishes at 42,003 us, with `span_exit` carrying stale closed `ctx=11` from dual-core context race
+    emitted.extend(proc.process_defmt_frame(
+        "0.042003 TRACE [peripheral::max17048] ctx=11 parent=0d span_exit: Core 0: configure_alerts",
+        "ctx=11 parent=0d span_exit: Core 0: configure_alerts",
+        Some("peripheral::max17048"),
+        Some(42_003.0),
+    ));
+    // Next sibling `battery_controller::update` (`16`, `parent=0f`) enters and exits, then Core 0 goes idle
+    emitted.extend(proc.process_defmt_frame(
+        "0.042157 TRACE [controller::battery_controller] ctx=16 parent=0f span_enter: Core 0: battery_controller::update",
+        "ctx=16 parent=0f span_enter: Core 0: battery_controller::update",
+        Some("controller::battery_controller"),
+        Some(42_157.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "0.045040 TRACE [controller::battery_controller] ctx=16 parent=0f span_exit: Core 0: battery_controller::update",
+        "ctx=16 parent=0f span_exit: Core 0: battery_controller::update",
+        Some("controller::battery_controller"),
+        Some(45_040.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "2.045040 TRACE [platform::system] ctx=cpu_idle_c0 parent=0 span_enter: Core 0: CPU Idle Core 0 ts=45040",
+        "ctx=cpu_idle_c0 parent=0 span_enter: Core 0: CPU Idle Core 0 ts=45040",
+        Some("platform::system"),
+        Some(2_045_040.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "2.045040 TRACE [platform::system] cpu_idle_c0 span_exit: Core 0: CPU Idle Core 0 ts=2045040",
+        "cpu_idle_c0 span_exit: Core 0: CPU Idle Core 0 ts=2045040",
+        Some("platform::system"),
+        Some(2_045_040.0),
+    ));
+    // Wakeup 2s later: `configure_alerts` MUST NOT be resumed!
+    emitted.extend(proc.process_defmt_frame(
+        "2.045200 TRACE [controller::battery_controller] ctx=30 parent=0f span_enter: Core 0: battery_controller::update",
+        "ctx=30 parent=0f span_enter: Core 0: battery_controller::update",
+        Some("controller::battery_controller"),
+        Some(2_045_200.0),
+    ));
+
+    let late_configure_begins = emitted
+        .iter()
+        .filter(|ev| {
+            matches!(
+                ev,
+                HostCliEvent::Trace {
+                    ts_us,
+                    ph,
+                    name,
+                    ..
+                } if *ts_us >= 42_003 && ph == "B" && name.starts_with("configure_alerts")
+            )
+        })
+        .count();
+    assert_eq!(
+        late_configure_begins, 0,
+        "configure_alerts must not emit spurious 0-us wakeup B or stay on stack after 42,003 us: {:?}",
+        emitted
+    );
+
+    // Case 2: Completely dropped `span_exit` for `configure_alerts` (`10`, `parent=0f`) must be
+    // implicitly unwound as soon as sibling `battery_controller::update` (`16`, `parent=0f`) enters!
+    let mut proc2 = LiveTraceStreamProcessor::new();
+    let mut emitted2 = Vec::new();
+    emitted2.extend(proc2.process_defmt_frame(
+        "0.033050 TRACE [cat_detector_app::__bootstrap_task_task] ctx=0f parent=0 span_enter: Core 0: BATTERY_CHANNEL",
+        "ctx=0f parent=0 span_enter: Core 0: BATTERY_CHANNEL",
+        Some("cat_detector_app::__bootstrap_task_task"),
+        Some(33_050.0),
+    ));
+    emitted2.extend(proc2.process_defmt_frame(
+        "0.033211 TRACE [peripheral::max17048] ctx=10 parent=0f span_enter: Core 0: configure_alerts",
+        "ctx=10 parent=0f span_enter: Core 0: configure_alerts",
+        Some("peripheral::max17048"),
+        Some(33_211.0),
+    ));
+    // `configure_alerts` span_exit dropped! Sibling `battery_controller::update` (`parent=0f`) enters:
+    emitted2.extend(proc2.process_defmt_frame(
+        "0.042157 TRACE [controller::battery_controller] ctx=16 parent=0f span_enter: Core 0: battery_controller::update",
+        "ctx=16 parent=0f span_enter: Core 0: battery_controller::update",
+        Some("controller::battery_controller"),
+        Some(42_157.0),
+    ));
+
+    let implicit_exit = emitted2.iter().any(|ev| {
+        matches!(
+            ev,
+            HostCliEvent::Trace {
+                ts_us: 42_157,
+                ph,
+                name,
+                args,
+                ..
+            } if ph == "E" && name == "configure_alerts" && args.get("implicit").and_then(|v| v.as_bool()) == Some(true)
+        )
+    });
+    assert!(
+        implicit_exit,
+        "Expected sibling battery_controller::update (parent=0f) to implicitly unwind unclosed configure_alerts (parent=0f), got {:?}",
+        emitted2
+    );
+}

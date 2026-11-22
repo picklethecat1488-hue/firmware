@@ -165,7 +165,7 @@ impl<I: I2c> FuelGauge for Max17048<I> {
     }
 
     /// Configure voltage and state of charge alerts.
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip_all)]
     async fn configure_alerts(
         &mut self,
         voltage_min_mv: u32,
@@ -227,7 +227,7 @@ impl<I: I2c> FuelGauge for Max17048<I> {
         Ok((has_voltage_alert, has_soc_alert))
     }
 
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip_all)]
     async fn set_battery_temperature(&mut self, temp_milli_c: i32) -> Result<(), Self::Error> {
         let temp_c = temp_milli_c as f32 / 1000.0;
         let rcomp_val = if temp_c > 20.0 {
