@@ -81,3 +81,4 @@ There is an unterminated configure_alerts span in the output which is taking pla
 #### Review Tasks & Functional Checklist
 
 - [ ] Launch cat_detector_app in PERF trace mode and export Perfetto trace JSON | `python tools/host.py --package cat_detector --bin cat_detector_app --trace-mode PERF --no-browser && sleep 4 && python tools/host.py trace export --format perfetto --json` <!-- id:41890dbb -->
+- [ ] Inspect TRACE session status and verify configure_alerts closes cleanly before Core 0 idle windows | `python tools/host.py trace status` <!-- id:40cb0426 -->
