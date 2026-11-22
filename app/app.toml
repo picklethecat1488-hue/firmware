@@ -106,7 +106,7 @@ critical_soc = 10
 hysteresis = 5
 low_soc = 20
 mid_soc = 50
-high_soc = 80
+high_soc = 70
 
 [apps.cat_detector.features.proximity]
 channels = ["sensor_north", "sensor_east", "sensor_west"]
@@ -184,7 +184,7 @@ critical_soc = 10
 hysteresis = 5
 low_soc = 20
 mid_soc = 50
-high_soc = 80
+high_soc = 70
 
 [apps.carrier_board.features.led]
 channel = "led"

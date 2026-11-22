@@ -560,24 +560,34 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
 
-        # 2. Host daemon connection & flash guarantee
-        host_daemon_url = "http://127.0.0.1:8899"
+        # 2. Host daemon connection & flash guarantee (isolated from hermetic tmp_path / pytest runs
+        # unless `server.host_daemon_url` is explicitly configured).
+        explicit_daemon_url = getattr(self.server, "host_daemon_url", None)
+        is_real_workspace = (self.server.repo_root / "tools" / "host.py").is_file() and not bool(
+            os.environ.get("PYTEST_CURRENT_TEST")
+        )
+        host_daemon_url = explicit_daemon_url or ("http://127.0.0.1:8899" if is_real_workspace else None)
         daemon_online = False
         flashed_commit = None
-        try:
-            import urllib.request
+        if host_daemon_url:
+            try:
+                import urllib.request
 
-            req = urllib.request.Request(f"{host_daemon_url}/api/sync/status", headers={"User-Agent": "worm-dashboard"})
-            with urllib.request.urlopen(req, timeout=1.0) as resp:
-                if resp.status == 200:
-                    daemon_online = True
-                    sync_data = json.loads(resp.read().decode("utf-8"))
-                    flashed_commit = sync_data.get("flashed_commit")
-        except Exception:
-            daemon_online = False
+                req = urllib.request.Request(
+                    f"{host_daemon_url}/api/sync/status",
+                    headers={"User-Agent": "worm-dashboard"},
+                )
+                with urllib.request.urlopen(req, timeout=1.0) as resp:
+                    if resp.status == 200:
+                        daemon_online = True
+                        sync_data = json.loads(resp.read().decode("utf-8"))
+                        flashed_commit = sync_data.get("flashed_commit")
+            except Exception:
+                daemon_online = False
 
         if (
             daemon_online
+            and host_daemon_url
             and auto_sync
             and (not flashed_commit or (head_commit and not flashed_commit.startswith(head_commit[:8])))
         ):
@@ -606,8 +616,9 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
 
-        # 3. Forward command execution
-        if daemon_online:
+        # 3. Forward raw target CLI commands to host daemon; run host shell commands (`python ...`, `./...`, `echo ...`) locally
+        is_host_shell_cmd = cmd.startswith(("python ", "python3 ", "./", "cargo ", "echo ", "sh ", "bash "))
+        if daemon_online and host_daemon_url and not is_host_shell_cmd:
             try:
                 exec_req = urllib.request.Request(
                     f"{host_daemon_url}/api/cli/execute",

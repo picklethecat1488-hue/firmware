@@ -69,15 +69,16 @@ fn test_get_soc_led_state() {
     );
     assert_eq!(manager.get_soc_led_state(), SystemLedState::SolidGreen);
 
-    // WORM-VELVETY-HELMINTH-401: Verify monotonic LED bands with `app.toml` thresholds (`low=20, mid=50, high=80`)
-    // so `21..=49%` stays SolidOrange instead of falling through to SolidGreen!
-    let mut app_manager = BatteryManager::new(10, 5, 20, 50, 80);
+    // WORM-VELVETY-HELMINTH-401: Verify monotonic LED bands with `app.toml` thresholds (`low=20, mid=50, high=70`)
+    // so `21..=49%` stays SolidOrange and `70..=100%` stays SolidGreen (10% drain buffer below ~80% full charge)!
+    let mut app_manager = BatteryManager::new(10, 5, 20, 50, 70);
     app_manager.set_battery_critical(false);
     for (soc, expected_led) in [
         (15, SystemLedState::SolidOrange),
         (35, SystemLedState::SolidOrange),
         (50, SystemLedState::SolidYellow),
-        (79, SystemLedState::SolidYellow),
+        (69, SystemLedState::SolidYellow),
+        (70, SystemLedState::SolidGreen),
         (80, SystemLedState::SolidGreen),
         (100, SystemLedState::SolidGreen),
     ] {
