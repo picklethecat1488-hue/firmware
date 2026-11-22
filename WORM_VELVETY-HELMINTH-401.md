@@ -1,12 +1,13 @@
-# 🔴 `[WORM-VELVETY-HELMINTH-401]` System LED yellow after hours of charging
+# 🟢 `[WORM-VELVETY-HELMINTH-401]` System LED yellow after hours of charging
 
 - **UUID**: `9becc1a3-9073-4ebc-9600-ea56deb439ca`
 - **ID**: `WORM-VELVETY-HELMINTH-401`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-21 23:59:20 UTC`
+- **Resolved**: `2026-11-22 17:45:12 UTC`
 
 #### Description
 
@@ -85,3 +86,7 @@ The system LED is yellow after hours of charging. The `battery status` command r
 
 - [ ] Inspect live MAX17048 HIBRT (0x0a == 0x0000), MODE (0x06 == 0x0000), and rounded battery status via i2c peek16 + battery status | `python tools/host.py --package cat_detector --bin cat_detector_shell --no-browser && python tools/host.py cli 'i2c peek16 0x36 0x0a' && python tools/host.py cli 'i2c peek16 0x36 0x06' && python tools/host.py cli 'battery status'` <!-- id:1d15fc35 -->
 - [ ] Sync cat_detector_app and confirm System LED transitions to SolidGreen at >= 80% SoC | `python tools/host.py --package cat_detector --bin cat_detector_app --release --no-browser && sleep 3 && python tools/host.py logs --stream defmt --lines 25` <!-- id:74a7aee3 -->
+
+#### Resolution Notes
+
+Disabled MAX17048 Hibernate Mode (HIBRT = 0x0000) and Sleep Mode on init() with one-shot Quick-Start when recovering from POR/Hibernate/Sleep (preventing <17%/hr 500 mA 18650 charging from trapping ModelGauge in HibStat=1 with CRATE=0), rounded 8.8 fixed-point SOC (+0x0080) instead of truncating 79.61% (0x4F9B) to 79%, and closed the 21..49% SolidOrange LED band gap in BatteryManager::get_soc_led_state().
