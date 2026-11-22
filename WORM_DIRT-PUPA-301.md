@@ -1,12 +1,13 @@
-# 🔴 `[WORM-DIRT-PUPA-301]` Unterminated configure_alerts span
+# 🟢 `[WORM-DIRT-PUPA-301]` Unterminated configure_alerts span
 
 - **UUID**: `e2f8d954-dbdb-43a5-8080-c2d52af5d8bf`
 - **ID**: `WORM-DIRT-PUPA-301`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-21 23:52:20 UTC`
+- **Resolved**: `2026-11-22 02:24:58 UTC`
 
 #### Description
 
@@ -82,3 +83,7 @@ There is an unterminated configure_alerts span in the output which is taking pla
 
 - [ ] Launch cat_detector_app in PERF trace mode and export Perfetto trace JSON | `python tools/host.py --package cat_detector --bin cat_detector_app --trace-mode PERF --no-browser && sleep 4 && python tools/host.py trace export --format perfetto --json` <!-- id:41890dbb -->
 - [ ] Inspect TRACE session status and verify configure_alerts closes cleanly before Core 0 idle windows | `python tools/host.py trace status` <!-- id:40cb0426 -->
+
+#### Resolution Notes
+
+Added skip_all support to #[tracing::instrument] and applied it to Max17048::configure_alerts/set_battery_temperature; hardened LiveTraceStreamProcessor, TraceSessionStore, and TraceViewerController to match parameterized span names, unwind unclosed sibling spans, and render 0-us closed ph='X' slices cleanly without stretching across Core 0 idle gaps.
