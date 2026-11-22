@@ -11,7 +11,7 @@ use embassy_sync::channel::Channel;
 
 const LOW_BATTERY_SOC_THRESHOLD: u8 = 20;
 const MID_BATTERY_SOC_THRESHOLD: u8 = 21;
-const HIGH_BATTERY_SOC_THRESHOLD: u8 = 80;
+const HIGH_BATTERY_SOC_THRESHOLD: u8 = 70;
 const INACTIVITY_TIMEOUT_SECONDS: u32 = 30;
 const CRITICAL_BATTERY_SOC_THRESHOLD: u8 = 10;
 const BATTERY_SOC_HYSTERESIS: u8 = 2;
@@ -449,7 +449,7 @@ fn test_power_down_and_gesture_detection() {
     process!(controller);
     assert_eq!(controller.power_manager.status(), SystemStatus::Active);
 
-    // Verify LED is SolidYellow (SoC = 50% is between 21% and 79%)
+    // Verify LED is SolidYellow (SoC = 50% is between 21% and 69%)
     let led_state = receive_led!();
     assert_eq!(led_state, SystemLedState::SolidYellow);
 }

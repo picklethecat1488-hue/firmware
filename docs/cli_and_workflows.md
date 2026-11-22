@@ -65,6 +65,12 @@ python tools/host.py bug "ToF sensor NACK under motor load" --severity HIGH --ca
 # Forward shell commands directly to the running target over RTT
 python tools/host.py cli motor speed 100
 python tools/host.py cli battery status
+python tools/host.py cli i2c scan
+python tools/host.py cli i2c peek8 0x36 0x04
+python tools/host.py cli i2c peek16 0x36 0x0c --bus i2c0
+python tools/host.py cli i2c peek16 0x29 0x010f --reg16
+python tools/host.py cli i2c poke8 0x36 0x0c 0x97
+python tools/host.py cli i2c poke16 0x36 0x0c 0x971c --bus i2c0
 
 # Inspect or manipulate the target sequential-storage flash filesystem & USB probe status
 python tools/host.py fs ls
@@ -226,11 +232,12 @@ Target firmware debugging uses a unified `probe-rs` architecture across all supp
 
 1. **Primary Interface — `tools/host.py` (`tools/host_debug` Dual-Core GDB + Concurrent RTT Console)**:
    - Open **🎯 Target Config** in the `host.py` workstation and check **Enable target GDB debug server on Sync (`host_debug`)** (optionally check **Halt Core 0 at `Reset_Handler` after Sync / Reset** and set explicit **Core 0 / Core 1 GDB Ports** for multi-target benches), or launch/toggle via CLI (`python tools/host.py --debug-server` or `python tools/host.py debug start`).
-   - On `⚡ Sync`, `host.py` flashes the target and launches `host_debug` in a **single reset** while keeping `defmt` logs and interactive `shell>` commands live over the non-halting `:50000` RTT memory bridge (`cargo host-cli --gdb-bridge 127.0.0.1:50000 --json-events`).
+   - On `⚡ Sync`, `host.py` flashes the target and launches `host_debug` in a **single reset** while keeping `defmt` logs and interactive `shell>` commands live over the non-halting `:50000` RTT memory bridge (`cargo host-cli --gdb-bridge 127.0.0.1:50000 --json-events`). See [Host-Target RTT Handshaking Protocols](logging_tracing.md#4-host-target-rtt-handshaking-protocols) for full details on pre-reset `_SEGGER_RTT` wiping, `TargetBootState`, `ShellIdle` epochs, and `:50000` GDB step-priority yielding.
    - In VS Code **Run & Debug**, attach without stopping `host.py` — both **`debug`** and **`release`** builds across all boards/binaries (`cat_detector_shell`, `cat_detector_app`, `carrier_board_shell`) are resolved automatically from `host.py` via `target/active_target.elf` (`python tools/host.py debug sync-symbols` / `python tools/host.py debug target-info --json`):
      - **`Host Daemon: Attach Core 0 (GDB)`**
      - **`Host Daemon: Attach Core 1 (GDB)`**
      - **`Host Daemon: Attach Dual-Core (GDB)`** (attaches Core 0 and Core 1 simultaneously)
+   - Clicking **Restart** in VS Code resets Core 0 to `Reset_Handler`, flushes GDB's register cache, and automatically continues directly to your active breakpoints (`runToEntryPoint: ""`, `postRestartSessionCommands: ["-exec-continue"]`). To stress-test or benchmark repeated restart + break-at-`main` + 10x single-step cycles from the CLI, run `python tools/scripts/repro_gdb_break_and_step.py --iterations 5 --steps 10` (raw MI2 packet logs are written to `target/logs/repro_gdb_break_and_step.log`).
    - Supports setting breakpoints from **`Reset_Handler`** (Core 0) and **`Core1_Reset_Handler`** (Core 1) to any Rust source LOC in Flash or SRAM across both Segger J-Link and CMSIS-DAP probes, and stress-testing on-device suites with or without symbolic debugging via `python tools/host.py test --debug-server` / `--no-debug-server`.
 2. **Secondary Interface — Standalone `probe-rs` (`probe-rs-debug`)**:
    - When debugging standalone without a running `host.py` daemon, stop `host.py` (`python tools/host.py stop` or VS Code task **`host: stop host.py daemon (release USB probe)`**) and launch **`probe-rs (Secondary): Debug Shell (RP2040)`**, **`probe-rs (Secondary): Debug Firmware (RP2040)`**, or **`probe-rs (Secondary): Debug Carrier Board Shell (MCXN947)`** (prompting for `debug` or `release` profile).

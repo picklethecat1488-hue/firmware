@@ -18,6 +18,10 @@
         "monitor reset halt",
         "maintenance flush register-cache"
       ],
+      "runToEntryPoint": "",
+      "postRestartSessionCommands": [
+        "-exec-continue"
+      ],
       "sourceFileMap": {
         "firmware": "${workspaceFolder}"
       }
@@ -38,6 +42,10 @@
       "overrideRestartCommands": [
         "monitor reset halt",
         "maintenance flush register-cache"
+      ],
+      "runToEntryPoint": "",
+      "postRestartSessionCommands": [
+        "-exec-continue"
       ],
       "sourceFileMap": {
         "firmware": "${workspaceFolder}"

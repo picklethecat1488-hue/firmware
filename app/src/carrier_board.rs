@@ -80,18 +80,36 @@ impl controller::SystemFeatureSet<MutexRaw, 3> for CarrierBoardFeatureSet {
     }
 }
 
+const DEFAULT_CRITICAL_SOC_PCT: u8 = 10;
+const DEFAULT_SOC_HYSTERESIS_PCT: u8 = 5;
+const DEFAULT_LOW_SOC_PCT: u8 = 20;
+const DEFAULT_MID_SOC_PCT: u8 = 50;
+const DEFAULT_HIGH_SOC_PCT: u8 = 70;
+const DEFAULT_LED_BRIGHTNESS_PCT: u8 = 50;
+const DEFAULT_OVERHEATING_TEMP_MILLI_C: i32 = 70_000;
+const DEFAULT_CRITICAL_TEMP_MILLI_C: i32 = 85_000;
+
 /// Create the default [`CarrierBoardFeatureSet`] bound to Carrier Board channels.
 pub fn create_default_feature_set() -> CarrierBoardFeatureSet {
     let mut thermal_feat = controller::ThermalFeatureConfig::new(Some(THERMAL_CHANNEL.sender()));
-    thermal_feat.overheating_temp_milli_c = 70_000;
-    thermal_feat.critical_temp_milli_c = 85_000;
+    thermal_feat.overheating_temp_milli_c = DEFAULT_OVERHEATING_TEMP_MILLI_C;
+    thermal_feat.critical_temp_milli_c = DEFAULT_CRITICAL_TEMP_MILLI_C;
     CarrierBoardFeatureSet {
         features: (
             controller::BatteryFeatureConfig::new(
                 Some(BATTERY_CHANNEL.sender()),
-                platform::BatteryManager::new(10, 5, 20, 50, 80),
+                platform::BatteryManager::new(
+                    DEFAULT_CRITICAL_SOC_PCT,
+                    DEFAULT_SOC_HYSTERESIS_PCT,
+                    DEFAULT_LOW_SOC_PCT,
+                    DEFAULT_MID_SOC_PCT,
+                    DEFAULT_HIGH_SOC_PCT,
+                ),
             ),
-            controller::LedFeatureConfig::new(Some(LED_CHANNEL.sender()), 50),
+            controller::LedFeatureConfig::new(
+                Some(LED_CHANNEL.sender()),
+                DEFAULT_LED_BRIGHTNESS_PCT,
+            ),
             thermal_feat,
         ),
     }

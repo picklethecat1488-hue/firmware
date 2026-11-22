@@ -264,14 +264,19 @@ impl<W: RttWriter> RttProtocol<W> {
     /// Acquires the logger, panicking if called reentrantly.
     pub fn acquire(&self) {
         let restore = unsafe { critical_section::acquire() };
-        if self.taken.load(core::sync::atomic::Ordering::Relaxed) {
+        // Full hardware memory barrier (`dmb sy`) required on dual-core Cortex-M0+ (RP2040 §2.3.1.2)
+        // because SIO spinlocks execute on the single-cycle IOPORT bus while shared logger state and
+        // `CRASH_LOG_BUFFER` reside in AHB-Lite SRAM.
+        core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
+        if self.taken.load(core::sync::atomic::Ordering::Acquire) {
+            core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
             unsafe {
                 critical_section::release(restore);
             }
             panic!("defmt logger taken reentrantly");
         }
         self.taken
-            .store(true, core::sync::atomic::Ordering::Relaxed);
+            .store(true, core::sync::atomic::Ordering::Release);
         unsafe {
             self.cs_restore.get().write(restore);
             self.frame_len.set(0);
@@ -321,16 +326,23 @@ impl<W: RttWriter> RttProtocol<W> {
         // Write the completed contiguous frame to RTT now!
         self.writer.write_all(f_slice);
 
-        // Write the completed contiguous frame to CRASH_LOG_BUFFER
-        let cs = critical_section::CriticalSection::new();
-        let mut buffer = crate::panic_handler::CRASH_LOG_BUFFER
-            .borrow(cs)
-            .borrow_mut();
-        buffer.write_frame(f_slice);
+        // Write the completed contiguous frame to CRASH_LOG_BUFFER without panicking inside critical_section
+        {
+            let cs = critical_section::CriticalSection::new();
+            if let Ok(mut buffer) = crate::panic_handler::CRASH_LOG_BUFFER
+                .borrow(cs)
+                .try_borrow_mut()
+            {
+                buffer.write_frame(f_slice);
+            }
+        }
 
         let restore = self.cs_restore.get().read();
         self.taken
-            .store(false, core::sync::atomic::Ordering::Relaxed);
+            .store(false, core::sync::atomic::Ordering::Release);
+        // Ensure all SRAM stores (`CRASH_LOG_BUFFER` borrow release & `taken = false`) retire
+        // across AHB-Lite before releasing the IOPORT hardware spinlock on dual-core MCUs.
+        core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
         critical_section::release(restore);
     }
 

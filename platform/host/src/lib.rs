@@ -33,8 +33,9 @@ pub use metadata::{
     read_deferred_elf_table, CompactTargetMetadata, DeferredElfTable, ProjectInfo,
 };
 pub use platform::rtt::{
-    decode_rtt_shell_flags, encode_rtt_shell_flags, RTT_CHANNEL_MODE_MASK, RTT_SHELL_EPOCH_SHIFT,
-    RTT_SHELL_IDLE_FLAG,
+    decode_rtt_boot_state, decode_rtt_shell_flags, encode_rtt_shell_flags, encode_rtt_status_flags,
+    TargetBootState, RTT_BOOT_STATE_MASK, RTT_BOOT_STATE_SHIFT, RTT_CHANNEL_MODE_MASK,
+    RTT_SHELL_EPOCH_SHIFT, RTT_SHELL_IDLE_FLAG,
 };
 pub use symbolicate::{
     print_crash_dump, resolve_breakpoint_target, symbolicate_addr, SymbolicatedFrame,

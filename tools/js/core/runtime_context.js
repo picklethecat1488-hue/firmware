@@ -63,11 +63,12 @@ export function createMemoryStorage(initialEntries = {}) {
  * Resolve native `localStorage` when accessible, falling back to in-memory storage
  * in sandboxed webviews or headless environments.
  *
+ * @param {object} [hostGlobals] - Global environment object (`globalThis` default).
  * @returns {{getItem: function(string): string|null, setItem: function(string, string): void, removeItem: function(string): void}}
  */
-function resolveBrowserStorage() {
+function resolveBrowserStorage(hostGlobals = globalThis) {
   const fallback = createMemoryStorage();
-  const rawStorage = globalThis.document ? globalThis.localStorage : null;
+  const rawStorage = hostGlobals.document ? hostGlobals.localStorage : null;
   if (!rawStorage) {
     return fallback;
   }
@@ -97,12 +98,13 @@ function resolveBrowserStorage() {
 }
 
 /**
- * Create the production browser `RuntimeContext` backed by `globalThis`.
+ * Create the production browser `RuntimeContext` backed by `globalThis` (or injected `hostGlobals`).
  *
+ * @param {object} [hostGlobals] - Global environment object (`globalThis` default).
  * @returns {object} Explicit runtime capability object.
  */
-export function createBrowserRuntimeContext() {
-  const storage = resolveBrowserStorage();
+export function createBrowserRuntimeContext(hostGlobals = globalThis) {
+  const storage = resolveBrowserStorage(hostGlobals);
 
   const ctx = {
     /**
@@ -428,30 +430,33 @@ export function createBrowserRuntimeContext() {
     },
 
     /**
-     * Open a Perfetto JSON trace directly inside `https://ui.perfetto.dev` via `PING`/`PONG` `postMessage`,
-     * falling back to `https://ui.perfetto.dev/#!/?url=<fallbackUrl>` if popup scripting is unavailable.
+     * Open a Perfetto JSON trace directly inside `https://ui.perfetto.dev` via `PING`/`PONG` `postMessage`.
+     * Opens the `ui.perfetto.dev` popup synchronously before awaiting `loadBuffer()` so transient user
+     * activation is preserved; returns `false` immediately if popup creation is blocked (`null`).
      *
-     * @param {{buffer: ArrayBuffer|Uint8Array|string, title?: string, fileName?: string, fallbackUrl?: string}} [options]
-     * @returns {Promise<boolean>} True if pushed over `postMessage` or opened via fallback URL.
+     * @param {{buffer?: ArrayBuffer|Uint8Array|string, loadBuffer?: function(): Promise<ArrayBuffer|Uint8Array|string>, title?: string, fileName?: string, fallbackUrl?: string}} [options]
+     * @returns {Promise<boolean>} True if pushed over `postMessage` or navigated to `fallbackUrl`.
      */
     openPerfettoTrace(options = {}) {
       const title = String(options.title || "Firmware Perfetto Trace");
       const fileName = String(options.fileName || "trace.perfetto.json");
       const fallbackUrl = String(options.fallbackUrl || "");
-      const arrayBuffer = toTraceArrayBuffer(options.buffer ?? "");
 
-      if (typeof globalThis.open !== "function") {
+      if (typeof hostGlobals.open !== "function") {
         return Promise.resolve(false);
       }
 
-      const win = globalThis.open(PERFETTO_UI_ORIGIN);
+      const win = hostGlobals.open(PERFETTO_UI_ORIGIN);
       if (!win) {
-        if (fallbackUrl) {
-          ctx.openExternalUrl(`${PERFETTO_UI_ORIGIN}/#!/?url=${encodeURIComponent(fallbackUrl)}`);
-          return Promise.resolve(true);
-        }
         return Promise.resolve(false);
       }
+
+      const bufferPromise =
+        typeof options.loadBuffer === "function"
+          ? Promise.resolve()
+              .then(() => options.loadBuffer())
+              .then(toTraceArrayBuffer)
+          : Promise.resolve(toTraceArrayBuffer(options.buffer ?? ""));
 
       return new Promise((resolve) => {
         let settled = false;
@@ -460,15 +465,15 @@ export function createBrowserRuntimeContext() {
 
         const cleanup = () => {
           if (pingHandle !== null) {
-            globalThis.clearInterval(pingHandle);
+            hostGlobals.clearInterval(pingHandle);
             pingHandle = null;
           }
           if (timeoutHandle !== null) {
-            globalThis.clearTimeout(timeoutHandle);
+            hostGlobals.clearTimeout(timeoutHandle);
             timeoutHandle = null;
           }
-          if (typeof globalThis.removeEventListener === "function") {
-            globalThis.removeEventListener("message", onMessage);
+          if (typeof hostGlobals.removeEventListener === "function") {
+            hostGlobals.removeEventListener("message", onMessage);
           }
         };
 
@@ -478,24 +483,31 @@ export function createBrowserRuntimeContext() {
           }
           settled = true;
           cleanup();
-          win.postMessage(
-            {
-              perfetto: {
-                buffer: arrayBuffer,
-                title,
-                fileName,
-              },
+          bufferPromise.then(
+            (arrayBuffer) => {
+              win.postMessage(
+                {
+                  perfetto: {
+                    buffer: arrayBuffer,
+                    title,
+                    fileName,
+                  },
+                },
+                PERFETTO_UI_ORIGIN,
+              );
+              resolve(true);
             },
-            PERFETTO_UI_ORIGIN,
+            () => {
+              resolve(false);
+            },
           );
-          resolve(true);
         };
 
-        if (typeof globalThis.addEventListener === "function") {
-          globalThis.addEventListener("message", onMessage);
+        if (typeof hostGlobals.addEventListener === "function") {
+          hostGlobals.addEventListener("message", onMessage);
         }
 
-        pingHandle = globalThis.setInterval(() => {
+        pingHandle = hostGlobals.setInterval(() => {
           if (win.closed) {
             settled = true;
             cleanup();
@@ -505,7 +517,7 @@ export function createBrowserRuntimeContext() {
           win.postMessage("PING", PERFETTO_UI_ORIGIN);
         }, PERFETTO_PING_INTERVAL_MS);
 
-        timeoutHandle = globalThis.setTimeout(() => {
+        timeoutHandle = hostGlobals.setTimeout(() => {
           if (settled) {
             return;
           }
@@ -1611,7 +1623,17 @@ export function createMockRuntimeContext(overrides = {}) {
     },
 
     async openPerfettoTrace(options = {}) {
-      const arrayBuffer = toTraceArrayBuffer(options.buffer ?? "");
+      if (typeof overrides.onOpenPerfettoTraceStart === "function") {
+        overrides.onOpenPerfettoTraceStart(options);
+      }
+      if (overrides.perfettoOpenResult === false) {
+        return false;
+      }
+      const rawPayload =
+        typeof options.loadBuffer === "function"
+          ? await options.loadBuffer()
+          : (options.buffer ?? "");
+      const arrayBuffer = toTraceArrayBuffer(rawPayload);
       openedPerfettoTraces.push({
         title: String(options.title || "Firmware Perfetto Trace"),
         fileName: String(options.fileName || "trace.perfetto.json"),
@@ -1619,7 +1641,7 @@ export function createMockRuntimeContext(overrides = {}) {
         byteLength: arrayBuffer.byteLength,
         buffer: arrayBuffer,
       });
-      return overrides.perfettoOpenResult !== false;
+      return true;
     },
 
     postParentMessage(message, targetOrigin = "*") {

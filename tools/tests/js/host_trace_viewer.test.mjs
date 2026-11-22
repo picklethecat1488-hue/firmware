@@ -507,4 +507,294 @@ describe("Host Daemon Trace & Telemetry Workstation (TraceViewerController)", ()
 
     viewer.destroy();
   });
+
+  it("purges stale SENSOR tracks and resets cursor when switching to PERF mode (WORM-RADIANT-VINEGARWORM-918)", async () => {
+    let phase = "SENSOR";
+    const ctx = createMockRuntimeContext({
+      fetchHandler: async (url) => {
+        const body =
+          phase === "SENSOR"
+            ? {
+                trace_mode: "SENSOR",
+                session_epoch: 1,
+                recording: true,
+                cursor: 12,
+                total_events: 1,
+                min_ts_us: 57_109_376,
+                max_ts_us: 57_109_376,
+                events: url.includes("after_seq=0")
+                  ? [
+                      {
+                        id: 5,
+                        seq: 12,
+                        ts_us: 57_109_376,
+                        track: "Proximity (West)",
+                        ph: "C",
+                        category: "sensor",
+                        name: "Proximity (West)",
+                        value: 79,
+                        unit: "mm",
+                      },
+                    ]
+                  : [],
+              }
+            : {
+                trace_mode: "PERF",
+                session_epoch: 2,
+                recording: true,
+                cursor: 2,
+                total_events: 2,
+                min_ts_us: 27_632,
+                max_ts_us: 40_887,
+                events: [
+                  {
+                    id: 1,
+                    seq: 1,
+                    ts_us: 27_632,
+                    end_ts_us: 30_750,
+                    dur_us: 3_118,
+                    depth: 0,
+                    track: "CPU Core 0",
+                    ph: "X",
+                    category: "span",
+                    name: "bootstrap_task",
+                  },
+                  {
+                    id: 2,
+                    seq: 2,
+                    ts_us: 40_887,
+                    track: "Core 0 CPU Usage (%)",
+                    ph: "C",
+                    category: "cpu_usage",
+                    name: "Core 0 CPU Usage (%)",
+                    value: 22.4,
+                    unit: "%",
+                  },
+                ],
+              };
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify(body);
+          },
+          async json() {
+            return body;
+          },
+        };
+      },
+    });
+
+    const dom = buildTraceViewerDom(ctx);
+    const viewer = createTraceViewer(ctx, {
+      initialTraceMode: "SENSOR",
+      initialBinName: "cat_detector_app",
+    });
+    viewer.init();
+
+    await viewer.pollEvents();
+    assert.ok(dom.eventsTableBody.textContent.includes("Proximity (West)"));
+    assert.equal(viewer.afterSeq, 12);
+
+    // Switch daemon from SENSOR -> PERF (with non-zero total_events right after sync!)
+    phase = "PERF";
+    await viewer.pollEvents();
+
+    assert.equal(viewer.traceMode, "PERF");
+    assert.ok(!dom.eventsTableBody.textContent.includes("Proximity (West)"));
+    assert.ok(dom.eventsTableBody.textContent.includes("bootstrap_task"));
+    assert.equal(viewer.eventsById.size, 2);
+    assert.equal(viewer.maxTsUs, 40_887);
+
+    viewer.destroy();
+  });
+
+  it("terminates 0-us closed ph='X' configure_alerts slices instead of stretching across Core 0 idle gaps (WORM-DIRT-PUPA-301)", async () => {
+    const ctx = createMockRuntimeContext({
+      fetchRoutes: {
+        "GET /api/trace/events?after_seq=0&limit=4000": {
+          status: 200,
+          body: {
+            trace_mode: "PERF",
+            session_epoch: 1,
+            recording: true,
+            cursor: 4,
+            total_events: 4,
+            min_ts_us: 33_050,
+            max_ts_us: 2_000_000,
+            events: [
+              {
+                id: 1,
+                seq: 1,
+                ts_us: 33_050,
+                end_ts_us: 33_978,
+                dur_us: 928,
+                depth: 0,
+                track: "CPU Core 0",
+                ph: "X",
+                category: "span",
+                name: "BATTERY_CHANNEL",
+              },
+              {
+                id: 2,
+                seq: 2,
+                ts_us: 33_211,
+                end_ts_us: 33_978,
+                dur_us: 767,
+                depth: 1,
+                track: "CPU Core 0",
+                ph: "X",
+                category: "span",
+                name: "configure_alerts",
+              },
+              {
+                id: 3,
+                seq: 3,
+                ts_us: 42_003,
+                end_ts_us: 42_003,
+                dur_us: 0,
+                depth: 1,
+                track: "CPU Core 0",
+                ph: "X",
+                category: "span",
+                name: "configure_alerts",
+                args: { core: 0, resumed: true },
+              },
+              {
+                id: 4,
+                seq: 4,
+                ts_us: 2_000_000,
+                track: "Core 0 CPU Usage (%)",
+                ph: "C",
+                category: "cpu_usage",
+                name: "Core 0 CPU Usage (%)",
+                value: 1.2,
+                unit: "%",
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    const dom = buildTraceViewerDom(ctx);
+    const viewer = createTraceViewer(ctx, {
+      initialTraceMode: "PERF",
+      initialBinName: "cat_detector_app",
+    });
+    viewer.init();
+    await viewer.pollEvents();
+    dom.fitBtn.click();
+
+    const zeroDurBox = viewer._hitBoxes.find((b) => b.eventId === 3);
+    assert.ok(zeroDurBox, "expected configure_alerts slice hitbox to exist at 42,003 us");
+    assert.ok(
+      zeroDurBox.w <= 6,
+      `expected terminated 0-us configure_alerts slice width <= 6px, got ${zeroDurBox.w}px stretching across Core 0 idle window`,
+    );
+    assert.equal(viewer.hitTestCanvas(550, zeroDurBox.y + 4), null);
+    assert.ok(!dom.canvas.id.includes("unused"));
+
+    viewer.destroy();
+  });
+
+  it("opens ui.perfetto.dev via POST /api/trace/open_perfetto in pywebview or popup-blocked browsers and opens popup synchronously before fetch in browser tabs (WORM-SEGMENTED-COCOON-284)", async () => {
+    // 1. Desktop pywebview mode (`python tools/host.py` default): delegates directly to backend system browser launcher
+    const backendOpenCalls = [];
+    const pywebviewCtx = createMockRuntimeContext({
+      pywebview: { api: {} },
+      fetchRoutes: {
+        "POST /api/trace/open_perfetto": (_url, opts) => {
+          backendOpenCalls.push(JSON.parse(opts.body || "{}"));
+          return {
+            status: 200,
+            body: {
+              success: true,
+              url: "https://ui.perfetto.dev/#!/?url=http%3A%2F%2F127.0.0.1%3A9001%2Ftrace.perfetto.json",
+              event_count: 5,
+            },
+          };
+        },
+      },
+    });
+    buildTraceViewerDom(pywebviewCtx);
+    const pywebviewViewer = createTraceViewer(pywebviewCtx, {
+      initialTraceMode: "PERF",
+      initialBinName: "cat_detector_app",
+    });
+    pywebviewViewer.init();
+
+    const pywebviewOpened = await pywebviewViewer.openExternalViewer();
+    assert.equal(pywebviewOpened, true);
+    assert.equal(backendOpenCalls.length, 1);
+    assert.equal(pywebviewCtx.openedPerfettoTraces.length, 0);
+    pywebviewViewer.destroy();
+
+    // 2. Standard browser tab: calls openPerfettoTrace synchronously BEFORE fetching /api/trace/perfetto.json
+    const callSequence = [];
+    const browserCtx = createMockRuntimeContext({
+      onOpenPerfettoTraceStart: () => {
+        callSequence.push("open_popup_sync");
+      },
+      fetchHandler: async (url) => {
+        callSequence.push(`fetch:${url}`);
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return '{"traceEvents":[{"name":"main"}]}';
+          },
+          async json() {
+            return { traceEvents: [{ name: "main" }] };
+          },
+        };
+      },
+    });
+    buildTraceViewerDom(browserCtx);
+    const browserViewer = createTraceViewer(browserCtx, {
+      initialTraceMode: "PERF",
+      initialBinName: "cat_detector_app",
+    });
+    browserViewer.init();
+
+    const browserOpened = await browserViewer.openExternalViewer();
+    assert.equal(browserOpened, true);
+    assert.deepEqual(callSequence, ["open_popup_sync", "fetch:/api/trace/perfetto.json"]);
+    assert.equal(browserCtx.openedPerfettoTraces.length, 1);
+    assert.ok(browserCtx.openedPerfettoTraces[0].byteLength > 0);
+    browserViewer.destroy();
+
+    // 3. Popup-blocked browser (`perfettoOpenResult: false`): falls back to POST /api/trace/open_perfetto
+    const fallbackCalls = [];
+    const blockedCtx = createMockRuntimeContext({
+      perfettoOpenResult: false,
+      fetchRoutes: {
+        "GET /api/trace/perfetto.json": {
+          status: 200,
+          body: { traceEvents: [] },
+        },
+        "POST /api/trace/open_perfetto": () => {
+          fallbackCalls.push(true);
+          return {
+            status: 200,
+            body: {
+              success: true,
+              url: "https://ui.perfetto.dev/#!/?url=http%3A%2F%2F127.0.0.1%3A9001%2Ftrace.perfetto.json",
+            },
+          };
+        },
+      },
+    });
+    buildTraceViewerDom(blockedCtx);
+    const blockedViewer = createTraceViewer(blockedCtx, {
+      initialTraceMode: "PERF",
+      initialBinName: "cat_detector_app",
+    });
+    blockedViewer.init();
+
+    const fallbackOpened = await blockedViewer.openExternalViewer();
+    assert.equal(fallbackOpened, true);
+    assert.equal(fallbackCalls.length, 1);
+    blockedViewer.destroy();
+  });
 });

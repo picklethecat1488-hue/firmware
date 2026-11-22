@@ -1,4 +1,4 @@
-#[allow(clippy::match_single_binding)]
+#[allow(clippy::match_single_binding, clippy::too_many_arguments)]
 pub fn {{ cmd.handler_short_name() }}<
     W: embedded_io::Write<Error = E>,
     E: embedded_io::Error,

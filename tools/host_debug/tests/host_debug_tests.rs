@@ -34,6 +34,8 @@ struct MockCoreState {
     hw_comparators: Vec<Option<u64>>,
     pending_target_pcs: Vec<u32>,
     fail_reg_writes: bool,
+    fail_halt: bool,
+    fail_next_rearm: bool,
 }
 
 impl MockCoreState {
@@ -70,6 +72,8 @@ impl MockCoreState {
             hw_comparators: vec![None; bp_units],
             pending_target_pcs: Vec::new(),
             fail_reg_writes: false,
+            fail_halt: false,
+            fail_next_rearm: false,
         }
     }
 }
@@ -119,6 +123,14 @@ impl ArmHardwareOps for SharedHwAdapter<'_> {
         Ok(guard.cores[core_idx].regs.get(&15).copied().unwrap_or(0))
     }
 
+    fn raw_write_pc(&mut self, core_idx: usize, pc: u32) -> Result<(), String> {
+        let mut guard = self.state.lock().unwrap();
+        let core = &mut guard.cores[core_idx];
+        core.regs.insert(15, pc & !1);
+        core.halted = true;
+        Ok(())
+    }
+
     fn raw_core_halted(&mut self, core_idx: usize) -> Result<bool, String> {
         let mut guard = self.state.lock().unwrap();
         let core = &mut guard.cores[core_idx];
@@ -136,12 +148,27 @@ impl ArmHardwareOps for SharedHwAdapter<'_> {
 
     fn raw_step_core(&mut self, core_idx: usize) -> Result<u32, String> {
         let mut guard = self.state.lock().unwrap();
+        let cur_pc = guard.cores[core_idx].regs.get(&15).copied().unwrap_or(0) & !1;
+        let b0 = guard.memory.get(&(cur_pc as u64)).copied().unwrap_or(0);
+        let b1 = guard.memory.get(&(cur_pc as u64 + 1)).copied().unwrap_or(0);
+        let b2 = guard.memory.get(&(cur_pc as u64 + 2)).copied().unwrap_or(0);
+        let b3 = guard.memory.get(&(cur_pc as u64 + 3)).copied().unwrap_or(0);
         let core = &mut guard.cores[core_idx];
-        let cur_pc = core.regs.get(&15).copied().unwrap_or(0) & !1;
         // Hardware BPU v1/FPB re-traps at cur_pc if comparator at cur_pc was not disarmed!
         if core.bp_ctrl_enabled && core.hw_comparators.contains(&Some(cur_pc as u64)) {
             core.halted = true;
             return Ok(cur_pc);
+        }
+        // Real ARM Cortex-M (`probe-rs` `armv6m::step` / `armv8m::step`) enters `CoreStatus::Sleeping`
+        // (`DHCSR.S_SLEEP = 1, S_HALT = 0`) and times out when stepping `WFE` (`0xBF20` / `0xF3AF_8002`)
+        // or `WFI` (`0xBF30` / `0xF3AF_8003`) with `DHCSR.C_MASKINTS = 1` (`WORM-LITHE-ENCHYTRAEID-678`).
+        let is_sleep_insn = ([b0, b1] == [0x20, 0xBF])
+            || ([b0, b1] == [0x30, 0xBF])
+            || ([b0, b1, b2, b3] == [0xAF, 0xF3, 0x02, 0x80])
+            || ([b0, b1, b2, b3] == [0xAF, 0xF3, 0x03, 0x80]);
+        if is_sleep_insn && core.interrupts_masked {
+            core.halted = false;
+            return Err("Timeout waiting for core halt on WFE/WFI under C_MASKINTS".to_string());
         }
         // Unmasked pending interrupt vectors into ISR instead of stepping the current instruction!
         let next_pc = if !core.interrupts_masked {
@@ -202,6 +229,10 @@ impl ArmHardwareOps for SharedHwAdapter<'_> {
     ) -> Result<bool, String> {
         let mut guard = self.state.lock().unwrap();
         let core = &mut guard.cores[core_idx];
+        if core.fail_next_rearm {
+            core.fail_next_rearm = false;
+            return Err("Transient secondary-core DAP reset settle".to_string());
+        }
         if core.bp_ctrl_enabled && core.hw_comparators == slots {
             return Ok(false);
         }
@@ -284,16 +315,16 @@ impl DebugBackend for MockDualCoreBackend {
     fn halt_core(&mut self, core_idx: usize) -> Result<u32, String> {
         let mut guard = self.state.lock().unwrap();
         let core = &mut guard.cores[core_idx];
+        if core.fail_halt {
+            return Err("Arm(Dap(NoAcknowledge))".to_string());
+        }
         core.halted = true;
         Ok(*core.regs.get(&15).unwrap_or(&0))
     }
 
     fn resume_core(&mut self, core_idx: usize) -> Result<(), String> {
         let mut hw = SharedHwAdapter { state: &self.state };
-        if hw.raw_core_halted(core_idx)? {
-            let _ = self.bp_mgr.step_over_sw_bkpt_if_needed(&mut hw, core_idx);
-        }
-        let _ = self.bp_mgr.ensure_armed(&mut hw, core_idx);
+        let _ = self.bp_mgr.prepare_resume(&mut hw, core_idx);
         hw.raw_resume_core(core_idx)
     }
 
@@ -526,9 +557,9 @@ fn test_rsp_framing_rinja_target_xml_sram_sw_breakpoints_and_arch_limits() {
     // Verify Rinja-rendered XML for ARMv8-M with FPU single-sources every register number.
     let v8m_layout = build_arm_cortex_m_register_layout(ProcessorArch::Armv8m, true);
     assert!(v8m_layout.target_xml().contains("org.gnu.gdb.arm.vfp"));
-    assert!(v8m_layout
-        .target_xml()
-        .contains("<reg name=\"fpscr\" bitsize=\"32\" regnum=\"64\" type=\"int\"/>"));
+    assert!(v8m_layout.target_xml().contains(
+        "<reg name=\"fpscr\" bitsize=\"32\" regnum=\"64\" type=\"int\" group=\"float\"/>"
+    ));
     assert_eq!(
         v8m_layout.lookup_gdb_register(64).map(|r| r.hw_reg_id),
         Some(33)
@@ -593,9 +624,19 @@ fn test_rsp_framing_rinja_target_xml_sram_sw_breakpoints_and_arch_limits() {
         handler.handle_packet(set_pc_cmd.as_bytes(), &mut backend),
         RspAction::status(RspReplyCode::Ok)
     );
-    assert_eq!(
-        handler.handle_packet(b"s", &mut backend),
-        RspAction::status(RspReplyCode::SigTrap)
+    let step_reply = match handler.handle_packet(b"s", &mut backend) {
+        RspAction::Reply(s) => s,
+        other => panic!(
+            "Expected T05 expedited stop reply after target.xml fetch, got {:?}",
+            other
+        ),
+    };
+    assert!(
+        step_reply.starts_with("T05")
+            && step_reply.contains("0f:32020020;")
+            && step_reply.ends_with("thread:01;"),
+        "Unexpected expedited T05 reply: {}",
+        step_reply
     );
     assert_eq!(
         shared.lock().unwrap().cores[0].regs.get(&15).copied(),
@@ -624,7 +665,7 @@ fn test_exhaustive_rsp_handler_packets_fpu_registers_binary_writes_and_live_gdb_
     assert_eq!(
         handler.handle_packet(b"qSupported:multiprocess+", &mut backend),
         RspAction::Reply(
-            "PacketSize=4096;qXfer:features:read+;QStartNoAckMode+;vContSupported+;hwbreak+;swbreak+;qXfer:exec-file:read+"
+            "PacketSize=4096;qXfer:features:read+;qXfer:memory-map:read+;QStartNoAckMode+;vContSupported+;hwbreak+;swbreak+;qXfer:exec-file:read+"
                 .to_string()
         )
     );
@@ -802,6 +843,7 @@ fn test_exhaustive_rsp_handler_packets_fpu_registers_binary_writes_and_live_gdb_
             halted_on_reset: true,
             exec_file_path: None,
             json_events: false,
+            log_file: None,
         };
         let srv = start_debug_server_with_backend(gdb_backend, &cfg, shutdown)
             .expect("start gdb integration server");
@@ -881,6 +923,7 @@ fn test_dual_core_tcp_reset_handler_to_loc_core1_psm_rearm_and_rtt_bridge() {
         halted_on_reset: true,
         exec_file_path: None,
         json_events: false,
+        log_file: None,
     };
 
     let handle =
@@ -977,6 +1020,7 @@ fn test_worm_glowing_burrower_8_ack_retransmit_running_detach_and_reset_rearm() 
         halted_on_reset: true,
         exec_file_path: None,
         json_events: false,
+        log_file: None,
     };
 
     let handle =
@@ -999,7 +1043,7 @@ fn test_worm_glowing_burrower_8_ack_retransmit_running_detach_and_reset_rearm() 
     assert!(qsup_reply.starts_with("PacketSize=4096;"), "{}", qsup_reply);
 
     client1.stream.write_all(b"+").expect("ack qSupported");
-    assert_eq!(client1.send_cmd("vCont?"), "vCont;c;C;s;S;t");
+    assert_eq!(client1.send_cmd("vCont?"), "vCont;c;C;s;S;t;r");
     client1.stream.write_all(b"+").expect("ack vCont?");
     assert_eq!(
         client1.send_cmd("vMustReplyEmpty"),
@@ -1077,7 +1121,7 @@ fn test_worm_glowing_burrower_8_ack_retransmit_running_detach_and_reset_rearm() 
         .send_cmd("qSupported:swbreak+;hwbreak+;vContSupported+")
         .starts_with("PacketSize=4096;"));
     client2.stream.write_all(b"+").expect("ack");
-    assert_eq!(client2.send_cmd("vCont?"), "vCont;c;C;s;S;t");
+    assert_eq!(client2.send_cmd("vCont?"), "vCont;c;C;s;S;t;r");
     client2.stream.write_all(b"+").expect("ack");
     assert_eq!(client2.send_cmd("vMustReplyEmpty"), "");
     client2.stream.write_all(b"+").expect("ack");
@@ -1123,6 +1167,7 @@ fn test_worm_bristly_roundworm_431_gdb_zero_warnings_on_exec_file_and_reg_cache_
         halted_on_reset: true,
         exec_file_path: Some(tmp_elf.to_string_lossy().to_string()),
         json_events: false,
+        log_file: None,
     };
     let srv = start_debug_server_with_backend(gdb_backend, &cfg, shutdown)
         .expect("start WORM-431 gdb server");
@@ -1328,4 +1373,593 @@ fn test_host_debug_subcommand_probe_status_json() {
     assert!(probe_json.contains("\"interface\":\"swd_usb\""));
     assert!(probe_json.contains("\"availability\":\"disconnected\""));
     assert!(probe_json.contains("\"in_use\":false"));
+}
+
+#[test]
+fn test_worm_lithe_enchytraeid_678_single_step_across_wfe_wfi_and_abrupt_client_disconnect() {
+    let (backend, shared) = MockDualCoreBackend::new();
+    {
+        let mut guard = shared.lock().unwrap();
+        // Seed a realistic scheduler loop starting at `0x1002_13F6`:
+        // 0x1002_13F6: 0x46C0 (`nop`)
+        // 0x1002_13F8: 0xBF20 (`wfe` 16-bit Thumb)
+        // 0x1002_13FA: 0xBF30 (`wfi` 16-bit Thumb)
+        // 0x1002_13FC: 0xF3AF 0x8002 (`wfe.w` 32-bit Thumb-2)
+        // 0x1002_1400: 0xF3AF 0x8003 (`wfi.w` 32-bit Thumb-2)
+        // 0x1002_1404..0x1002_1414: `nop`s
+        let loop_bytes: &[(u64, &[u8])] = &[
+            (0x1002_13F6, &[0xC0, 0x46]),
+            (0x1002_13F8, &[0x20, 0xBF]),
+            (0x1002_13FA, &[0x30, 0xBF]),
+            (0x1002_13FC, &[0xAF, 0xF3, 0x02, 0x80]),
+            (0x1002_1400, &[0xAF, 0xF3, 0x03, 0x80]),
+            (0x1002_1404, &[0xC0, 0x46]),
+            (0x1002_1406, &[0xC0, 0x46]),
+            (0x1002_1408, &[0xC0, 0x46]),
+            (0x1002_140A, &[0xC0, 0x46]),
+            (0x1002_140C, &[0xC0, 0x46]),
+            (0x1002_140E, &[0xC0, 0x46]),
+            (0x1002_1410, &[0xC0, 0x46]),
+        ];
+        for &(addr, bytes) in loop_bytes {
+            for (off, &b) in bytes.iter().enumerate() {
+                guard.memory.insert(addr + off as u64, b);
+            }
+        }
+        guard.cores[0].regs.insert(15, 0x1002_13F6);
+        guard.cores[0].halted = true;
+    }
+
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let config = DebugServerConfig {
+        bind_host: "127.0.0.1".to_string(),
+        gdb_core0_port: 0,
+        gdb_core1_port: None,
+        rtt_bridge_port: None,
+        halted_on_reset: true,
+        exec_file_path: None,
+        json_events: false,
+        log_file: None,
+    };
+    let handle =
+        start_debug_server_with_backend(backend, &config, shutdown).expect("start debug server");
+    let mut gdb = TestRspClient::connect(handle.gdb_core0_port);
+    assert_eq!(gdb.send_cmd("QStartNoAckMode"), "OK");
+    assert_eq!(gdb.send_cmd("?"), "S05");
+
+    // Arm a hardware breakpoint right on the `WFE` instruction (`0x1002_13F8`) as well!
+    assert_eq!(gdb.send_cmd("Z1,100213f8,2"), "OK");
+
+    let expected_pcs: &[u32] = &[
+        0x1002_13F8, // after nop
+        0x1002_13FA, // after 16-bit wfe (with active hw bp disarmed & re-armed!)
+        0x1002_13FC, // after 16-bit wfi
+        0x1002_1400, // after 32-bit wfe.w (+4)
+        0x1002_1404, // after 32-bit wfi.w (+4)
+        0x1002_1406,
+        0x1002_1408,
+        0x1002_140A,
+        0x1002_140C,
+        0x1002_140E,
+        0x1002_1410,
+        0x1002_1412,
+    ];
+
+    for (idx, &exp_pc) in expected_pcs.iter().enumerate() {
+        let reply = gdb.send_cmd("vCont;s:1");
+        assert_eq!(
+            reply,
+            "S05",
+            "Step {} failed with reply '{}' (expected S05 without WFE/WFI timeout)",
+            idx + 1,
+            reply
+        );
+        assert_eq!(
+            gdb.read_pc(),
+            exp_pc,
+            "Unexpected PC after step {}",
+            idx + 1
+        );
+    }
+
+    // Verify `vCont;r<start>,<end>` range-stepping steps cleanly across multiple instructions
+    // (including `WFE` / `WFI`) in a single RSP packet and stops immediately upon leaving `[start, end)`.
+    assert_eq!(gdb.send_cmd("z1,100213f8,2"), "OK");
+    assert_eq!(gdb.send_cmd("P0f=f6130210"), "OK");
+    assert_eq!(gdb.send_cmd("vCont;r100213f6,10021406:1;c"), "S05");
+    assert_eq!(gdb.read_pc(), 0x1002_1406);
+
+    // Once GDB fetches `target.xml`, `T05` stop replies MUST expedite general registers + `xpsr` (`19:`)
+    // so GDB's ARM Thumb unwinder (`arm_pc_is_thumb` + DWARF CFI) never falls back to 40ms `$g` reads
+    // on every inlined `vCont;s` instruction (`WORM-LITHE-ENCHYTRAEID-678`).
+    let xml = gdb.send_cmd("qXfer:features:read:target.xml:0,1000");
+    assert!(xml.starts_with('l'));
+    let t05 = gdb.send_cmd("vCont;s:1");
+    for required_tag in ["00:", "04:", "07:", "0d:", "0e:", "0f:", "19:"] {
+        assert!(
+            t05.contains(required_tag),
+            "Expedited T05 must include general + xpsr register '{}' to eliminate per-step $g reads; got: {}",
+            required_tag,
+            t05
+        );
+    }
+
+    // Verify Thumb-16 dirty-register classification across store, load, ALU, stack, branch, and Thumb-2 instructions.
+    use host_debug::thumb16_dirty_core_regs;
+    let thread_xpsr = Some(0x0100_0000);
+    // `str r1, [r0, #20]` (`0x6141`) -> 0 dirty GPRs, xpsr preserved
+    assert_eq!(
+        thumb16_dirty_core_regs(0x6141, 0x1000, 0x1002, thread_xpsr),
+        Some((0, false))
+    );
+    // `ldr r1, [sp, #300]` (`0x994B`) -> only r1 (`1 << 1`) dirty, xpsr preserved
+    assert_eq!(
+        thumb16_dirty_core_regs(0x994B, 0x1000, 0x1002, thread_xpsr),
+        Some((1 << 1, false))
+    );
+    // `adds r2, #4` (`0x3204`) -> r2 (`1 << 2`) + xpsr dirty
+    assert_eq!(
+        thumb16_dirty_core_regs(0x3204, 0x1000, 0x1002, thread_xpsr),
+        Some((1 << 2, true))
+    );
+    // `push {r4, lr}` (`0xB510`) -> only sp (`1 << 13`) dirty, xpsr preserved
+    assert_eq!(
+        thumb16_dirty_core_regs(0xB510, 0x1000, 0x1002, thread_xpsr),
+        Some((1 << 13, false))
+    );
+    // `b.n +8` (`0xE004`) -> 0 dirty GPRs, xpsr preserved
+    assert_eq!(
+        thumb16_dirty_core_regs(0xE004, 0x1000, 0x100C, thread_xpsr),
+        Some((0, false))
+    );
+    // 32-bit Thumb-2 `bl` prefix (`0xF000`) -> None (full register refresh)
+    assert_eq!(
+        thumb16_dirty_core_regs(0xF000, 0x1000, 0x2000, thread_xpsr),
+        None
+    );
+
+    // Simulate VS Code killing GDB abruptly (closing TCP socket without sending `$D#44`):
+    // `serve_core_gdb_client` must clear Core 0 breakpoints and resume Core 0 automatically!
+    drop(gdb);
+    let deadline = std::time::Instant::now() + Duration::from_millis(500);
+    while std::time::Instant::now() < deadline {
+        let guard = shared.lock().unwrap();
+        if !guard.cores[0].halted && guard.cores[0].hw_comparators.iter().all(Option::is_none) {
+            break;
+        }
+        drop(guard);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    {
+        let guard = shared.lock().unwrap();
+        assert!(
+            !guard.cores[0].halted,
+            "Core 0 must be resumed automatically on abrupt GDB TCP disconnect"
+        );
+        assert!(
+            guard.cores[0].hw_comparators.iter().all(Option::is_none),
+            "Core 0 breakpoints must be cleared automatically on abrupt GDB TCP disconnect"
+        );
+    }
+
+    handle.stop();
+}
+
+#[test]
+fn test_frontend_probe_attach_retry_recovers_transient_errors_and_surfaces_exhaustion() {
+    use host_debug::{retry_probe_attach, PROBE_ATTACH_MAX_ATTEMPTS};
+
+    let mut calls = 0usize;
+    let recovered =
+        retry_probe_attach(PROBE_ATTACH_MAX_ATTEMPTS, Duration::from_millis(1), |idx| {
+            calls += 1;
+            if idx < 2 {
+                Err(format!("probe busy on attempt {}", idx + 1))
+            } else {
+                Ok("attached-session")
+            }
+        });
+    assert_eq!(recovered.as_deref(), Ok("attached-session"));
+    assert_eq!(calls, 3);
+
+    let mut fail_calls = 0usize;
+    let exhausted: Result<(), String> = retry_probe_attach(3, Duration::from_millis(1), |idx| {
+        fail_calls += 1;
+        Err(format!("probe claim failed #{}", idx + 1))
+    });
+    assert_eq!(fail_calls, 3);
+    assert_eq!(
+        exhausted.as_ref().err().map(String::as_str),
+        Some("probe claim failed #3")
+    );
+}
+
+#[test]
+fn test_debug_server_log_file_forwards_ready_client_and_stopped_events() {
+    let (backend, _shared) = MockDualCoreBackend::new();
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let log_path = std::env::temp_dir().join(format!(
+        "host_debug_log_test_{}_{}.log",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_file(&log_path);
+
+    let config = DebugServerConfig {
+        bind_host: "127.0.0.1".to_string(),
+        gdb_core0_port: 0,
+        gdb_core1_port: None,
+        rtt_bridge_port: None,
+        halted_on_reset: true,
+        exec_file_path: None,
+        json_events: false,
+        log_file: Some(log_path.clone()),
+    };
+
+    let handle =
+        start_debug_server_with_backend(backend, &config, shutdown).expect("start debug server");
+    let mut gdb = TestRspClient::connect(handle.gdb_core0_port);
+    assert_eq!(gdb.send_cmd("?"), "S05");
+    assert_eq!(gdb.send_cmd("D"), "OK");
+    drop(gdb);
+    std::thread::sleep(Duration::from_millis(25));
+    handle.stop();
+
+    let logged = std::fs::read_to_string(&log_path).expect("read host_debug log file");
+    let _ = std::fs::remove_file(&log_path);
+    assert!(logged.contains("\"event\":\"ready\""), "{}", logged);
+    assert!(logged.contains("\"event\":\"gdb_connected\""), "{}", logged);
+    assert!(
+        logged.contains("\"event\":\"gdb_disconnected\""),
+        "{}",
+        logged
+    );
+    assert!(logged.contains("\"event\":\"stopped\""), "{}", logged);
+}
+
+#[test]
+fn test_worm_slithering_snail_823_idle_ctrl_c_memory_map_and_restart_never_desync_rsp() {
+    let (backend, shared) = MockDualCoreBackend::new();
+    {
+        let mut guard = shared.lock().unwrap();
+        guard.cores[0].pending_target_pcs.push(0x1000_8ACA);
+    }
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let log_path = std::env::temp_dir().join(format!(
+        "host_debug_worm_823_{}_{}.log",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_file(&log_path);
+
+    let config = DebugServerConfig {
+        bind_host: "127.0.0.1".to_string(),
+        gdb_core0_port: 0,
+        gdb_core1_port: Some(0),
+        rtt_bridge_port: None,
+        halted_on_reset: true,
+        exec_file_path: None,
+        json_events: false,
+        log_file: Some(log_path.clone()),
+    };
+
+    let handle =
+        start_debug_server_with_backend(backend, &config, shutdown).expect("start debug server");
+    let mut c0 = TestRspClient::connect(handle.gdb_core0_port);
+    let mut c1 = TestRspClient::connect(handle.gdb_core1_port.expect("core1 port"));
+
+    // 1. qSupported must advertise qXfer:memory-map:read+ so GDB uses Z1 hwbreak on XIP Flash.
+    let caps = c0.send_cmd("qSupported:multiprocess+;swbreak+;hwbreak+");
+    assert!(
+        caps.contains("qXfer:memory-map:read+"),
+        "qSupported must advertise qXfer:memory-map:read+, got: {}",
+        caps
+    );
+    let mem_map = c0.send_cmd("qXfer:memory-map:read::0,400");
+    assert!(
+        mem_map.starts_with('l') && mem_map.contains("<memory type=\"rom\""),
+        "Expected complete <memory-map> XML with ROM region, got: {}",
+        mem_map
+    );
+
+    assert_eq!(c0.send_cmd("QStartNoAckMode"), "OK");
+    assert_eq!(c1.send_cmd("QStartNoAckMode"), "OK");
+    assert_eq!(c0.send_cmd("?"), "S05");
+
+    // 2. Sending redundant Ctrl-C (0x03) while already halted (or pipelined immediately ahead of
+    // vCont;c / breakpoint insertion / monitor reset halt) MUST NOT inject an unsolicited S02 packet!
+    c0.stream
+        .write_all(&[0x03])
+        .expect("write redundant Ctrl-C");
+    c0.stream.flush().expect("flush redundant Ctrl-C");
+    assert_eq!(c0.send_cmd("Z1,10008aca,2"), "OK");
+    assert_eq!(c0.send_cmd("Z1,10008e42,2"), "OK");
+
+    let mut vcont_pkt = format_rsp_packet("vCont;c");
+    let _ = &mut vcont_pkt;
+    c0.stream.write_all(&vcont_pkt).expect("write vCont;c");
+    c0.stream.flush().expect("flush vCont;c");
+    let stop_reply = c0.read_packet_reply();
+    assert!(
+        stop_reply.starts_with("S05") || stop_reply.starts_with("T05"),
+        "vCont;c must receive breakpoint trap S05/T05 (not stale S02!), got: {}",
+        stop_reply
+    );
+
+    // Subsequent $g read after redundant Ctrl-C + vCont;c must receive hex registers, NOT a shifted S05!
+    let regs_hex = c0.send_cmd("g");
+    assert!(
+        regs_hex.len() >= 16 * 8 && regs_hex.chars().all(|ch| ch.is_ascii_hexdigit()),
+        "Expected valid hex register bank for $g (zero packet shift), got: {}",
+        regs_hex
+    );
+
+    // 3. Dual-core restart sequence: Core 0 runs `monitor reset halt`, Core 1 runs `monitor reset secondary`
+    // without re-clobbering Core 0's PC if Core 0 has already stepped!
+    let reset_cmd = format!("qRcmd,{}", encode_hex(b"reset halt"));
+    let first_pkt = c0.send_cmd(&reset_cmd);
+    let ok_pkt = if first_pkt.starts_with('O') {
+        c0.read_packet_reply()
+    } else {
+        first_pkt
+    };
+    assert_eq!(ok_pkt, "OK");
+    {
+        let mut guard = shared.lock().unwrap();
+        guard.cores[0].regs.insert(15, CORE0_MAIN_LOC_ADDR);
+    }
+
+    let sec_reset_cmd = format!("qRcmd,{}", encode_hex(b"reset halt"));
+    let sec_first = c1.send_cmd(&sec_reset_cmd);
+    let sec_ok = if sec_first.starts_with('O') {
+        c1.read_packet_reply()
+    } else {
+        sec_first
+    };
+    assert_eq!(sec_ok, "OK");
+    assert_eq!(
+        shared.lock().unwrap().cores[0].regs.get(&15).copied(),
+        Some(CORE0_MAIN_LOC_ADDR),
+        "monitor reset halt on Core 1 while Core 0 GDB is connected must not double-reset Core 0"
+    );
+
+    // Re-inserting breakpoints after restart must succeed cleanly.
+    assert_eq!(c0.send_cmd("Z1,10008aca,2"), "OK");
+    assert_eq!(c0.send_cmd("Z1,10008e42,2"), "OK");
+
+    // Trigger breakpoint slot exhaustion (5th breakpoint on 4-unit ARMv6-M) to verify log_file records it.
+    assert_eq!(c0.send_cmd("Z1,10009000,2"), "OK");
+    assert_eq!(c0.send_cmd("Z1,10009100,2"), "OK");
+    assert_eq!(c0.send_cmd("Z1,10009200,2"), "E0E");
+
+    assert_eq!(c0.send_cmd("D"), "OK");
+    assert_eq!(c1.send_cmd("D"), "OK");
+    drop(c0);
+    drop(c1);
+    std::thread::sleep(Duration::from_millis(25));
+    handle.stop();
+
+    let logged = std::fs::read_to_string(&log_path).expect("read host_debug log");
+    let _ = std::fs::remove_file(&log_path);
+    assert!(
+        logged.contains("reset halt"),
+        "host_debug log_file should record monitor reset halt command, got: {}",
+        logged
+    );
+    assert!(
+        logged.contains("0x10009200") || logged.contains("10009200"),
+        "host_debug log_file should record failed breakpoint insertion address, got: {}",
+        logged
+    );
+}
+
+#[test]
+fn test_xml_driven_expedited_registers_templated_memory_map_and_secondary_halt_deferral() {
+    use host_debug::{
+        build_arm_cortex_m_memory_regions, parse_expedited_regnums_from_target_xml,
+        MemoryRegionDescriptor, MemoryRegionKind, RegisterDescriptor, RegisterFeatureGroup,
+    };
+
+    // 1. Verify ARMv8-M + FPU `target.xml` renders `group="general"` on core registers (`0..=15, 25`)
+    // and `parse_expedited_regnums_from_target_xml` parses them directly from XML while excluding `msp`/`psp`/`s0..s31`.
+    let arm_fpu_layout = build_arm_cortex_m_register_layout(ProcessorArch::Armv8m, true);
+    let parsed_arm_regnums = parse_expedited_regnums_from_target_xml(arm_fpu_layout.target_xml());
+    let mut expected_arm: Vec<u32> = (0..=15).collect();
+    expected_arm.push(25);
+    assert_eq!(parsed_arm_regnums, expected_arm);
+
+    let arm_mem_xml = arm_fpu_layout.memory_map_xml();
+    assert!(
+        arm_mem_xml.contains("<memory type=\"rom\" start=\"0x00000000\" length=\"0x20000000\"/>")
+    );
+    assert!(
+        arm_mem_xml.contains("<memory type=\"ram\" start=\"0x20000000\" length=\"0x20000000\"/>")
+    );
+    assert_eq!(build_arm_cortex_m_memory_regions().len(), 3);
+
+    // 2. Verify custom non-ARM register names (`x1`, `sp_custom`, `pc_custom`) rendered via `TargetRegisterLayout`
+    // are parsed out of `target.xml` by `RspCoreHandler::format_trap_stop_reply` with zero hardcoded ARM names,
+    // and empty `memory_regions` omits `qXfer:memory-map:read+`.
+    let custom_layout = TargetRegisterLayout::new(
+        ProcessorArch::Armv6m,
+        vec![
+            RegisterFeatureGroup {
+                name: "org.example.custom.core",
+                registers: vec![
+                    RegisterDescriptor {
+                        name: "x1".to_string(),
+                        bitsize: 32,
+                        gdb_regnum: 4,
+                        gdb_alias_regnum: None,
+                        hw_reg_id: 1,
+                        reg_type: "uint32",
+                        reg_group: "general",
+                        is_pc: false,
+                    },
+                    RegisterDescriptor {
+                        name: "pc_custom".to_string(),
+                        bitsize: 32,
+                        gdb_regnum: 9,
+                        gdb_alias_regnum: None,
+                        hw_reg_id: 15,
+                        reg_type: "code_ptr",
+                        reg_group: "general",
+                        is_pc: true,
+                    },
+                ],
+            },
+            RegisterFeatureGroup {
+                name: "org.example.custom.sys",
+                registers: vec![RegisterDescriptor {
+                    name: "csr_status".to_string(),
+                    bitsize: 32,
+                    gdb_regnum: 42,
+                    gdb_alias_regnum: None,
+                    hw_reg_id: 17,
+                    reg_type: "uint32",
+                    reg_group: "system",
+                    is_pc: false,
+                }],
+            },
+        ],
+        Vec::<MemoryRegionDescriptor>::new(),
+    );
+    assert_eq!(custom_layout.memory_map_xml(), "");
+
+    let (mut backend, shared) = MockDualCoreBackend::new();
+    {
+        let mut guard = shared.lock().unwrap();
+        guard.cores[0].regs.insert(1, 0xAABB_CCDD);
+        guard.cores[0].regs.insert(15, 0x1000_0421);
+        guard.cores[1].fail_halt = true;
+    }
+    let mut custom_handler = RspCoreHandler::new(0, custom_layout, None);
+    let qsup = custom_handler
+        .handle_stateless_packet(b"qSupported:hwbreak+")
+        .expect("qSupported");
+    assert_eq!(
+        qsup,
+        RspAction::Reply(
+            "PacketSize=4096;qXfer:features:read+;QStartNoAckMode+;vContSupported+;hwbreak+;swbreak+"
+                .to_string()
+        )
+    );
+    assert_eq!(
+        custom_handler.handle_stateless_packet(b"qXfer:memory-map:read::0,100"),
+        Some(RspAction::status(RspReplyCode::Empty))
+    );
+    let _ = custom_handler.handle_stateless_packet(b"qXfer:features:read:target.xml:0,fff");
+    assert!(custom_handler.target_xml_complete);
+    let stop_pkt = custom_handler.format_trap_stop_reply(&mut backend);
+    assert_eq!(
+        stop_pkt, "T0504:ddccbbaa;09:20040010;thread:01;",
+        "Expected T05 expedited registers parsed directly from custom target.xml"
+    );
+
+    // 3. Verify custom Flash memory region rendering and secondary core (`core_idx = 1`) `monitor halt`
+    // returning `OK` (`secondary_awaiting_boot = true`) when Core 1's DAP is held in reset (`NoAcknowledge`).
+    let flash_layout = TargetRegisterLayout::new(
+        ProcessorArch::Armv6m,
+        arm_fpu_layout.features().to_vec(),
+        vec![MemoryRegionDescriptor {
+            kind: MemoryRegionKind::Flash,
+            start: 0x1000_0000,
+            length: 0x0020_0000,
+        }],
+    );
+    assert!(flash_layout
+        .memory_map_xml()
+        .contains("<memory type=\"flash\" start=\"0x10000000\" length=\"0x00200000\"/>"));
+
+    let mut c1_handler = RspCoreHandler::new(1, flash_layout, None);
+    let halt_rcmd = format!("qRcmd,{}", encode_hex(b"halt"));
+    let c1_halt_res = c1_handler.handle_packet(halt_rcmd.as_bytes(), &mut backend);
+    assert_eq!(c1_halt_res, RspAction::status(RspReplyCode::Ok));
+    assert!(c1_handler.secondary_awaiting_boot);
+
+    let mut c0_handler = RspCoreHandler::new(0, arm_fpu_layout, None);
+    shared.lock().unwrap().cores[0].fail_halt = true;
+    let c0_halt_res = c0_handler.handle_packet(halt_rcmd.as_bytes(), &mut backend);
+    assert_eq!(c0_halt_res, RspAction::status(RspReplyCode::ErrTargetState));
+
+    // 4. Verify DOM-based `parse_expedited_regnums_from_target_xml` ignores XML comments, supports
+    // single-quoted attributes, falls back to the first `<feature>` when `group` is omitted, and handles invalid XML.
+    let commented_xml = r#"<?xml version="1.0"?>
+<target version="1.0">
+  <!-- <reg name="fake" bitsize="32" regnum="99" group="general"/> -->
+  <feature name='org.example.first'>
+    <reg group='general' regnum='3' name='r3' bitsize='32'/>
+    <reg name='sys0' bitsize='32' regnum='19' group='system'/>
+  </feature>
+  <feature name="org.example.second">
+    <reg name="pc" bitsize="32" group="general" regnum="15"/>
+  </feature>
+</target>"#;
+    assert_eq!(
+        parse_expedited_regnums_from_target_xml(commented_xml),
+        vec![3, 15]
+    );
+    let ungrouped_xml = r#"<target><feature name="primary"><reg name="a0" bitsize="32" regnum="10"/></feature><feature name="aux"><reg name="f0" bitsize="32" regnum="40"/></feature></target>"#;
+    assert_eq!(
+        parse_expedited_regnums_from_target_xml(ungrouped_xml),
+        vec![10]
+    );
+    assert!(parse_expedited_regnums_from_target_xml("<target><unclosed>").is_empty());
+
+    // 5. Verify `ArmBreakpointManager` keeps Core 0's `PSM.frce_off` helper trap armed if Core 1's FPB
+    // re-arm transiently fails on the first `spawn_core1` FIFO iteration, then succeeds and clears on the next hit.
+    const TRAP_ADDR: u64 = 0x1002_007C;
+    {
+        let mut guard = shared.lock().unwrap();
+        guard.memory.insert(TRAP_ADDR, 0xC0);
+        guard.memory.insert(TRAP_ADDR + 1, 0x46);
+        guard.cores[0].halted = true;
+        guard.cores[0].regs.insert(15, TRAP_ADDR as u32);
+        guard.cores[1].bp_ctrl_enabled = false;
+        guard.cores[1].hw_comparators = vec![None; 4];
+        guard.cores[1].fail_next_rearm = true;
+    }
+    let mut bp_mgr = ArmBreakpointManager::new(&[4, 4], Some(TRAP_ADDR));
+    {
+        let mut hw = SharedHwAdapter { state: &shared };
+        assert!(bp_mgr
+            .insert_breakpoint(&mut hw, 1, CORE1_RESET_HANDLER_ADDR as u64, false)
+            .unwrap());
+        // Simulate `PSM.frce_off.proc1` wiping Core 1's hardware comparators right before Core 0 hits `TRAP_ADDR`.
+        shared.lock().unwrap().cores[1].bp_ctrl_enabled = false;
+        shared.lock().unwrap().cores[1].hw_comparators = vec![None; 4];
+
+        // Hit #1: Core 1 re-arm transiently fails -> Core 0 steps past `TRAP_ADDR` & resumes, keeping trap slot 3 armed!
+        assert!(bp_mgr.poll_maintenance(&mut hw, 0));
+        assert_eq!(
+            shared.lock().unwrap().cores[0].hw_comparators[3],
+            Some(TRAP_ADDR)
+        );
+        assert!(shared.lock().unwrap().cores[1]
+            .hw_comparators
+            .iter()
+            .all(Option::is_none));
+
+        // Hit #2 (`cmds = [0, 0, ...]`, second `cmd == 0`): Core 1 re-arm succeeds -> Core 1 FPB armed & Core 0 trap cleared!
+        {
+            let mut guard = shared.lock().unwrap();
+            guard.cores[0].halted = true;
+            guard.cores[0].regs.insert(15, TRAP_ADDR as u32);
+        }
+        assert!(bp_mgr.poll_maintenance(&mut hw, 0));
+        assert!(shared.lock().unwrap().cores[0]
+            .hw_comparators
+            .iter()
+            .all(Option::is_none));
+        assert_eq!(
+            shared.lock().unwrap().cores[1].hw_comparators[0],
+            Some(CORE1_RESET_HANDLER_ADDR as u64)
+        );
+    }
 }

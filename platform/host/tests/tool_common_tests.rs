@@ -8,7 +8,10 @@ fn test_autodetect_project_info() {
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).unwrap();
 
-    let src_path = temp_dir.join("dummy.rs");
+    let fixture_rs = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/resources/dummy_metadata_bin.rs");
+    let meta_bin_path = temp_dir.join("project_metadata.bin");
+    let elf_meta_bin_path = temp_dir.join("project_metadata_elf.bin");
     let bin_path = temp_dir.join("dummy_bin");
 
     let (writer, elf_writer) = platform::types::ProjectMetadata::serialize_pair(
@@ -63,43 +66,15 @@ fn test_autodetect_project_info() {
         64 * 1024,
     );
     let len = writer.len;
-    let mut bytes_str = String::new();
-    for i in 0..len {
-        bytes_str.push_str(&format!("0x{:02x}, ", writer.buf[i]));
-    }
-    let elf_len = elf_writer.len;
-    let mut elf_bytes_str = String::new();
-    for i in 0..elf_len {
-        elf_bytes_str.push_str(&format!("0x{:02x}, ", elf_writer.buf[i]));
-    }
-
-    fs::write(
-        &src_path,
-        format!(
-            r#"
-#[used]
-#[no_mangle]
-pub static PROJECT_METADATA: [u8; {}] = [
-    {}
-];
-
-#[used]
-#[no_mangle]
-pub static PROJECT_METADATA_ELF: [u8; {}] = [
-    {}
-];
-
-fn main() {{}}
-"#,
-            len, bytes_str, elf_len, elf_bytes_str
-        ),
-    )
-    .unwrap();
+    fs::write(&meta_bin_path, &writer.buf[..len]).unwrap();
+    fs::write(&elf_meta_bin_path, &elf_writer.buf[..elf_writer.len]).unwrap();
 
     let status = Command::new("rustc")
-        .arg(&src_path)
+        .arg(&fixture_rs)
         .arg("-o")
         .arg(&bin_path)
+        .env("TEST_PROJECT_METADATA_PATH", &meta_bin_path)
+        .env("TEST_PROJECT_METADATA_ELF_PATH", &elf_meta_bin_path)
         .status()
         .expect("Failed to execute rustc compiler");
 

@@ -365,6 +365,13 @@ def _add_root_daemon_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Optional probe selector (VID:PID or VID:PID:SERIAL) for multi-target benches.",
     )
+    parser.add_argument(
+        "--log-dir",
+        dest="log_dir",
+        type=str,
+        default=None,
+        help="Directory receiving per-stream host log files (default: target/logs).",
+    )
 
 
 def _add_cli_subparser(subparsers: Any) -> None:
@@ -495,6 +502,50 @@ def _add_lifecycle_subparsers(subparsers: Any) -> None:
     subparsers.add_parser("reset", help="Reset the target device via active host daemon")
     subparsers.add_parser("reboot", help="Reboot the target device and re-attach RTT via active host daemon")
     subparsers.add_parser("metadata", help="Query target .program_metadata and validate against target ELF")
+    boot_status_parser = subparsers.add_parser(
+        "boot-status",
+        help="Check current target firmware boot status via host_cli boot-status / active daemon",
+    )
+    boot_status_parser.add_argument(
+        "--host-port",
+        type=int,
+        default=None,
+        help="Optional explicit TCP port of a running host.py daemon.",
+    )
+    boot_status_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Format boot status output as JSON.",
+    )
+    logs_parser = subparsers.add_parser(
+        "logs",
+        help="List per-stream host log file paths or tail a specific log stream (daemon, debug, defmt, cli, fs)",
+    )
+    logs_parser.add_argument(
+        "--stream",
+        "-s",
+        choices=["all", "daemon", "debug", "defmt", "cli", "fs"],
+        default="all",
+        help="Log stream to inspect (default: all).",
+    )
+    logs_parser.add_argument(
+        "--lines",
+        "-n",
+        type=int,
+        default=0,
+        help="Print the last N lines of the selected log file(s) (0 prints paths only).",
+    )
+    logs_parser.add_argument(
+        "--host-port",
+        type=int,
+        default=None,
+        help="Optional explicit TCP port of a running host.py daemon.",
+    )
+    logs_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Format output as JSON.",
+    )
     subparsers.add_parser("stop", help="Stop running host daemon")
 
 
@@ -502,12 +553,12 @@ def _add_trace_subparser(subparsers: Any) -> None:
     """Register the `host.py trace` live trace control, export, and Rerun viewer subcommand parser."""
     trace_parser = subparsers.add_parser(
         "trace",
-        help="Inspect, pause/resume/clear, export (.csv / Perfetto .json), or open Rerun viewer for live traces",
+        help="Inspect, pause/resume/clear, export (.csv / Perfetto .json), or open Perfetto/Rerun viewers for live traces",
     )
     trace_parser.add_argument(
         "trace_action",
         nargs="?",
-        choices=["status", "clear", "pause", "resume", "export", "open-rerun"],
+        choices=["status", "clear", "pause", "resume", "export", "open-perfetto", "open-rerun"],
         default="status",
         help="Trace session operation to perform on the active host.py daemon.",
     )
@@ -841,30 +892,35 @@ def _resolve_offline_debug_target_info(
     return offline_runner.get_debug_status()
 
 
+GDB_PROXY_EOF_DRAIN_SEC: float = 0.08
+
+
 def _run_gdb_stdio_proxy(
     *,
     core_idx: int,
     repo_root: Path,
     host: str,
     host_port: Optional[int],
+    explicit_gdb_port: Optional[int] = None,
 ) -> int:
     """Bridge GDB Remote Serial Protocol stdio (`target extended-remote | ...`) to the active Core 0/1 TCP port."""
     port_key = "gdb_core1_port" if core_idx == 1 else "gdb_core0_port"
     default_port = DEFAULT_GDB_CORE1_PORT if core_idx == 1 else DEFAULT_GDB_CORE0_PORT
-    target_port: Optional[int] = None
+    target_port: Optional[int] = explicit_gdb_port
 
-    try:
-        dbg = send_daemon_request("/api/debug/status", None, port=host_port, host=host)
-        if isinstance(dbg, dict):
-            if not dbg.get("active"):
-                started = send_daemon_request("/api/debug/start", {"reset": False}, port=host_port, host=host)
-                if isinstance(started, dict):
-                    dbg = started.get("debug") or started
-            raw_port = dbg.get(port_key)
-            if raw_port is not None:
-                target_port = int(raw_port)
-    except RuntimeError:
-        target_port = None
+    if target_port is None:
+        try:
+            dbg = send_daemon_request("/api/debug/status", None, port=host_port, host=host)
+            if isinstance(dbg, dict):
+                if not dbg.get("active"):
+                    started = send_daemon_request("/api/debug/start", {"reset": False}, port=host_port, host=host)
+                    if isinstance(started, dict):
+                        dbg = started.get("debug") or started
+                raw_port = dbg.get(port_key)
+                if raw_port is not None:
+                    target_port = int(raw_port)
+        except RuntimeError:
+            target_port = None
 
     if target_port is None:
         sess = load_last_session(repo_root) or {}
@@ -881,14 +937,11 @@ def _run_gdb_stdio_proxy(
         )
         return 1
 
-    def _forward_sigint(_signum: int, _frame: Any) -> None:
-        try:
-            sock.sendall(b"\x03")
-        except OSError:
-            pass
-
+    # Ignore SIGINT in the pipe helper: GDB (`target extended-remote | ...`) catches SIGINT from
+    # VS Code Cortex-Debug itself and writes `\x03` onto our stdin pipe; forwarding SIGINT here too
+    # would inject a duplicate `\x03` and desynchronize GDB's detach (`$D#44`) handshake.
     try:
-        signal.signal(signal.SIGINT, _forward_sigint)
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
     except (OSError, ValueError):
         pass
 
@@ -907,6 +960,15 @@ def _run_gdb_stdio_proxy(
         finally:
             try:
                 sock.shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
+            time.sleep(GDB_PROXY_EOF_DRAIN_SEC)
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                sock.close()
             except OSError:
                 pass
 
@@ -1056,11 +1118,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         action = str(getattr(args, "debug_action", "status") or "status").lower()
         effective_dbg_root = Path(args.dbg_repo_root).resolve() if getattr(args, "dbg_repo_root", None) else repo_root
         if action == "gdb-proxy":
+            core_val = int(getattr(args, "dbg_core", 0))
+            explicit_port = getattr(args, "dbg_core1_port" if core_val == 1 else "dbg_core0_port", None)
             return _run_gdb_stdio_proxy(
-                core_idx=int(getattr(args, "dbg_core", 0)),
+                core_idx=core_val,
                 repo_root=effective_dbg_root,
                 host=args.host,
                 host_port=args.host_port,
+                explicit_gdb_port=int(explicit_port) if explicit_port is not None else None,
             )
         try:
             if action in ("target-info", "sync-symbols"):
@@ -1155,6 +1220,91 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"Host daemon is not running ({e}).")
             return 1
 
+    if args.subcommand == "boot-status":
+        try:
+            res = send_daemon_request(
+                "/api/boot_status",
+                None,
+                port=getattr(args, "host_port", None),
+                host=args.host,
+            )
+        except Exception:
+            from host_daemon.provider.daemon.runner import DaemonRunner
+
+            sess = load_last_session(repo_root) or {}
+            offline_runner = DaemonRunner(
+                repo_root=repo_root,
+                target=args.target or sess.get("target"),
+                package=args.package or sess.get("package"),
+                bin_name=args.bin_name or sess.get("bin"),
+                release=bool(args.release or sess.get("release", False)),
+                speed=int(args.speed or sess.get("speed", 1000)),
+                chip=args.chip or sess.get("chip"),
+                enable_debug_server=bool(sess.get("enable_debug_server", False)),
+            )
+            res = offline_runner.query_boot_status(refresh_probe=True)
+        if getattr(args, "json", False):
+            print(json.dumps(res, indent=2))
+        else:
+            print(
+                f"Target Boot Status: {str(res.get('state') or 'unknown').upper()}\n"
+                f"  Boot Ready: {bool(res.get('boot_ready', False))}\n"
+                f"  Shell Idle: {bool(res.get('shell_idle', False))}\n"
+                f"  Epoch     : {int(res.get('epoch') or 0)}\n"
+                f"  Binary    : {res.get('bin')}\n"
+                f"  Chip      : {res.get('chip')}"
+            )
+        return 0
+
+    if args.subcommand == "logs":
+        files_map: Dict[str, str] = {}
+        try:
+            res = send_daemon_request(
+                "/api/logs/files",
+                None,
+                port=getattr(args, "host_port", None),
+                host=args.host,
+            )
+            raw_files = res.get("files") if isinstance(res, dict) else None
+            if isinstance(raw_files, dict):
+                files_map = {str(k): str(v) for k, v in raw_files.items()}
+        except Exception:
+            from host_daemon.provider.daemon.runner import HostLogStream, resolve_default_host_log_dir
+
+            eff_dir = Path(args.log_dir) if getattr(args, "log_dir", None) else resolve_default_host_log_dir(repo_root)
+            files_map = {
+                "daemon": str(eff_dir / f"{HostLogStream.DAEMON.value}.log"),
+                "debug": str(eff_dir / f"{HostLogStream.DEBUG.value}.log"),
+                "defmt": str(eff_dir / f"{HostLogStream.DEFMT.value}.log"),
+                "cli": str(eff_dir / f"{HostLogStream.CLI.value}.log"),
+                "fs": str(eff_dir / f"{HostLogStream.FS.value}.log"),
+            }
+
+        req_stream = str(getattr(args, "stream", "all") or "all")
+        selected = files_map if req_stream == "all" else {req_stream: files_map.get(req_stream, "")}
+        tail_n = max(0, int(getattr(args, "lines", 0) or 0))
+        tails: Dict[str, List[str]] = {}
+        if tail_n > 0:
+            for key, fpath in selected.items():
+                p = Path(fpath) if fpath else None
+                if p and p.is_file():
+                    tails[key] = p.read_text(encoding="utf-8", errors="replace").splitlines()[-tail_n:]
+                else:
+                    tails[key] = []
+
+        if getattr(args, "json", False):
+            payload: Dict[str, Any] = {"files": selected}
+            if tail_n > 0:
+                payload["tails"] = tails
+            print(json.dumps(payload, indent=2))
+        else:
+            for key, fpath in selected.items():
+                print(f"{key:<8}: {fpath}")
+                if tail_n > 0:
+                    for ln in tails.get(key, []):
+                        print(f"  {ln}")
+        return 0
+
     if args.subcommand == "trace":
         action = str(getattr(args, "trace_action", "status") or "status").lower()
         try:
@@ -1200,6 +1350,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                     print(json.dumps(res, indent=2))
                 else:
                     print(f"Exported {res.get('event_count')} trace events ({res.get('format')}) -> {res.get('path')}")
+                return 0
+            if action == "open-perfetto":
+                res = send_daemon_request("/api/trace/open_perfetto", {}, port=args.host_port, host=args.host)
+                if "error" in res:
+                    print(f"Error: {res['error']}", file=sys.stderr)
+                    return 1
+                if args.json:
+                    print(json.dumps(res, indent=2))
+                else:
+                    print(f"Opened Perfetto UI ({res.get('event_count', 0)} events) -> {res.get('url')}")
                 return 0
             if action == "open-rerun":
                 rr_payload: Dict[str, Any] = {"spawn": True}
@@ -1693,9 +1853,16 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Detach from terminal unless --no-detach / --foreground is requested
     if not getattr(args, "no_detach", False):
-        log_dir = repo_root / "target" if (repo_root / "target").exists() else repo_root / "build"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        log_path = log_dir / "host_daemon.log"
+        from host_daemon.provider.daemon.runner import HostLogStream, resolve_default_host_log_dir
+
+        eff_log_dir = Path(args.log_dir) if getattr(args, "log_dir", None) else resolve_default_host_log_dir(repo_root)
+        eff_log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = (
+            eff_log_dir.parent / f"{HostLogStream.DAEMON.value}.log"
+            if eff_log_dir.name == "logs"
+            else eff_log_dir / f"{HostLogStream.DAEMON.value}.log"
+        )
+        log_path.parent.mkdir(parents=True, exist_ok=True)
         log_file = open(log_path, "a", encoding="utf-8")
 
         child_args = (
@@ -1752,6 +1919,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         rtt_bridge_port=int(getattr(args, "rtt_bridge_port", 50000)),
         probe_selector=getattr(args, "probe_selector", None),
         trace_mode=getattr(args, "trace_mode", None),
+        log_dir=Path(args.log_dir) if getattr(args, "log_dir", None) else None,
     )
     atexit.register(runner.stop)
     atexit.register(remove_lock_file)

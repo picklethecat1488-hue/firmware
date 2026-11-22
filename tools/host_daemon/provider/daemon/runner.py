@@ -2,15 +2,19 @@
 
 from collections import deque
 from datetime import datetime, timezone
+from enum import Enum
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from typing import Any, Deque, Dict, List, Optional, Tuple
+import webbrowser
 
 from host_daemon.model.manual_prompt import ManualPromptState
 from host_daemon.model.metadata import (
@@ -21,7 +25,10 @@ from host_daemon.model.metadata import (
     sync_active_target_elf_link,
 )
 from host_daemon.model.trace_mode import (
+    DEFAULT_PERFETTO_TRACE_PATH,
+    PERFETTO_CSP_ALLOWED_PORT,
     TraceMode,
+    build_perfetto_deep_link,
     get_cargo_feature_args,
     get_external_trace_viewer,
     normalize_trace_mode,
@@ -47,6 +54,7 @@ DEBUG_SERVER_STARTUP_TIMEOUT_SEC: float = 20.0
 DEFAULT_GDB_CORE0_PORT: int = 3333
 DEFAULT_GDB_CORE1_PORT: int = 3334
 DEFAULT_RTT_BRIDGE_PORT: int = 50000
+MIN_DEBUG_SERVER_SWD_SPEED_KHZ: int = 4000
 PROBE_RELEASE_SETTLE_SEC: float = 0.25
 PROBE_RETRY_BACKOFF_SEC: float = 0.6
 MAX_PROBE_OPEN_RETRIES: int = 2
@@ -58,6 +66,126 @@ CLI_QUIET_TIMEOUT_RATIO: float = 0.45
 CLI_COMPLETION_SETTLE_SEC: float = 0.25
 ANSI_CLEAR_LINE_SEQ: str = "\x1b[2K"
 SHELL_PROMPT_PREFIX: str = "shell>"
+BOOT_STATUS_QUERY_TIMEOUT_SEC: float = 5.0
+RTT_STREAMING_MODES: tuple[str, ...] = ("CLI", "TEST", "TRACE")
+
+
+class BootState(str, Enum):
+    """Canonical target boot lifecycle states reported via `host_cli boot-status`."""
+
+    RESET = "reset"
+    BOOTING = "booting"
+    READY = "ready"
+    FAULTED = "faulted"
+    UNKNOWN = "unknown"
+
+
+class HostLogStream(str, Enum):
+    """Dedicated per-stream log file basenames written under `DaemonRunner.log_dir` (`target/logs/`)."""
+
+    DAEMON = "host_daemon"
+    DEBUG = "host_debug"
+    DEFMT = "target_defmt"
+    CLI = "target_cli"
+    FS = "host_fs"
+
+
+def resolve_default_host_log_dir(repo_root: Path) -> Path:
+    """Resolve the canonical `target/logs` directory for per-stream host log files."""
+    if (repo_root / "Cargo.toml").is_file():
+        try:
+            return get_cargo_target_directory(repo_root) / "logs"
+        except (OSError, RuntimeError, ValueError):
+            pass
+    return repo_root / "target" / "logs"
+
+
+BROWSER_OPEN_TIMEOUT_SEC: float = 5.0
+
+
+def open_url_in_system_browser(url: str) -> bool:
+    """Open `url` in the OS default browser and raise it to the foreground (including over `pywebview`)."""
+    if sys.platform == "darwin" and Path("/usr/bin/open").is_file():
+        try:
+            completed = subprocess.run(
+                ["/usr/bin/open", url],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=BROWSER_OPEN_TIMEOUT_SEC,
+            )
+            if completed.returncode == 0:
+                return True
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return bool(webbrowser.open(url, new=2, autoraise=True))
+
+
+class _PerfettoTraceBridgeHandler(BaseHTTPRequestHandler):
+    """Lightweight localhost `:9001` HTTP handler allowed by `https://ui.perfetto.dev` CSP `connect-src`."""
+
+    server: "_PerfettoTraceBridgeServer"
+
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+        """Suppress per-request stderr noise from `BaseHTTPRequestHandler`."""
+        return
+
+    def _write_cors_headers(self) -> None:
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "*")
+        self.send_header("Access-Control-Allow-Private-Network", "true")
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        """Answer CORS and Chrome Private Network Access preflights from `https://ui.perfetto.dev`."""
+        self.send_response(204)
+        self._write_cors_headers()
+        self.end_headers()
+
+    def do_POST(self) -> None:  # noqa: N802
+        """Return 404 on `/status` RPC probes so Perfetto UI treats `:9001` as a static trace HTTP host."""
+        self.send_response(404)
+        self.send_header("Content-Length", "0")
+        self._write_cors_headers()
+        self.end_headers()
+
+    def do_GET(self) -> None:  # noqa: N802
+        """Serve buffered Perfetto JSON on `/trace.perfetto.json` and 404 `/status` RPC checks."""
+        req_path = self.path.split("?", 1)[0]
+        if req_path == "/status":
+            self.send_response(404)
+            self.send_header("Content-Length", "0")
+            self._write_cors_headers()
+            self.end_headers()
+            return
+        if req_path in (DEFAULT_PERFETTO_TRACE_PATH, "/api/trace/perfetto.json") or req_path.endswith(".perfetto.json"):
+            runner = self.server.runner
+            payload = runner.trace_store.format_perfetto_json(chip=runner.chip).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self._write_cors_headers()
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        self.send_response(404)
+        self.send_header("Content-Length", "0")
+        self._write_cors_headers()
+        self.end_headers()
+
+
+class _PerfettoTraceBridgeServer(ThreadingHTTPServer):
+    """Reusable daemon-threaded HTTP server bound to Perfetto UI's CSP-allowed port (`127.0.0.1:9001`)."""
+
+    allow_reuse_address = True
+    daemon_threads = True
+
+    def __init__(self, host: str, port: int, runner: "DaemonRunner") -> None:
+        self.runner = runner
+        super().__init__((host, port), _PerfettoTraceBridgeHandler)
+
+
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 DEFMT_DEVICE_TS_RE = re.compile(r"^\s*(\d+\.\d+)\s+(?:INFO|WARN|ERROR|DEBUG|TRACE)\b")
 RTT_SESSION_BANNER_PREFIXES: Tuple[str, ...] = (
@@ -95,9 +223,11 @@ class DaemonRunner:
         rtt_bridge_port: int = DEFAULT_RTT_BRIDGE_PORT,
         probe_selector: Optional[str] = None,
         trace_mode: Optional[str] = None,
+        log_dir: Optional[Path] = None,
     ) -> None:
         """Initialize DaemonRunner with workspace configuration and build parameters."""
         self.repo_root = repo_root
+        self.log_dir: Path = Path(log_dir) if log_dir is not None else resolve_default_host_log_dir(repo_root)
 
         resolved_pkg = package
         resolved_bin = bin_name
@@ -164,6 +294,12 @@ class DaemonRunner:
         self._last_cmd_error: Optional[str] = None
         self._json_events_active: bool = False
         self._last_shell_idle_epoch: Optional[int] = None
+        self._boot_status: Dict[str, Any] = {
+            "state": BootState.UNKNOWN.value,
+            "boot_ready": False,
+            "shell_idle": False,
+            "epoch": 0,
+        }
         self._fs_seq: int = 0
         self.command_history: List[str] = []
         self._boot_mono: float = time.monotonic()
@@ -211,12 +347,71 @@ class DaemonRunner:
             "console": [],
         }
         self._sync_thread: Optional[threading.Thread] = None
+        self.perfetto_http_port: int = PERFETTO_CSP_ALLOWED_PORT
+        self._perfetto_http_server: Optional[_PerfettoTraceBridgeServer] = None
+        self._perfetto_http_thread: Optional[threading.Thread] = None
+
+    def get_stream_log_path(self, stream: HostLogStream) -> Path:
+        """Return the log file path for a specific `HostLogStream` under `self.log_dir`."""
+        return self.log_dir / f"{stream.value}.log"
+
+    def get_canonical_daemon_log_path(self) -> Path:
+        """Return the top-level `<target_dir>/host_daemon.log` path mirrored when `log_dir` is `<target_dir>/logs`."""
+        if self.log_dir.name == "logs":
+            return self.log_dir.parent / f"{HostLogStream.DAEMON.value}.log"
+        return self.get_stream_log_path(HostLogStream.DAEMON)
+
+    def get_log_files(self) -> Dict[str, str]:
+        """Return a mapping of logical stream names (`daemon`, `debug`, `defmt`, `cli`, `fs`) to log file paths."""
+        return {
+            "daemon": str(self.get_stream_log_path(HostLogStream.DAEMON)),
+            "debug": str(self.get_stream_log_path(HostLogStream.DEBUG)),
+            "defmt": str(self.get_stream_log_path(HostLogStream.DEFMT)),
+            "cli": str(self.get_stream_log_path(HostLogStream.CLI)),
+            "fs": str(self.get_stream_log_path(HostLogStream.FS)),
+        }
+
+    def _append_stream_log_line(self, stream: HostLogStream, line: str) -> None:
+        """Append a single ANSI-sanitized line to the dedicated per-stream log file on disk."""
+        cleaned = ANSI_ESCAPE_RE.sub("", line).rstrip("\r\n")
+        if not cleaned:
+            return
+        targets = [self.get_stream_log_path(stream)]
+        if stream == HostLogStream.DAEMON:
+            canonical_path = self.get_canonical_daemon_log_path()
+            if canonical_path != targets[0]:
+                targets.append(canonical_path)
+        for log_path in targets:
+            try:
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with log_path.open("a", encoding="utf-8") as fh:
+                    fh.write(cleaned + "\n")
+            except OSError:
+                pass
+
+    def log_api_invocation(
+        self,
+        method: str,
+        path: str,
+        status: int,
+        duration_ms: float,
+        detail: str = "",
+    ) -> None:
+        """Record an HTTP API invocation in `host_daemon.log` without flooding the target defmt console."""
+        ts = datetime.now(timezone.utc).isoformat()
+        lvl = "WARN" if status >= 400 else "INFO"
+        suffix = f" {detail}" if detail else ""
+        self._append_stream_log_line(
+            HostLogStream.DAEMON,
+            f"[{ts}] [{lvl}] [api] {method} {path} -> {status} ({duration_ms:.1f}ms){suffix}",
+        )
 
     def log_sync_console(self, line: str) -> None:
         """Append a line to the sync console log buffer and update sync_status."""
         with self._lock:
             self.sync_logs.append(line)
             self.sync_status["console"] = list(self.sync_logs)
+        self._append_stream_log_line(HostLogStream.DAEMON, f"[SYNC] {line}")
 
     def cancel_sync(self) -> Dict[str, Any]:
         """Abort running synchronization process and mark status cancelled."""
@@ -264,9 +459,17 @@ class DaemonRunner:
     def _record_lifecycle(self, phase: str, detail: str, *, mark_recent: bool = True) -> None:
         """Record a thread-safe target lifecycle event (`flashing`, `mode_switch`, `rebooting`, `idle`)."""
         with self._lock:
+            prev_phase = self._lifecycle_phase
+            prev_detail = self._lifecycle_detail
             self._lifecycle_phase = phase
             self._lifecycle_detail = detail
             self._lifecycle_updated_at = time.monotonic() if mark_recent else 0.0
+        if phase != prev_phase or (mark_recent and detail != prev_detail):
+            ts = datetime.now(timezone.utc).isoformat()
+            self._append_stream_log_line(
+                HostLogStream.DAEMON,
+                f"[{ts}] [INFO] [daemon] [STATE] lifecycle: {prev_phase} -> {phase} ({detail})",
+            )
 
     def get_target_activity(self) -> Dict[str, Any]:
         """Return a thread-safe snapshot of target flash, mode-switch, reboot, and command telemetry."""
@@ -449,6 +652,17 @@ class DaemonRunner:
             self.sync_logs.clear()
             self.sync_status["console"] = []
         try:
+            # Detach active RTT / GDB probe handles before recompiling target ELF on disk so an outgoing
+            # firmware session cannot decode mismatched defmt string tables or pollute the new trace mode.
+            probe_was_busy = (self.rtt_process is not None and self.rtt_process.poll() is None) or (
+                self.debug_process is not None and self.debug_process.poll() is None
+            )
+            self.stop_rtt_streaming()
+            self.stop_debug_server()
+            self.trace_store.clear()
+            if probe_was_busy:
+                time.sleep(PROBE_RELEASE_SETTLE_SEC)
+
             # 1. Compile target firmware
             if self.is_sync_cancelled:
                 return dict(self.sync_status)
@@ -466,16 +680,9 @@ class DaemonRunner:
             )
             self.build_host_tools()
 
-            # 3. Flash target device (release probe first)
+            # 3. Flash target device
             if self.is_sync_cancelled:
                 return dict(self.sync_status)
-            probe_was_busy = (self.rtt_process is not None and self.rtt_process.poll() is None) or (
-                self.debug_process is not None and self.debug_process.poll() is None
-            )
-            self.stop_rtt_streaming()
-            self.stop_debug_server()
-            if probe_was_busy:
-                time.sleep(PROBE_RELEASE_SETTLE_SEC)
             self._update_sync("flashing_target", 3, 75, "Flashing target device via probe-rs...")
             if not self.flash_target(use_cargo_run=False):
                 raise RuntimeError(self.status_message or "Flash target failed")
@@ -573,6 +780,20 @@ class DaemonRunner:
             }
             self.logs.append(entry)
 
+        if channel == "target":
+            self._append_stream_log_line(HostLogStream.DEFMT, f"[{entry['timestamp']}] {message}")
+        elif channel == "debug":
+            self._append_stream_log_line(HostLogStream.DEBUG, f"[{entry['timestamp']}] [{level}] {message}")
+            self._append_stream_log_line(
+                HostLogStream.DAEMON,
+                f"[{entry['timestamp']}] [{level}] [debug] {message}",
+            )
+        else:
+            self._append_stream_log_line(
+                HostLogStream.DAEMON,
+                f"[{entry['timestamp']}] [{level}] [{channel}] {message}",
+            )
+
     def log_cli(self, message: str, is_input: bool = False) -> None:
         """Append a line to the CLI console output buffer and stream device-timestamped lines to active test runs."""
         device_ts = self.get_device_timestamp_str()
@@ -586,6 +807,9 @@ class DaemonRunner:
                 "text": message,
             }
             self.cli_outputs.append(entry)
+
+        prefix = "> " if is_input else ""
+        self._append_stream_log_line(HostLogStream.CLI, f"[{device_ts}] {prefix}{message}")
 
         stripped_msg = message.replace(ANSI_CLEAR_LINE_SEQ, "").strip()
         if stripped_msg and (is_input or not stripped_msg.startswith(RTT_SESSION_BANNER_PREFIXES)):
@@ -605,6 +829,9 @@ class DaemonRunner:
             }
             self.fs_outputs.append(entry)
 
+        prefix = "> " if is_input else ""
+        self._append_stream_log_line(HostLogStream.FS, f"[{device_ts}] {prefix}{message}")
+
         if message.strip():
             self.test_manager.record_device_cli_line(message, is_input=is_input, device_ts=device_ts)
 
@@ -618,6 +845,7 @@ class DaemonRunner:
             self.active_mode = mode
             self.mode_switch_count += 1
         self._record_lifecycle("mode_switch", f"Switched target mode from {prev_mode} to {mode}")
+        self.log(f"[STATE] Active workstation mode changed: {prev_mode} -> {mode}", channel="daemon")
         if mode == "FS":
             self.log("Switching to Filesystem mode (stopping RTT streaming to release probe)...", channel="system")
             self.stop_rtt_streaming()
@@ -1107,7 +1335,7 @@ class DaemonRunner:
                         self._cached_metadata_elf = target_elf
                 return res
             finally:
-                if rtt_was_running and self.active_mode in ("CLI", "TEST", "TRACE"):
+                if rtt_was_running and self.active_mode in RTT_STREAMING_MODES:
                     time.sleep(PROBE_RELEASE_SETTLE_SEC)
                     self.start_rtt_streaming(reset_on_attach=False)
                 self._record_lifecycle("idle", "Target metadata probe complete", mark_recent=False)
@@ -1221,13 +1449,15 @@ class DaemonRunner:
 
         self.stop_debug_server()
         effective_halt = self.halt_on_reset if halt_on_reset is None else bool(halt_on_reset)
+        debug_log_path = self.get_stream_log_path(HostLogStream.DEBUG)
+        debug_speed_khz = max(int(self.speed), MIN_DEBUG_SERVER_SWD_SPEED_KHZ)
         cmd = [
             *self._resolve_host_debug_cmd_prefix(),
             "serve",
             "--elf",
             str(self.elf_path),
             "--speed",
-            str(self.speed),
+            str(debug_speed_khz),
             "--gdb-core0-port",
             str(self.gdb_core0_port),
             "--gdb-core1-port",
@@ -1235,6 +1465,8 @@ class DaemonRunner:
             "--rtt-bridge-port",
             str(self.rtt_bridge_port),
             "--json-events",
+            "--log-file",
+            str(debug_log_path),
             "--exit-on-stdin-eof",
         ]
         if self.chip:
@@ -1254,13 +1486,16 @@ class DaemonRunner:
         startup_error: List[str] = []
 
         def _debug_worker() -> None:
+            debug_err_fh = None
             try:
+                debug_log_path.parent.mkdir(parents=True, exist_ok=True)
+                debug_err_fh = debug_log_path.open("a", encoding="utf-8")
                 self.debug_process = subprocess.Popen(
                     cmd,
                     cwd=str(self.repo_root),
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
+                    stderr=debug_err_fh,
                     text=True,
                     bufsize=1,
                     env=run_env,
@@ -1301,10 +1536,16 @@ class DaemonRunner:
                                     key = f"gdb_core{core_idx}_connected"
                                     with self._lock:
                                         self.debug_server_info[key] = bool(ev.get("connected", False))
-                                    self.log(f"GDB client {ev_name} on Core {core_idx}", channel="debug")
+                                    self.log(f"[STATE] GDB client {ev_name} on Core {core_idx}", channel="debug")
+                                elif ev_name == "diagnostic":
+                                    diag_lvl = str(ev.get("level") or "INFO").upper()
+                                    diag_msg = str(ev.get("message") or "").strip()
+                                    if diag_msg:
+                                        self.log(diag_msg, level=diag_lvl, channel="debug")
                                 elif ev_name == "stopped":
                                     with self._lock:
                                         self.debug_server_active = False
+                                    self.log("[STATE] Target GDB server stopped", channel="debug")
                                 continue
                         startup_error.append(stripped)
                         self.log(stripped, level="WARN", channel="debug")
@@ -1312,6 +1553,11 @@ class DaemonRunner:
                 startup_error.append(str(exc))
                 self.log(f"host_debug error: {exc}", level="ERROR", channel="debug")
             finally:
+                if debug_err_fh is not None:
+                    try:
+                        debug_err_fh.close()
+                    except OSError:
+                        pass
                 with self._lock:
                     self.debug_server_active = False
                 ready_event.set()
@@ -1320,6 +1566,16 @@ class DaemonRunner:
         self._debug_thread.start()
         ready_event.wait(timeout=DEBUG_SERVER_STARTUP_TIMEOUT_SEC)
         if not self.debug_server_active:
+            if not startup_error and debug_log_path.is_file():
+                try:
+                    tail_lines = [
+                        ln.strip()
+                        for ln in debug_log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+                        if ln.strip() and not ln.lstrip().startswith("{")
+                    ]
+                    startup_error.extend(tail_lines[-3:])
+                except OSError:
+                    pass
             detail = "; ".join(startup_error[-3:]) if startup_error else "timed out waiting for host_debug ready event"
             self.stop_debug_server()
             raise RuntimeError(f"Failed to start target debug server: {detail}")
@@ -1395,7 +1651,7 @@ class DaemonRunner:
                         self.host_cli_path = cand
                 except (OSError, RuntimeError, ValueError):
                     pass
-            if self.active_mode in ("CLI", "TEST"):
+            if self.active_mode in RTT_STREAMING_MODES:
                 self.start_rtt_streaming(reset_on_attach=False)
             status = self.get_debug_status()
             if resolve:
@@ -1421,7 +1677,7 @@ class DaemonRunner:
             self.stop_debug_server()
             if was_active:
                 time.sleep(PROBE_RELEASE_SETTLE_SEC)
-            if self.active_mode in ("CLI", "TEST") and self.elf_path and self.elf_path.exists():
+            if self.active_mode in RTT_STREAMING_MODES and self.elf_path and self.elf_path.exists():
                 self.start_rtt_streaming(reset_on_attach=False)
             return self.get_debug_status()
 
@@ -1457,6 +1713,82 @@ class DaemonRunner:
             self._json_events_active = False
             self._last_shell_idle_epoch = None
 
+    def _ensure_host_cli_path(self) -> Optional[Path]:
+        """Resolve `host_cli` executable path inside Cargo's target directory if not already set."""
+        if self.host_cli_path is not None and self.host_cli_path.exists():
+            return self.host_cli_path
+        try:
+            target_dir = get_cargo_target_directory(self.repo_root)
+            prof = "release" if self.release else "debug"
+            exe_suffix = ".exe" if os.name == "nt" else ""
+            cand = target_dir / prof / f"host_cli{exe_suffix}"
+            if cand.is_file():
+                self.host_cli_path = cand
+                return cand
+        except (OSError, RuntimeError, ValueError):
+            return None
+        return None
+
+    def query_boot_status(self, *, refresh_probe: bool = False) -> Dict[str, Any]:
+        """Query current target boot status via `host_cli boot-status --json` or active RTT session state."""
+        if self.elf_path is None:
+            self.elf_path = self.resolve_current_elf_path()
+        stream_alive = self.rtt_process is not None and self.rtt_process.poll() is None
+        can_probe_live = not stream_alive or self.debug_server_active
+
+        if refresh_probe and can_probe_live and self.elf_path and self.elf_path.exists():
+            cli_bin = self._ensure_host_cli_path()
+            if cli_bin is not None:
+                cmd = [
+                    str(cli_bin),
+                    "boot-status",
+                    "--elf",
+                    str(self.elf_path),
+                    "--json",
+                ]
+                if self.chip:
+                    cmd.extend(["--chip", str(self.chip)])
+                if self.debug_server_active:
+                    dbg_info = self.get_debug_status()
+                    bridge_port = int(dbg_info.get("rtt_bridge_port") or self.rtt_bridge_port)
+                    cmd.extend(["--gdb-bridge", f"127.0.0.1:{bridge_port}"])
+                else:
+                    cmd.extend(["--speed", str(self.speed)])
+                try:
+                    proc = subprocess.run(
+                        cmd,
+                        cwd=str(self.repo_root),
+                        capture_output=True,
+                        text=True,
+                        timeout=BOOT_STATUS_QUERY_TIMEOUT_SEC,
+                        check=False,
+                    )
+                    if proc.returncode == 0:
+                        for line in reversed(proc.stdout.splitlines()):
+                            trimmed = line.strip()
+                            if trimmed.startswith("{") and trimmed.endswith("}"):
+                                parsed = json.loads(trimmed)
+                                if isinstance(parsed, dict) and "state" in parsed:
+                                    with self._lock:
+                                        self._boot_status = {
+                                            "state": str(parsed.get("state") or BootState.UNKNOWN.value),
+                                            "boot_ready": bool(parsed.get("boot_ready", False)),
+                                            "shell_idle": bool(parsed.get("shell_idle", False)),
+                                            "epoch": int(parsed.get("epoch") or 0),
+                                        }
+                                    break
+                except (OSError, subprocess.SubprocessError, ValueError):
+                    pass
+
+        with self._lock:
+            snap = dict(self._boot_status)
+        return {
+            **snap,
+            "chip": self.chip,
+            "bin": self.bin_name,
+            "connected": self.is_connected,
+        }
+
     def start_rtt_streaming(
         self,
         *,
@@ -1468,17 +1800,7 @@ class DaemonRunner:
             self.elf_path = self.resolve_current_elf_path()
         if not self.elf_path or not self.elf_path.exists():
             return
-        if self.host_cli_path is None or not self.host_cli_path.exists():
-            try:
-                target_dir = get_cargo_target_directory(self.repo_root)
-                prof = "release" if self.release else "debug"
-                exe_suffix = ".exe" if os.name == "nt" else ""
-                cand = target_dir / prof / f"host_cli{exe_suffix}"
-                if cand.is_file():
-                    self.host_cli_path = cand
-            except (OSError, RuntimeError, ValueError):
-                return
-        if not self.host_cli_path or not self.host_cli_path.exists():
+        if self._ensure_host_cli_path() is None:
             return
 
         self.stop_rtt_streaming()
@@ -1541,6 +1863,12 @@ class DaemonRunner:
                     self._reset_device_clock()
                     with self._lock:
                         self._last_shell_idle_epoch = None
+                        self._boot_status = {
+                            "state": BootState.RESET.value,
+                            "boot_ready": False,
+                            "shell_idle": False,
+                            "epoch": 0,
+                        }
                 with self._lock:
                     self._json_events_active = True
                 session_ready = True
@@ -1549,6 +1877,21 @@ class DaemonRunner:
                 self.log("RTT streaming process connected")
                 started_event.set()
                 if not has_cli_channel and not bool(ev_obj.get("defmt", True)):
+                    boot_ready_event.set()
+            elif ev_type == "boot_status":
+                state_str = str(ev_obj.get("state") or BootState.UNKNOWN.value)
+                is_ready = bool(ev_obj.get("boot_ready", state_str == BootState.READY.value))
+                is_idle = bool(ev_obj.get("shell_idle", False))
+                raw_ep = ev_obj.get("epoch")
+                ep_val = int(raw_ep) if isinstance(raw_ep, int) and not isinstance(raw_ep, bool) else 0
+                with self._lock:
+                    self._boot_status = {
+                        "state": state_str,
+                        "boot_ready": is_ready,
+                        "shell_idle": is_idle,
+                        "epoch": ep_val,
+                    }
+                if is_ready:
                     boot_ready_event.set()
             elif ev_type == "defmt":
                 level_str = str(ev_obj.get("level") or "INFO").upper()
@@ -1568,6 +1911,12 @@ class DaemonRunner:
                     if epoch_val is None or epoch_val != self._last_shell_idle_epoch:
                         self._last_shell_idle_epoch = epoch_val
                         self._cli_clear_seq += 1
+                    self._boot_status = {
+                        "state": BootState.READY.value,
+                        "boot_ready": True,
+                        "shell_idle": True,
+                        "epoch": int(epoch_val or 0),
+                    }
                 boot_ready_event.set()
             elif ev_type == "command_completed":
                 ok = bool(ev_obj.get("success", True))
@@ -1582,18 +1931,32 @@ class DaemonRunner:
                     with self._lock:
                         self._last_device_ts_sec = float(raw_ts_us) / 1_000_000.0
                         self._last_device_ts_mono = time.monotonic()
-                self.trace_store.ingest_event(ev_obj)
+                if self.should_ingest_trace_event(ev_obj):
+                    was_empty = self.trace_store.event_count == 0
+                    self.trace_store.ingest_event(ev_obj)
+                    if was_empty and self.trace_store.event_count > 0:
+                        self.log(
+                            f"Trace backend receiving live {self.trace_mode.value} stream "
+                            f"(epoch={self.trace_store.session_epoch})",
+                            channel="trace",
+                        )
             elif ev_type == "session_disconnected":
+                if self.is_connected:
+                    self.log("[STATE] Target RTT session disconnected", level="WARN", channel="daemon")
                 self.is_connected = False
 
         def _stream_worker() -> None:
             nonlocal session_ready
+            rtt_err_fh = None
             try:
+                daemon_log_path = self.get_stream_log_path(HostLogStream.DAEMON)
+                daemon_log_path.parent.mkdir(parents=True, exist_ok=True)
+                rtt_err_fh = daemon_log_path.open("a", encoding="utf-8")
                 self.rtt_process = subprocess.Popen(
                     cmd,
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
+                    stderr=rtt_err_fh,
                     text=True,
                     bufsize=1,
                 )
@@ -1645,6 +2008,11 @@ class DaemonRunner:
                 boot_ready_event.set()
                 self.log(f"RTT stream error: {e}", level="WARN")
             finally:
+                if rtt_err_fh is not None:
+                    try:
+                        rtt_err_fh.close()
+                    except OSError:
+                        pass
                 started_event.set()
                 boot_ready_event.set()
                 self.is_connected = False
@@ -1893,14 +2261,35 @@ class DaemonRunner:
                 out = out.strip() or f"Completed {subcmd} (exit code {ret})"
                 return out
             finally:
-                if rtt_was_running and self.active_mode in ("CLI", "TEST", "TRACE"):
+                if rtt_was_running and self.active_mode in RTT_STREAMING_MODES:
                     time.sleep(PROBE_RELEASE_SETTLE_SEC)
                     self.start_rtt_streaming(reset_on_attach=False)
                 self._record_lifecycle("idle", f"Completed host_fs ({subcmd})", mark_recent=False)
 
-    def get_trace_events(self, after_seq: int = 0, limit: int = 10_000) -> Dict[str, Any]:
+    def should_ingest_trace_event(self, ev_obj: Dict[str, Any]) -> bool:
+        """Return `True` when `ev_obj` matches the active `TraceMode`."""
+        cur_mode = self.trace_mode
+        if cur_mode == TraceMode.NONE:
+            return False
+        cat = str(ev_obj.get("category") or "").strip().lower()
+        if cur_mode == TraceMode.PERF and cat == "sensor":
+            return False
+        if cur_mode == TraceMode.SENSOR and cat in ("span", "cpu_usage"):
+            return False
+        return True
+
+    def get_trace_events(
+        self,
+        after_seq: int = 0,
+        limit: int = 10_000,
+        session_epoch: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """Return incremental live trace slices/counters, track summaries, and active viewer metadata."""
-        payload = self.trace_store.get_events(after_seq=after_seq, limit=limit)
+        payload = self.trace_store.get_events(
+            after_seq=after_seq,
+            limit=limit,
+            session_epoch=session_epoch,
+        )
         payload["trace_mode"] = self.trace_mode.value
         payload["external_viewer"] = get_external_trace_viewer(self.trace_mode).value
         payload["chip"] = self.chip
@@ -1918,6 +2307,11 @@ class DaemonRunner:
             self.trace_store.set_recording(True)
         else:
             raise ValueError(f"Unsupported trace control action '{action}'. Expected: clear, pause, resume.")
+        self.log(
+            f"Trace session control '{cleaned}' -> recording={self.trace_store.recording} "
+            f"(trace_mode={self.trace_mode.value})",
+            channel="trace",
+        )
         return {
             "success": True,
             "action": cleaned,
@@ -1928,13 +2322,72 @@ class DaemonRunner:
     def export_trace_session(self, fmt: str, path: Optional[str] = None) -> Dict[str, Any]:
         """Export the active buffered trace session to disk in `'csv'` or `'perfetto'` format."""
         stem = f"{self.bin_name or 'target'}_{self.trace_mode.value.lower()}"
-        return self.trace_store.export_to_disk(
+        res = self.trace_store.export_to_disk(
             self.repo_root,
             fmt,
             path,
             chip=self.chip,
             default_stem=stem,
         )
+        self.log(
+            f"Exported trace session format={fmt} path={res.get('path')} events={res.get('event_count', 0)}",
+            channel="trace",
+        )
+        return res
+
+    def ensure_perfetto_http_bridge(self, daemon_host: str = "127.0.0.1") -> int:
+        """Start or reuse the localhost `:9001` HTTP trace bridge permitted by `https://ui.perfetto.dev` CSP."""
+        clean_host = "127.0.0.1" if daemon_host in ("", "0.0.0.0", "::") else str(daemon_host)
+        with self._lock:
+            if self._perfetto_http_server is not None:
+                return int(self._perfetto_http_server.server_address[1])
+            srv = _PerfettoTraceBridgeServer(clean_host, int(self.perfetto_http_port), self)
+            bound_port = int(srv.server_address[1])
+            thread = threading.Thread(
+                target=srv.serve_forever,
+                name="perfetto-csp-http-bridge",
+                daemon=True,
+            )
+            thread.start()
+            self._perfetto_http_server = srv
+            self._perfetto_http_thread = thread
+            return bound_port
+
+    def stop_perfetto_http_bridge(self) -> None:
+        """Shut down the localhost `:9001` Perfetto HTTP trace bridge if active."""
+        with self._lock:
+            srv = self._perfetto_http_server
+            self._perfetto_http_server = None
+            self._perfetto_http_thread = None
+        if srv is not None:
+            try:
+                srv.shutdown()
+                srv.server_close()
+            except OSError:
+                pass
+
+    def open_trace_in_perfetto(
+        self,
+        *,
+        daemon_host: str = "127.0.0.1",
+        daemon_port: int = 8899,
+    ) -> Dict[str, Any]:
+        """Serve `/trace.perfetto.json` on `:9001` (Perfetto CSP allowlist) and open `https://ui.perfetto.dev` in the OS browser."""
+        _ = daemon_port
+        bridge_port = self.ensure_perfetto_http_bridge(daemon_host)
+        trace_url, perfetto_url = build_perfetto_deep_link(daemon_host, bridge_port)
+        event_count = len(self.trace_store.snapshot_all())
+        opened = open_url_in_system_browser(perfetto_url)
+        self.log(
+            f"Opening {event_count} trace events in Perfetto UI (opened={opened}, trace_url={trace_url})",
+            channel="trace",
+        )
+        return {
+            "success": opened,
+            "url": perfetto_url,
+            "trace_url": trace_url,
+            "event_count": event_count,
+        }
 
     def open_trace_in_rerun(
         self,
@@ -1948,8 +2401,13 @@ class DaemonRunner:
             raw = Path(str(save_rrd_path).strip())
             rrd_path = raw if raw.is_absolute() else (self.repo_root / raw)
         app_id = f"{self.bin_name or 'xerxes'}_{self.trace_mode.value.lower()}"
+        events = self.trace_store.snapshot_all()
+        self.log(
+            f"Opening {len(events)} trace events in Rerun (app_id={app_id}, spawn={spawn})",
+            channel="trace",
+        )
         return open_trace_in_rerun(
-            self.trace_store.snapshot_all(),
+            events,
             app_id=app_id,
             spawn=spawn,
             save_rrd_path=rrd_path,
@@ -1973,7 +2431,9 @@ class DaemonRunner:
             "mode": self.active_mode,
             "message": self.status_message,
             "manual_prompt": self.manual_prompt.to_dict(),
+            "boot_status": self.query_boot_status(refresh_probe=False),
             "debug_server": self.get_debug_status(),
+            "log_files": self.get_log_files(),
         }
 
     def stop(self) -> None:
@@ -1983,6 +2443,7 @@ class DaemonRunner:
         self.test_manager.cancel_run(silent=True)
         self.stop_rtt_streaming()
         self.stop_debug_server()
+        self.stop_perfetto_http_bridge()
         if self._active_sync_process and self._active_sync_process.poll() is None:
             try:
                 self._active_sync_process.terminate()

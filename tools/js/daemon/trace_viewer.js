@@ -235,6 +235,7 @@ export class TraceViewerController {
     this.eventsById = new Map();
     this.orderedEvents = [];
     this.afterSeq = 0;
+    this.sessionEpoch = null;
     this.recording = true;
     this.minTsUs = null;
     this.maxTsUs = null;
@@ -247,6 +248,7 @@ export class TraceViewerController {
     this._hitBoxes = [];
     this._tracks = [];
     this._dragState = null;
+    this._modeInitialized = false;
     this._isActiveView = false;
     this._pollInFlight = false;
     this._fastPollTimer = null;
@@ -472,9 +474,14 @@ export class TraceViewerController {
    */
   setTraceMode(mode, meta = {}) {
     const normalized = String(mode || TRACE_MODES.NONE).toUpperCase();
+    const modeChanged = this._modeInitialized && normalized !== this.traceMode;
+    this._modeInitialized = true;
     this.traceMode = normalized;
     if (meta.binName) {
       this.binName = String(meta.binName);
+    }
+    if (modeChanged) {
+      this._resetLocalBuffer();
     }
 
     const viewer = resolveExternalViewerForMode(normalized);
@@ -497,7 +504,11 @@ export class TraceViewerController {
       this.exportPathInput.placeholder = `recordings/traces/${this.binName}_${suffix}`;
     }
 
-    this._syncStatusDom();
+    if (modeChanged) {
+      this.render();
+    } else {
+      this._syncStatusDom();
+    }
     this._syncAnimationLifecycle();
   }
 
@@ -614,19 +625,21 @@ export class TraceViewerController {
     }
     this._pollInFlight = true;
     try {
+      const epochQuery =
+        this.sessionEpoch !== null ? `&session_epoch=${this.sessionEpoch}` : "";
       const data = await this.ctx.fetchJson(
-        `/api/trace/events?after_seq=${this.afterSeq}&limit=${POLL_BATCH_LIMIT}`,
+        `/api/trace/events?after_seq=${this.afterSeq}&limit=${POLL_BATCH_LIMIT}${epochQuery}`,
       );
       if (!data) {
         return null;
       }
 
-      if (data.trace_mode && data.trace_mode !== this.traceMode) {
-        this.setTraceMode(data.trace_mode);
-      }
-      if (typeof data.recording === "boolean") {
-        this.recording = data.recording;
-      }
+      const incomingEpoch =
+        typeof data.session_epoch === "number" ? data.session_epoch : null;
+      const epochChanged =
+        incomingEpoch !== null &&
+        this.sessionEpoch !== null &&
+        incomingEpoch !== this.sessionEpoch;
 
       const nextCursor =
         typeof data.cursor === "number"
@@ -634,10 +647,20 @@ export class TraceViewerController {
           : typeof data.next_seq === "number"
             ? data.next_seq
             : 0;
+      const cursorRolledBack = nextCursor < this.afterSeq;
+      const serverCleared =
+        Number(data.total_events) === 0 && this.eventsById.size > 0;
 
-      // Detect server-side clear/reset when total_events drops to 0 while local store is non-empty
-      if (Number(data.total_events) === 0 && nextCursor === 0 && this.eventsById.size > 0) {
+      if (data.trace_mode && String(data.trace_mode).toUpperCase() !== this.traceMode) {
+        this.setTraceMode(data.trace_mode);
+      } else if (epochChanged || cursorRolledBack || serverCleared) {
         this._resetLocalBuffer();
+      }
+      if (incomingEpoch !== null) {
+        this.sessionEpoch = incomingEpoch;
+      }
+      if (typeof data.recording === "boolean") {
+        this.recording = data.recording;
       }
 
       const incoming = Array.isArray(data.events) ? data.events : [];
@@ -927,23 +950,41 @@ export class TraceViewerController {
     }
 
     try {
-      const response = await this.ctx.fetchRaw("/api/trace/perfetto.json");
-      const rawJson = await response.text();
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      const bridge = this.ctx.getDesktopBridge();
+      const isDesktopWebview = Boolean(bridge && (bridge.pywebview || bridge.eel));
+      if (isDesktopWebview) {
+        const res = await this.ctx.postJson("/api/trace/open_perfetto", {});
+        const backendOpened = Boolean(res && res.success);
+        showToast(
+          this.ctx,
+          backendOpened ? "Opened trace in Perfetto UI" : "Failed to open Perfetto UI tab",
+          backendOpened ? "success" : "error",
+        );
+        return backendOpened;
       }
-      const loc = this.ctx.getLocation();
-      const fallbackUrl = `${loc.origin || "http://127.0.0.1:8899"}/api/trace/perfetto.json`;
-      const opened = await this.ctx.openPerfettoTrace({
-        buffer: rawJson,
+
+      const fallbackUrl = "http://127.0.0.1:9001/trace.perfetto.json";
+      let opened = await this.ctx.openPerfettoTrace({
+        loadBuffer: async () => {
+          const response = await this.ctx.fetchRaw("/api/trace/perfetto.json");
+          const rawJson = await response.text();
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          return rawJson;
+        },
         title: `${this.binName} (${this.traceMode})`,
         fileName: `${this.binName}_${this.traceMode.toLowerCase()}.perfetto.json`,
         fallbackUrl,
       });
+      if (!opened) {
+        const res = await this.ctx.postJson("/api/trace/open_perfetto", {});
+        opened = Boolean(res && res.success);
+      }
       showToast(
         this.ctx,
-        opened ? "Opened trace in Perfetto UI" : "Opened Perfetto UI tab",
-        "success",
+        opened ? "Opened trace in Perfetto UI" : "Failed to open Perfetto UI tab",
+        opened ? "success" : "error",
       );
       return opened;
     } catch (err) {
@@ -1184,12 +1225,17 @@ export class TraceViewerController {
         const openEdgeUs = playheadUs !== null ? playheadUs : this.maxTsUs || 0;
         for (const ev of track.items) {
           const startUs = Number(ev.ts_us) || 0;
+          const hasClosedPhase = ev.ph === "X";
           const rawEnd =
-            typeof ev.end_ts_us === "number" && ev.end_ts_us > startUs
+            typeof ev.end_ts_us === "number" &&
+            (ev.end_ts_us > startUs || (hasClosedPhase && ev.end_ts_us >= startUs))
               ? ev.end_ts_us
-              : typeof ev.end_us === "number"
+              : typeof ev.end_us === "number" &&
+                  (ev.end_us > startUs || (hasClosedPhase && ev.end_us >= startUs))
                 ? ev.end_us
-                : null;
+                : hasClosedPhase
+                  ? startUs + Math.max(0, Number(ev.dur_us) || 0)
+                  : null;
           const endUs =
             rawEnd !== null
               ? rawEnd

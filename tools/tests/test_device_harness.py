@@ -294,6 +294,20 @@ class SimulatedTargetRunner:
             self.peak_manual_heartbeats = max(self.peak_manual_heartbeats, self.manual_prompt.heartbeat_count)
             return self.manual_prompt.to_dict()
 
+    def query_boot_status(self, *, refresh_probe: bool = False) -> Dict[str, Any]:
+        """Return simulated target boot status matching `DaemonRunner.query_boot_status`."""
+        _ = refresh_probe
+        is_ready = bool(self.connected_board_type and self.is_flashed)
+        return {
+            "state": "ready" if is_ready else "reset",
+            "boot_ready": is_ready,
+            "shell_idle": is_ready,
+            "epoch": 1 if is_ready else 0,
+            "chip": self.chip,
+            "bin": self.bin_name,
+            "connected": self.is_connected,
+        }
+
     def get_status(self) -> Dict[str, Any]:
         """Return daemon status payload."""
         return {
@@ -399,6 +413,38 @@ class SimulatedTargetRunner:
                 }
             )
         self.log(f"INFO [boot] Booted {self.bin_name} -> SystemStatus::Active -> SystemStatus::Sleep")
+        if self.bin_name == "cat_detector_app" and self.trace_mode == "PERF":
+            for core_idx, span_name in (
+                (0, "boot"),
+                (0, "battery_controller::update"),
+                (0, "telemetry_controller::push_record"),
+                (1, "motor_controller::update"),
+            ):
+                self._trace_ts_us += 15_000
+                sid = f"app_sim_{self._trace_ts_us}"
+                self.trace_store.ingest_event(
+                    {
+                        "ts_us": self._trace_ts_us,
+                        "track": f"CPU Core {core_idx}",
+                        "ph": "B",
+                        "category": "span",
+                        "name": span_name,
+                        "span_id": sid,
+                        "args": {"core": core_idx},
+                    }
+                )
+                self._trace_ts_us += 3_000
+                self.trace_store.ingest_event(
+                    {
+                        "ts_us": self._trace_ts_us,
+                        "track": f"CPU Core {core_idx}",
+                        "ph": "E",
+                        "category": "span",
+                        "name": span_name,
+                        "span_id": sid,
+                        "args": {"core": core_idx},
+                    }
+                )
         return dict(self.sync_status)
 
     def sync_async(self) -> None:
@@ -1417,6 +1463,7 @@ def test_worm_inching_millipede_969_no_white_scrollbar_gutter_artifact(tmp_path:
     import re
     import shutil
     import urllib.request
+    from host_daemon.provider.daemon.runner import DaemonRunner
 
     chrome_candidates = [
         Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
@@ -1843,6 +1890,13 @@ def test_symbolic_test_debugging_dap_breakpoint_and_vscode_config(
                 "monitor reset halt",
                 "maintenance flush register-cache",
             ], f"cortex-debug config {cfg['name']!r} must flush GDB register cache after monitor reset halt"
+            assert cfg.get("runToEntryPoint") == "", (
+                f"cortex-debug config {cfg['name']!r} must clear default runToEntryPoint='main' "
+                "so VS Code Restart does not halt prematurely at __cortex_m_rt_main_trampoline"
+            )
+            assert cfg.get("postRestartSessionCommands") == ["-exec-continue"], (
+                f"cortex-debug config {cfg['name']!r} must auto-continue to user breakpoints on Restart"
+            )
         pre_task = cfg.get("preLaunchTask")
         if pre_task:
             assert pre_task in defined_tasks, f"Missing preLaunchTask {pre_task!r} in .vscode/tasks.json"
@@ -2091,7 +2145,7 @@ def test_host_py_bug_cli_online_and_offline_reporting(
         online_res = json.loads(capsys.readouterr().out)
         assert online_res["success"] is True
         assert online_res["source"] == "daemon"
-        assert online_res["attachments_count"] == 4
+        assert online_res["attachments_count"] == 5
 
         online_md = Path(online_res["file_path"])
         assert online_md.is_file()
@@ -3086,3 +3140,655 @@ def test_worm_moist_bristle_687_stdlib_sync_symbols_ephemeral_port_isolation_and
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_worm_radiant_vinegarworm_918_trace_mode_switch_clears_tracks_and_stops_stale_rtt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify switching trace modes bumps `session_epoch`, stops RTT before rebuilding ELF, and filters mismatched categories."""
+    from host_daemon.provider.daemon.runner import DaemonRunner
+    from host_daemon.provider.daemon.trace_store import TraceSessionStore
+
+    # 1. TraceSessionStore.clear() bumps session_epoch, resets seq to 0, and returns fresh events even if client sends stale after_seq
+    store = TraceSessionStore()
+    for idx in range(5):
+        store.ingest_event(
+            {
+                "ts_us": 50_000_000 + idx * 1000,
+                "track": "Proximity (West)",
+                "ph": "C",
+                "category": "sensor",
+                "name": "Proximity (West)",
+                "value": 79.0,
+                "unit": "mm",
+            }
+        )
+    snap_sensor = store.get_events(after_seq=0)
+    epoch_1 = snap_sensor.get("session_epoch")
+    assert isinstance(epoch_1, int) and epoch_1 >= 1
+    assert snap_sensor["cursor"] == 5
+
+    store.clear()
+    store.ingest_event(
+        {
+            "ts_us": 27_000,
+            "track": "CPU Core 0",
+            "ph": "B",
+            "category": "span",
+            "name": "bootstrap_task",
+        }
+    )
+    # Client still polling with stale cursor `after_seq=5` and old `session_epoch=epoch_1` must receive new event!
+    snap_perf = store.get_events(after_seq=5, session_epoch=epoch_1)
+    assert snap_perf["session_epoch"] > epoch_1
+    assert len(snap_perf["events"]) == 1
+    assert snap_perf["events"][0]["track"] == "CPU Core 0"
+    assert [t["name"] for t in snap_perf["tracks"]] == ["CPU Core 0"]
+
+    # 2. DaemonRunner.sync() stops active RTT streaming BEFORE build_target() overwrites ELF (preventing defmt log corruption)
+    fake_repo = _copy_resource_tree("fake_workspace", tmp_path / "repo")
+    runner = DaemonRunner(
+        repo_root=fake_repo,
+        package="cat_detector",
+        bin_name="cat_detector_app",
+        target="thumbv6m-none-eabi",
+        chip="rp2040",
+        trace_mode="SENSOR",
+    )
+    call_order: List[str] = []
+    monkeypatch.setattr(runner, "stop_rtt_streaming", lambda: call_order.append("stop_rtt"))
+    monkeypatch.setattr(runner, "stop_debug_server", lambda: call_order.append("stop_debug"))
+    monkeypatch.setattr(runner, "build_target", lambda: call_order.append("build_target"))
+    monkeypatch.setattr(runner, "build_host_tools", lambda: call_order.append("build_host_tools"))
+    monkeypatch.setattr(runner, "flash_target", lambda **_kw: call_order.append("flash_target") or True)
+    monkeypatch.setattr(runner, "start_rtt_streaming", lambda **_kw: call_order.append("start_rtt"))
+
+    runner.update_config(trace_mode="PERF", persist_session=False)
+    res = runner.sync()
+    assert res["step"] == "complete"
+    assert call_order.index("stop_rtt") < call_order.index("build_target"), (
+        f"stop_rtt_streaming must precede build_target to prevent ELF defmt corruption: {call_order}"
+    )
+
+    # 3. Mismatched sensor trace_events are rejected when active trace_mode is PERF
+    assert runner.should_ingest_trace_event({"category": "sensor", "track": "Proximity (West)"}) is False
+    assert runner.should_ingest_trace_event({"category": "span", "track": "CPU Core 0"}) is True
+    assert runner.should_ingest_trace_event({"category": "cpu_usage", "track": "Core 0 CPU Usage (%)"}) is True
+
+
+def test_worm_lithe_enchytraeid_678_gdb_stdio_proxy_stdin_eof_and_sigint_hygiene(
+    tmp_path: Path,
+) -> None:
+    """Verify `host.py debug gdb-proxy` exits promptly on stdin EOF even if remote TCP stays open and never duplicates Ctrl-C on SIGINT (`WORM-LITHE-ENCHYTRAEID-678`)."""
+    import signal
+
+    received_bytes = bytearray()
+    accepted_event = threading.Event()
+    release_server = threading.Event()
+
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", 0))
+    mock_gdb_port = srv.getsockname()[1]
+    srv.listen(1)
+
+    def _keep_open_server() -> None:
+        try:
+            conn, _ = srv.accept()
+            accepted_event.set()
+            conn.settimeout(0.05)
+            while not release_server.is_set():
+                try:
+                    chunk = conn.recv(256)
+                    if chunk:
+                        received_bytes.extend(chunk)
+                except socket.timeout:
+                    continue
+                except OSError:
+                    break
+            # Intentionally keep `conn` open (no server-side close) until test finishes!
+            release_server.wait(timeout=5.0)
+            conn.close()
+        finally:
+            srv.close()
+
+    srv_thread = threading.Thread(target=_keep_open_server, daemon=True)
+    srv_thread.start()
+
+    fake_repo = _copy_resource_tree("fake_workspace", tmp_path / "repo")
+    (fake_repo / "target").mkdir(parents=True, exist_ok=True)
+    (fake_repo / "target" / "host_session.json").write_text(
+        json.dumps(
+            {
+                "package": "cat_detector",
+                "bin": "cat_detector_shell",
+                "gdb_core0_port": mock_gdb_port,
+            }
+        ),
+        encoding="utf-8",
+    )
+    from device_tests.client import _find_free_local_port
+
+    unused_daemon_port = _find_free_local_port("127.0.0.1")
+
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-u",
+            str(WORKSPACE_ROOT / "tools" / "host.py"),
+            "debug",
+            "gdb-proxy",
+            "--core",
+            "0",
+            "--host-port",
+            str(unused_daemon_port),
+            "--repo-root",
+            str(fake_repo),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        assert accepted_event.wait(timeout=5.0), "gdb-proxy did not connect to mock GDB port"
+        assert proc.stdin is not None
+        proc.stdin.write(b"+$QStartNoAckMode#b0")
+        proc.stdin.flush()
+        time.sleep(0.08)
+
+        # Send SIGINT (as VS Code Cortex-Debug sends to GDB's process group before Disconnect):
+        # `gdb-proxy` MUST survive SIGINT AND must NOT inject its own duplicate `\x03` byte!
+        proc.send_signal(signal.SIGINT)
+        time.sleep(0.08)
+        assert proc.poll() is None, "gdb-proxy must not die on SIGINT while stdin is still open"
+        assert b"\x03" not in bytes(received_bytes), (
+            f"gdb-proxy injected duplicate Ctrl-C on SIGINT (desynchronizes GDB detach): {bytes(received_bytes)!r}"
+        )
+
+        # Now close stdin (simulating VS Code closing GDB pipe on Disconnect while remote TCP stays open):
+        # `gdb-proxy` MUST exit within 1.5s instead of hanging forever in `sock.recv()`!
+        t0 = time.monotonic()
+        proc.stdin.close()
+        rc = proc.wait(timeout=1.5)
+        elapsed = time.monotonic() - t0
+        assert rc == 0, f"Expected clean exit 0 on stdin EOF, got {rc}"
+        assert elapsed < 1.5, f"gdb-proxy took too long ({elapsed:.2f}s) to exit after stdin EOF"
+    finally:
+        release_server.set()
+        if proc.poll() is None:
+            proc.kill()
+        srv_thread.join(timeout=2.0)
+
+
+def test_boot_status_cli_and_uniform_boot_readiness_without_shell_binary_heuristics(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify `boot-status` CLI / HTTP endpoint and uniform boot readiness without `shell` vs `app` heuristics (`[bcb1250e]`)."""
+    from host_daemon import cli as host_cli_mod
+    from host_daemon.provider.daemon.runner import DaemonRunner
+
+    fake_repo = _copy_resource_tree("fake_workspace", tmp_path / "repo")
+    elf_file = fake_repo / "target" / "thumbv6m-none-eabi" / "debug" / "cat_detector_app"
+    elf_file.parent.mkdir(parents=True, exist_ok=True)
+    elf_file.write_bytes(b"\x7fELF")
+
+    argv_log = tmp_path / "boot_cli_argv.json"
+    fake_cli = _make_resource_launcher(
+        tmp_path / "host_cli_mock",
+        "mock_host_cli.py",
+        env_overrides={
+            "XERXES_MOCK_CLI_ARGV_LOG": str(argv_log),
+            "XERXES_MOCK_OMIT_SHELL_IDLE": "1",
+        },
+    )
+
+    runner = DaemonRunner(
+        repo_root=fake_repo,
+        target="thumbv6m-none-eabi",
+        package="cat_detector",
+        bin_name="cat_detector_app",
+        chip="rp2040",
+    )
+    runner.elf_path = elf_file
+    runner.host_cli_path = fake_cli
+
+    # 1. One-shot `query_boot_status(refresh_probe=True)` invokes `host_cli boot-status --elf ... --json`
+    one_shot = runner.query_boot_status(refresh_probe=True)
+    assert one_shot["state"] == "ready"
+    assert one_shot["boot_ready"] is True
+    assert one_shot["shell_idle"] is False
+    recorded_args = json.loads(argv_log.read_text(encoding="utf-8"))
+    assert recorded_args[:2] == ["boot-status", "--elf"]
+    assert "--json" in recorded_args
+
+    # 2. Live RTT stream on `cat_detector_app` resolves boot readiness immediately from `boot_status` event (no `shell_idle`)
+    t0 = time.monotonic()
+    runner.start_rtt_streaming(reset_on_attach=False)
+    elapsed = time.monotonic() - t0
+    server, daemon_port = _start_ephemeral_daemon(runner)
+    try:
+        assert elapsed < 2.0, (
+            f"Expected immediate boot_status readiness without waiting 5s timeout, took {elapsed:.2f}s"
+        )
+        capsys.readouterr()
+        rc = host_cli_mod.main(["--host", "127.0.0.1", "boot-status", "--host-port", str(daemon_port), "--json"])
+        assert rc == 0
+        cli_out = json.loads(capsys.readouterr().out)
+        assert cli_out["state"] == "ready"
+        assert cli_out["boot_ready"] is True
+        assert cli_out["bin"] == "cat_detector_app"
+    finally:
+        server.shutdown()
+        server.server_close()
+        runner.stop()
+
+
+def test_per_stream_host_log_files_and_logs_cli_subcommand(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify `DaemonRunner` separates daemon, debug, defmt, cli, and fs streams into `log_dir` files and serves `host.py logs`."""
+    from host_daemon import cli as host_cli_mod
+    from host_daemon.provider.daemon.runner import DaemonRunner, HostLogStream
+
+    fake_repo = _copy_resource_tree("fake_workspace", tmp_path / "repo")
+    elf_file = fake_repo / "target" / "thumbv6m-none-eabi" / "debug" / "cat_detector_shell"
+    elf_file.parent.mkdir(parents=True, exist_ok=True)
+    elf_file.write_bytes(b"\x7fELF")
+
+    custom_log_dir = tmp_path / "logs_out"
+    dbg_argv_log = tmp_path / "dbg_argv.json"
+    fake_dbg = _make_resource_launcher(
+        tmp_path / "host_debug_mock",
+        "mock_host_debug.py",
+        env_overrides={"XERXES_MOCK_DEBUG_ARGV_LOG": str(dbg_argv_log)},
+    )
+    fake_cli = _make_resource_launcher(tmp_path / "host_cli_mock", "mock_host_cli.py")
+
+    runner = DaemonRunner(
+        repo_root=fake_repo,
+        target="thumbv6m-none-eabi",
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+        chip="rp2040",
+        enable_debug_server=True,
+        gdb_core0_port=4433,
+        gdb_core1_port=4434,
+        log_dir=custom_log_dir,
+    )
+    runner.elf_path = elf_file
+    runner.host_debug_path = fake_dbg
+    runner.host_cli_path = fake_cli
+
+    runner.set_mode("TRACE")
+    runner.enable_live_debug_server(gdb_core0_port=4433, gdb_core1_port=4434, reset=False)
+    assert runner.is_connected is True, "enable_live_debug_server must keep RTT streaming connected in TRACE mode"
+    runner.log("\x1b[32m0.125000 INFO Booting Cat Detector\x1b[0m", level="INFO", channel="target")
+    runner.log_cli("battery status", is_input=True)
+    runner.log_cli("SOC: 98%")
+    runner.log_fs("ls /", is_input=True)
+    runner.log_fs("calibration.bin (64 B)")
+
+    dbg_args = json.loads(dbg_argv_log.read_text(encoding="utf-8"))
+    assert "--log-file" in dbg_args
+    assert dbg_args[dbg_args.index("--log-file") + 1] == str(runner.get_stream_log_path(HostLogStream.DEBUG))
+
+    server, daemon_port = _start_ephemeral_daemon(runner)
+    try:
+        capsys.readouterr()
+        rc = host_cli_mod.main(
+            [
+                "--host",
+                "127.0.0.1",
+                "logs",
+                "--stream",
+                "all",
+                "--lines",
+                "10",
+                "--host-port",
+                str(daemon_port),
+                "--json",
+            ]
+        )
+        assert rc == 0
+        payload = json.loads(capsys.readouterr().out)
+        tails = payload["tails"]
+        assert any("RTT streaming process connected" in ln for ln in tails["daemon"])
+        assert any('"event": "ready"' in ln or "Target GDB server ready" in ln for ln in tails["debug"])
+        assert any("0.125000 INFO Booting Cat Detector" in ln and "\x1b[" not in ln for ln in tails["defmt"])
+        assert any("> battery status" in ln for ln in tails["cli"])
+        assert any("SOC: 98%" in ln for ln in tails["cli"])
+        assert any("calibration.bin (64 B)" in ln for ln in tails["fs"])
+    finally:
+        server.shutdown()
+        server.server_close()
+        runner.stop()
+
+
+def test_worm_slithering_snail_823_daemon_log_captures_api_state_debug_trace_and_attaches_to_bug(
+    tmp_path: Path,
+) -> None:
+    """Verify `target/host_daemon.log` records API calls, state transitions, debug/trace backends, and attaches to bug reports."""
+    import urllib.request
+    from host_daemon.provider.daemon.runner import DaemonRunner
+
+    fake_repo = _copy_resource_tree("fake_workspace", tmp_path / "repo")
+    (fake_repo / "attachments").mkdir(parents=True, exist_ok=True)
+    (fake_repo / "feedback").mkdir(parents=True, exist_ok=True)
+    elf_file = fake_repo / "target" / "thumbv6m-none-eabi" / "debug" / "cat_detector_shell"
+    elf_file.parent.mkdir(parents=True, exist_ok=True)
+    elf_file.write_bytes(b"\x7fELF")
+
+    fake_dbg = _make_resource_launcher(tmp_path / "host_debug_mock", "mock_host_debug.py")
+    fake_cli = _make_resource_launcher(tmp_path / "host_cli_mock", "mock_host_cli.py")
+
+    runner = DaemonRunner(
+        repo_root=fake_repo,
+        target="thumbv6m-none-eabi",
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+        chip="rp2040",
+        trace_mode="PERF",
+        gdb_core0_port=4533,
+        gdb_core1_port=4534,
+        log_dir=fake_repo / "target" / "logs",
+    )
+    runner.elf_path = elf_file
+    runner.host_debug_path = fake_dbg
+    runner.host_cli_path = fake_cli
+
+    server, daemon_port = _start_ephemeral_daemon(runner)
+    base_url = f"http://127.0.0.1:{daemon_port}"
+
+    def _api(method: str, path: str, body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        data = json.dumps(body).encode("utf-8") if body is not None else None
+        headers = {"Content-Type": "application/json"} if data is not None else {}
+        req = urllib.request.Request(f"{base_url}{path}", data=data, headers=headers, method=method)
+        with urllib.request.urlopen(req, timeout=10.0) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    try:
+        _api("POST", "/api/mode", {"mode": "TRACE"})
+        _api("POST", "/api/debug/start", {"gdb_core0_port": 4533, "gdb_core1_port": 4534, "reset": False})
+        _api("POST", "/api/trace/control", {"action": "pause"})
+        _api("POST", "/api/trace/control", {"action": "resume"})
+        _api("GET", "/api/boot_status")
+
+        canonical_daemon_log = fake_repo / "target" / "host_daemon.log"
+        stream_daemon_log = fake_repo / "target" / "logs" / "host_daemon.log"
+        assert canonical_daemon_log.is_file(), "target/host_daemon.log must be populated directly"
+        assert stream_daemon_log.is_file(), "target/logs/host_daemon.log must also be populated"
+
+        daemon_log_text = canonical_daemon_log.read_text(encoding="utf-8")
+        assert "/api/mode" in daemon_log_text, daemon_log_text
+        assert "/api/debug/start" in daemon_log_text, daemon_log_text
+        assert "/api/trace/control" in daemon_log_text, daemon_log_text
+        assert "/api/boot_status" in daemon_log_text, daemon_log_text
+        assert "[STATE]" in daemon_log_text, f"Expected [STATE] transitions in host_daemon.log:\n{daemon_log_text}"
+        assert "[debug]" in daemon_log_text.lower(), (
+            f"Expected debug backend logs in host_daemon.log:\n{daemon_log_text}"
+        )
+        assert "[trace]" in daemon_log_text.lower(), (
+            f"Expected trace backend logs in host_daemon.log:\n{daemon_log_text}"
+        )
+
+        bug_res = _api(
+            "POST",
+            "/api/target_bug",
+            {
+                "title": "Synthetic RSP restart verification bug",
+                "severity": "MEDIUM",
+                "category": "FIRMWARE",
+                "component": "target",
+                "description": "Verify host_daemon.log attachment on active runner bug reports",
+                "attach_system_logs": True,
+            },
+        )
+        assert bug_res["success"] is True
+        worm_id = bug_res["worm_id"]
+        att_dir = fake_repo / "attachments" / worm_id
+        daemon_att = att_dir / f"host_daemon_{worm_id}.log"
+        assert daemon_att.is_file(), (
+            f"Expected {daemon_att} to be attached to host bug report; got {[p.name for p in att_dir.iterdir()]}"
+        )
+        attached_daemon_text = daemon_att.read_text(encoding="utf-8")
+        assert "/api/debug/start" in attached_daemon_text
+        assert "[STATE]" in attached_daemon_text
+    finally:
+        server.shutdown()
+        server.server_close()
+        runner.stop()
+
+
+def test_worm_dirt_pupa_301_trace_store_closes_parameterized_and_sibling_spans() -> None:
+    """Verify `TraceSessionStore` closes parameterized `configure_alerts(...)` spans and unwinds unclosed siblings."""
+    from host_daemon.provider.daemon.trace_store import TraceSessionStore
+
+    store = TraceSessionStore()
+    store.ingest_event(
+        {
+            "ts_us": 33_050,
+            "track": "CPU Core 0",
+            "ph": "B",
+            "category": "span",
+            "name": "BATTERY_CHANNEL",
+            "span_id": "0f",
+            "parent_id": "0000000000000000",
+        }
+    )
+    store.ingest_event(
+        {
+            "ts_us": 33_211,
+            "track": "CPU Core 0",
+            "ph": "B",
+            "category": "span",
+            "name": "configure_alerts(voltage_min_mv=3000, voltage_max_mv=4200, soc_threshold_pct=10, enable_soc_change_alert=true)",
+            "span_id": "10",
+            "parent_id": "0f",
+        }
+    )
+    # Exit arrives with mismatched span_id and stripped parameter suffix `"configure_alerts"`
+    store.ingest_event(
+        {
+            "ts_us": 42_003,
+            "track": "CPU Core 0",
+            "ph": "E",
+            "category": "span",
+            "name": "configure_alerts",
+            "span_id": "stale_other_id",
+            "parent_id": "0f",
+        }
+    )
+    # Also test dropped exit: re-enter `configure_alerts` (`parent_id="0f"`), then enter sibling `battery_controller::update` (`parent_id="0f"`)
+    store.ingest_event(
+        {
+            "ts_us": 42_050,
+            "track": "CPU Core 0",
+            "ph": "B",
+            "category": "span",
+            "name": "configure_alerts",
+            "span_id": "10b",
+            "parent_id": "0f",
+        }
+    )
+    store.ingest_event(
+        {
+            "ts_us": 42_157,
+            "track": "CPU Core 0",
+            "ph": "B",
+            "category": "span",
+            "name": "battery_controller::update",
+            "span_id": "16",
+            "parent_id": "0f",
+        }
+    )
+    store.ingest_event(
+        {
+            "ts_us": 45_040,
+            "track": "CPU Core 0",
+            "ph": "E",
+            "category": "span",
+            "name": "battery_controller::update",
+            "span_id": "16",
+            "parent_id": "0f",
+        }
+    )
+    store.ingest_event(
+        {
+            "ts_us": 45_040,
+            "track": "CPU Core 0",
+            "ph": "E",
+            "category": "span",
+            "name": "BATTERY_CHANNEL",
+            "span_id": "0f",
+            "parent_id": "0000000000000000",
+            "args": {"suspended": True},
+        }
+    )
+    store.ingest_event(
+        {
+            "ts_us": 2_000_000,
+            "track": "Core 0 CPU Usage (%)",
+            "ph": "C",
+            "category": "cpu_usage",
+            "name": "Core 0 CPU Usage (%)",
+            "value": 0.5,
+            "unit": "%",
+        }
+    )
+
+    items = store.snapshot_all()
+    cfg_items = [it for it in items if str(it["name"]).startswith("configure_alerts")]
+    assert len(cfg_items) == 2
+    for cfg in cfg_items:
+        assert cfg["ph"] == "X", f"Expected configure_alerts to be closed (ph='X'), got {cfg}"
+        assert int(cfg["end_ts_us"]) <= 42_157, f"Expected configure_alerts to close before idle window, got {cfg}"
+
+    perfetto = json.loads(store.format_perfetto_json("rp2040"))
+    in_flight_cfg = [
+        ev
+        for ev in perfetto["traceEvents"]
+        if str(ev.get("name", "")).startswith("configure_alerts") and ev.get("args", {}).get("in_flight")
+    ]
+    assert in_flight_cfg == []
+
+
+def test_worm_segmented_cocoon_284_open_perfetto_api_cors_and_cli(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify `POST /api/trace/open_perfetto` serves on Perfetto's CSP-allowed port (`9001`), activates the OS browser, and answers `/status` with 404."""
+    import threading
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    from host_daemon.cli import parse_arguments
+    from host_daemon.model import trace_mode as trace_mode_mod
+    from host_daemon.provider.daemon import runner as runner_mod
+    from host_daemon.provider.daemon.runner import DaemonRunner
+    from host_daemon.provider.daemon.server import HostDaemonServer
+
+    parsed_cli = parse_arguments(["trace", "open-perfetto"])
+    assert parsed_cli.subcommand == "trace"
+    assert parsed_cli.trace_action == "open-perfetto"
+
+    # Perfetto UI's Content-Security-Policy `connect-src` allowlists localhost port 9001 (`http://127.0.0.1:9001`), NOT 8899!
+    assert getattr(trace_mode_mod, "PERFETTO_CSP_ALLOWED_PORT", None) == 9001
+    default_trace_url, _ = trace_mode_mod.build_perfetto_deep_link("127.0.0.1")
+    assert default_trace_url.startswith("http://127.0.0.1:9001/")
+
+    opened_urls: List[str] = []
+    monkeypatch.setattr(
+        runner_mod,
+        "open_url_in_system_browser",
+        lambda url: opened_urls.append(url) or True,
+        raising=False,
+    )
+
+    runner = DaemonRunner(
+        repo_root=tmp_path,
+        target="thumbv6m-none-eabi",
+        package="cat_detector",
+        bin_name="cat_detector_app",
+        release=True,
+        speed=4000,
+        chip="rp2040",
+        trace_mode="PERF",
+        log_dir=tmp_path / "logs",
+    )
+    # Bind the dedicated Perfetto CSP bridge to an ephemeral port if 9001 is busy on a shared test runner,
+    # while asserting the default configured port is 9001 (`PERFETTO_CSP_ALLOWED_PORT`).
+    assert getattr(runner, "perfetto_http_port", None) == 9001
+    runner.perfetto_http_port = 0
+    runner.trace_store.ingest_event(
+        {
+            "ts_us": 10_000,
+            "end_ts_us": 12_500,
+            "dur_us": 2_500,
+            "track": "CPU Core 0",
+            "ph": "X",
+            "category": "span",
+            "name": "battery_controller::update",
+        }
+    )
+
+    server = HostDaemonServer("127.0.0.1", 0, runner)
+    port = int(server.server_address[1])
+    srv_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    srv_thread.start()
+    try:
+        # 1. Verify OPTIONS preflight + GET /api/trace/perfetto.json expose full CORS + Private Network headers
+        opt_req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/trace/perfetto.json",
+            method="OPTIONS",
+            headers={
+                "Origin": "https://ui.perfetto.dev",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Private-Network": "true",
+            },
+        )
+        with urllib.request.urlopen(opt_req, timeout=5.0) as opt_resp:
+            assert opt_resp.status == 204
+            assert opt_resp.headers.get("Access-Control-Allow-Origin") == "*"
+            assert opt_resp.headers.get("Access-Control-Allow-Private-Network") == "true"
+            assert opt_resp.headers.get("Access-Control-Allow-Headers") == "*"
+
+        # 2. Verify POST /api/trace/open_perfetto spins up the dedicated Perfetto trace HTTP bridge (NOT daemon :8899!)
+        post_req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/trace/open_perfetto",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(post_req, timeout=5.0) as post_resp:
+            assert post_resp.status == 200
+            res_body = json.loads(post_resp.read().decode("utf-8"))
+
+        assert res_body["success"] is True
+        assert res_body["event_count"] == 1
+        assert len(opened_urls) == 1
+        launched_url = opened_urls[0]
+        assert launched_url.startswith("https://ui.perfetto.dev/#!/?url=")
+        encoded_trace_url = launched_url.split("url=", 1)[1]
+        decoded_trace_url = urllib.parse.unquote(encoded_trace_url)
+        parsed_bridge = urllib.parse.urlparse(decoded_trace_url)
+        assert parsed_bridge.port is not None and parsed_bridge.port != port
+
+        # 3. Verify the dedicated Perfetto bridge serves valid Perfetto JSON with PNA headers and 404s `/status`
+        with urllib.request.urlopen(decoded_trace_url, timeout=5.0) as trace_resp:
+            assert trace_resp.status == 200
+            assert trace_resp.headers.get("Access-Control-Allow-Origin") == "*"
+            assert trace_resp.headers.get("Access-Control-Allow-Private-Network") == "true"
+            trace_json = json.loads(trace_resp.read().decode("utf-8"))
+            assert any(ev.get("name") == "battery_controller::update" for ev in trace_json["traceEvents"])
+
+        with pytest.raises(urllib.error.HTTPError) as status_err:
+            urllib.request.urlopen(f"http://127.0.0.1:{parsed_bridge.port}/status", timeout=5.0)
+        assert status_err.value.code == 404
+    finally:
+        server.shutdown()
+        server.server_close()
+        runner.stop()

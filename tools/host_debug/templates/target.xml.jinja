@@ -3,6 +3,6 @@
 <target version="1.0">
   <architecture>{{ architecture }}</architecture>
 {% for feature in features %}  <feature name="{{ feature.name }}">
-{% for reg in feature.registers %}    <reg name="{{ reg.name }}" bitsize="{{ reg.bitsize }}" regnum="{{ reg.gdb_regnum }}" type="{{ reg.reg_type }}"/>
+{% for reg in feature.registers %}    <reg name="{{ reg.name }}" bitsize="{{ reg.bitsize }}" regnum="{{ reg.gdb_regnum }}" type="{{ reg.reg_type }}" group="{{ reg.reg_group }}"/>
 {% endfor %}  </feature>
 {% endfor %}</target>

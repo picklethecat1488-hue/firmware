@@ -214,13 +214,96 @@ impl<'a> embedded_hal_async::i2c::I2c for SharedI2cWrapper<'a> {
     }
 }
 
+/// Minimum valid 7-bit I2C peripheral address (excludes reserved `0x00..=0x07` group).
+pub const MIN_I2C_7BIT_ADDR: u8 = 0x08;
+
+/// Maximum valid 7-bit I2C peripheral address (excludes reserved `0x78..=0x7F` 10-bit/HS group).
+pub const MAX_I2C_7BIT_ADDR: u8 = 0x77;
+
+/// Maximum unsigned value representable as a single-byte I2C register address (`0x00FF`).
+pub const MAX_8BIT_REG_ADDR: u16 = 0x00FF;
+
+/// Width-typed I2C register offset supporting both 8-bit (`1` byte) and 16-bit big-endian (`2` bytes) addressing.
+#[derive(Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum RegisterAddress {
+    /// Single-byte 8-bit register offset (`[offset]`).
+    Reg8(u8),
+    /// Two-byte big-endian 16-bit register offset (`[hi, lo]`).
+    Reg16(u16),
+}
+
 crate::subcommand_enum! {
-    /// Subcommands for I2C diagnostics.
+    /// Subcommands for I2C diagnostics and direct register inspection.
     pub enum I2cSubcommand {
-        /// Scan the I2C bus.
+        /// Scan the I2C bus for responsive 7-bit addresses.
         Scan,
+        /// Read an 8-bit register value (`i2c peek8 <addr> <reg> [--reg16] [-b|--bus <name>]`).
+        Peek8 = "peek8",
+        /// Read a 16-bit big-endian register value (`i2c peek16 <addr> <reg> [--reg16] [-b|--bus <name>]`).
+        Peek16 = "peek16",
+        /// Write an 8-bit register value (`i2c poke8 <addr> <reg> <val> [--reg16] [-b|--bus <name>]`).
+        Poke8 = "poke8",
+        /// Write a 16-bit big-endian register value (`i2c poke16 <addr> <reg> <val> [--reg16] [-b|--bus <name>]`).
+        Poke16 = "poke16",
     }
-    "scan"
+    "scan, peek8, peek16, poke8, poke16"
+}
+
+/// Parses an unsigned 8-bit integer from a decimal (`"54"`) or hexadecimal (`"0x36"`) CLI token.
+pub fn parse_u8_hex_or_dec(raw: &str) -> Result<u8, &'static str> {
+    let trimmed = raw.trim();
+    if let Some(hex_body) = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+    {
+        u8::from_str_radix(hex_body, 16)
+            .map_err(|_| "Invalid 8-bit hex value (expected 0x00..=0xFF)")
+    } else {
+        trimmed
+            .parse::<u8>()
+            .map_err(|_| "Invalid 8-bit integer (expected 0..=255 or 0x00..=0xFF)")
+    }
+}
+
+/// Parses an unsigned 16-bit integer from a decimal (`"38684"`) or hexadecimal (`"0x971C"`) CLI token.
+pub fn parse_u16_hex_or_dec(raw: &str) -> Result<u16, &'static str> {
+    let trimmed = raw.trim();
+    if let Some(hex_body) = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+    {
+        u16::from_str_radix(hex_body, 16)
+            .map_err(|_| "Invalid 16-bit hex value (expected 0x0000..=0xFFFF)")
+    } else {
+        trimmed
+            .parse::<u16>()
+            .map_err(|_| "Invalid 16-bit integer (expected 0..=65535 or 0x0000..=0xFFFF)")
+    }
+}
+
+/// Parses an 8-bit or 16-bit big-endian [`RegisterAddress`], promoting to [`RegisterAddress::Reg16`]
+/// whenever `force_reg16` is `true` or the parsed offset exceeds `0xFF`.
+pub fn parse_register_address(
+    raw: Option<&str>,
+    force_reg16: bool,
+    usage: &'static str,
+) -> Result<RegisterAddress, &'static str> {
+    let val = parse_u16_hex_or_dec(raw.ok_or(usage)?)?;
+    if force_reg16 || val > MAX_8BIT_REG_ADDR {
+        Ok(RegisterAddress::Reg16(val))
+    } else {
+        Ok(RegisterAddress::Reg8(val as u8))
+    }
+}
+
+fn parse_7bit_i2c_addr(raw: Option<&str>, usage: &'static str) -> Result<u8, &'static str> {
+    let token = raw.ok_or(usage)?;
+    let addr = parse_u8_hex_or_dec(token)?;
+    if !(MIN_I2C_7BIT_ADDR..=MAX_I2C_7BIT_ADDR).contains(&addr) {
+        return Err("Invalid 7-bit I2C address (must be 0x08..=0x77)");
+    }
+    Ok(addr)
 }
 
 /// Trait to resolve I2C buses for platform CLI handlers.
@@ -233,7 +316,8 @@ pub trait I2cResolver {
     fn resolve_i2c(&self, name: Option<&str>) -> Result<&mut Self::I2c, &'static str>;
 }
 
-/// Processes I2C diagnostic CLI subcommands.
+/// Processes I2C diagnostic and register peek/poke CLI subcommands.
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_i2c_cli<
     W: embedded_io::Write<Error = E>,
     E: embedded_io::Error,
@@ -241,10 +325,15 @@ pub async fn handle_i2c_cli<
 >(
     resolver: &R,
     subcommand: Option<I2cSubcommand>,
+    reg16: bool,
     bus: Option<&str>,
+    arg1: Option<&str>,
+    arg2: Option<&str>,
+    arg3: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    let cmd = subcommand.ok_or("Missing i2c subcommand (expected: scan)")?;
+    let cmd = subcommand
+        .ok_or("Missing i2c subcommand (expected: scan, peek8, peek16, poke8, poke16)")?;
     match cmd {
         I2cSubcommand::Scan => {
             let i2c = resolver.resolve_i2c(bus)?;
@@ -258,7 +347,7 @@ pub async fn handle_i2c_cli<
                 let _ = write!(line, "{:02x}:", row * 16);
                 for col in 0..16 {
                     let addr_7bit = row * 16 + col;
-                    if !(0x08..=0x77).contains(&addr_7bit) {
+                    if !(MIN_I2C_7BIT_ADDR..=MAX_I2C_7BIT_ADDR).contains(&addr_7bit) {
                         let _ = write!(line, "   ");
                     } else {
                         // Attempt a single byte read to check for ACK using 7-bit address
@@ -274,6 +363,135 @@ pub async fn handle_i2c_cli<
                     }
                 }
                 let _ = writeln!(writer, "{}", line);
+            }
+            Ok(())
+        }
+        I2cSubcommand::Peek8 => {
+            const USAGE: &str = "Usage: i2c peek8 <addr> <reg> [--reg16] [-b|--bus <name>]";
+            let addr = parse_7bit_i2c_addr(arg1, USAGE)?;
+            let reg = parse_register_address(arg2, reg16, USAGE)?;
+            let i2c = resolver.resolve_i2c(bus)?;
+            let mut buf = [0u8; 1];
+            match reg {
+                RegisterAddress::Reg8(r8) => {
+                    i2c.write_read(addr, &[r8], &mut buf)
+                        .await
+                        .map_err(|_| "I2C peek8 transaction failed (NACK or bus timeout)")?;
+                    let val = buf[0];
+                    let _ = writeln!(
+                        writer,
+                        "I2C[0x{:02x}] reg 0x{:02x} = 0x{:02x} ({})",
+                        addr, r8, val, val
+                    );
+                }
+                RegisterAddress::Reg16(r16) => {
+                    let reg_bytes = r16.to_be_bytes();
+                    i2c.write_read(addr, &reg_bytes, &mut buf)
+                        .await
+                        .map_err(|_| "I2C peek8 transaction failed (NACK or bus timeout)")?;
+                    let val = buf[0];
+                    let _ = writeln!(
+                        writer,
+                        "I2C[0x{:02x}] reg 0x{:04x} = 0x{:02x} ({})",
+                        addr, r16, val, val
+                    );
+                }
+            }
+            Ok(())
+        }
+        I2cSubcommand::Peek16 => {
+            const USAGE: &str = "Usage: i2c peek16 <addr> <reg> [--reg16] [-b|--bus <name>]";
+            let addr = parse_7bit_i2c_addr(arg1, USAGE)?;
+            let reg = parse_register_address(arg2, reg16, USAGE)?;
+            let i2c = resolver.resolve_i2c(bus)?;
+            let mut buf = [0u8; 2];
+            match reg {
+                RegisterAddress::Reg8(r8) => {
+                    i2c.write_read(addr, &[r8], &mut buf)
+                        .await
+                        .map_err(|_| "I2C peek16 transaction failed (NACK or bus timeout)")?;
+                    let val = u16::from_be_bytes(buf);
+                    let _ = writeln!(
+                        writer,
+                        "I2C[0x{:02x}] reg 0x{:02x} = 0x{:04x} ({}, bytes: [0x{:02x}, 0x{:02x}])",
+                        addr, r8, val, val, buf[0], buf[1]
+                    );
+                }
+                RegisterAddress::Reg16(r16) => {
+                    let reg_bytes = r16.to_be_bytes();
+                    i2c.write_read(addr, &reg_bytes, &mut buf)
+                        .await
+                        .map_err(|_| "I2C peek16 transaction failed (NACK or bus timeout)")?;
+                    let val = u16::from_be_bytes(buf);
+                    let _ = writeln!(
+                        writer,
+                        "I2C[0x{:02x}] reg 0x{:04x} = 0x{:04x} ({}, bytes: [0x{:02x}, 0x{:02x}])",
+                        addr, r16, val, val, buf[0], buf[1]
+                    );
+                }
+            }
+            Ok(())
+        }
+        I2cSubcommand::Poke8 => {
+            const USAGE: &str = "Usage: i2c poke8 <addr> <reg> <val> [--reg16] [-b|--bus <name>]";
+            let addr = parse_7bit_i2c_addr(arg1, USAGE)?;
+            let reg = parse_register_address(arg2, reg16, USAGE)?;
+            let val = parse_u8_hex_or_dec(arg3.ok_or(USAGE)?)?;
+            let i2c = resolver.resolve_i2c(bus)?;
+            match reg {
+                RegisterAddress::Reg8(r8) => {
+                    i2c.write(addr, &[r8, val])
+                        .await
+                        .map_err(|_| "I2C poke8 transaction failed (NACK or bus timeout)")?;
+                    let _ = writeln!(
+                        writer,
+                        "Wrote 0x{:02x} ({}) to I2C[0x{:02x}] reg 0x{:02x}",
+                        val, val, addr, r8
+                    );
+                }
+                RegisterAddress::Reg16(r16) => {
+                    let rb = r16.to_be_bytes();
+                    i2c.write(addr, &[rb[0], rb[1], val])
+                        .await
+                        .map_err(|_| "I2C poke8 transaction failed (NACK or bus timeout)")?;
+                    let _ = writeln!(
+                        writer,
+                        "Wrote 0x{:02x} ({}) to I2C[0x{:02x}] reg 0x{:04x}",
+                        val, val, addr, r16
+                    );
+                }
+            }
+            Ok(())
+        }
+        I2cSubcommand::Poke16 => {
+            const USAGE: &str = "Usage: i2c poke16 <addr> <reg> <val> [--reg16] [-b|--bus <name>]";
+            let addr = parse_7bit_i2c_addr(arg1, USAGE)?;
+            let reg = parse_register_address(arg2, reg16, USAGE)?;
+            let val = parse_u16_hex_or_dec(arg3.ok_or(USAGE)?)?;
+            let bytes = val.to_be_bytes();
+            let i2c = resolver.resolve_i2c(bus)?;
+            match reg {
+                RegisterAddress::Reg8(r8) => {
+                    i2c.write(addr, &[r8, bytes[0], bytes[1]])
+                        .await
+                        .map_err(|_| "I2C poke16 transaction failed (NACK or bus timeout)")?;
+                    let _ = writeln!(
+                        writer,
+                        "Wrote 0x{:04x} ({}) to I2C[0x{:02x}] reg 0x{:02x}",
+                        val, val, addr, r8
+                    );
+                }
+                RegisterAddress::Reg16(r16) => {
+                    let rb = r16.to_be_bytes();
+                    i2c.write(addr, &[rb[0], rb[1], bytes[0], bytes[1]])
+                        .await
+                        .map_err(|_| "I2C poke16 transaction failed (NACK or bus timeout)")?;
+                    let _ = writeln!(
+                        writer,
+                        "Wrote 0x{:04x} ({}) to I2C[0x{:02x}] reg 0x{:04x}",
+                        val, val, addr, r16
+                    );
+                }
             }
             Ok(())
         }

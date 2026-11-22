@@ -12,13 +12,16 @@ pub mod arm;
 pub mod probe_status;
 pub mod rsp;
 pub mod server;
+pub mod session;
 
 pub use arch::{
+    parse_expedited_regnums_from_target_xml, MemoryRegionDescriptor, MemoryRegionKind,
     ProcessorArch, RegisterDescriptor, RegisterFeatureGroup, TargetArchProfile,
     TargetRegisterLayout,
 };
 pub use arm::{
-    build_arm_cortex_m_register_layout, supports_arm_hw_breakpoint_at, ArmBreakpointManager,
+    build_arm_cortex_m_memory_regions, build_arm_cortex_m_register_layout,
+    supports_arm_hw_breakpoint_at, thumb16_dirty_core_regs, ArmBreakpointManager,
     ArmCoreBreakpoints, ArmHardwareOps,
 };
 pub use rsp::{
@@ -29,3 +32,6 @@ pub use server::{
     run_debug_server_with_backend, start_debug_server_with_backend, DebugBackend,
     DebugServerConfig, DebugServerEvent, DebugServerHandle,
 };
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+pub use session::open_probe_session_with_retry;
+pub use session::{retry_probe_attach, PROBE_ATTACH_MAX_ATTEMPTS, PROBE_ATTACH_RETRY_DELAY_MS};

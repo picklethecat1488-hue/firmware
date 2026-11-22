@@ -7,7 +7,10 @@ import { fuzzyFilterAndRank, fuzzyScore } from "../../js/core/fuzzy_search.js";
 import { showConfirmModal } from "../../js/core/modal.js";
 import { AsymptoticProgressBar, performActionWithProgress } from "../../js/core/progress.js";
 import { setupPanelResizer } from "../../js/core/resizer.js";
-import { createMockRuntimeContext } from "../../js/core/runtime_context.js";
+import {
+  createBrowserRuntimeContext,
+  createMockRuntimeContext,
+} from "../../js/core/runtime_context.js";
 import { escapeHtml, sanitizeAuthor, sanitizeTextWithBlacklist } from "../../js/core/sanitize.js";
 import { copyToClipboard, showToast } from "../../js/core/toast.js";
 import { applyUiScale, initUiScaleControl } from "../../js/core/ui_scale.js";
@@ -164,5 +167,64 @@ describe("Shared Core Modules (Sanitize, ANSI, Fuzzy, UI Scale, Progress, DOM)",
     assert.equal(ctx.openedPerfettoTraces[0].title, "Cat Detector Perf");
     assert.equal(ctx.openedPerfettoTraces[0].fileName, "cat_detector.perfetto.json");
     assert.ok(ctx.openedPerfettoTraces[0].byteLength > 0);
+
+    // WORM-SEGMENTED-COCOON-284: Browser runtime returns false when popup is blocked (null)
+    // and opens ui.perfetto.dev synchronously BEFORE awaiting loadBuffer().
+    const blockedBrowserCtx = createBrowserRuntimeContext({
+      open: () => null,
+    });
+    const blockedRes = await blockedBrowserCtx.openPerfettoTrace({
+      buffer: '{"traceEvents":[]}',
+      fallbackUrl: "http://127.0.0.1:8899/api/trace/perfetto.json",
+    });
+    assert.equal(blockedRes, false);
+
+    const browserSeq = [];
+    let messageHandler = null;
+    const postedPayloads = [];
+    const popupBrowserCtx = createBrowserRuntimeContext({
+      open: (url) => {
+        browserSeq.push(`open:${url}`);
+        return {
+          closed: false,
+          postMessage(msg, origin) {
+            postedPayloads.push({ msg, origin });
+            if (msg === "PING" && messageHandler) {
+              messageHandler({ origin: "https://ui.perfetto.dev", data: "PONG" });
+            }
+          },
+        };
+      },
+      addEventListener: (evtType, fn) => {
+        if (evtType === "message") {
+          messageHandler = fn;
+        }
+      },
+      removeEventListener: () => {},
+      setInterval: () => 1,
+      clearInterval: () => {},
+      setTimeout: () => 2,
+      clearTimeout: () => {},
+    });
+    const streamed = await popupBrowserCtx.openPerfettoTrace({
+      loadBuffer: async () => {
+        browserSeq.push("loadBuffer");
+        return '{"traceEvents":[{"name":"sync_span"}]}';
+      },
+      title: "Live Perf Trace",
+      fileName: "live_perf.perfetto.json",
+    });
+    assert.equal(streamed, true);
+    assert.deepEqual(browserSeq, ["open:https://ui.perfetto.dev", "loadBuffer"]);
+    assert.ok(
+      postedPayloads.some(
+        (entry) =>
+          entry.origin === "https://ui.perfetto.dev" &&
+          entry.msg &&
+          entry.msg.perfetto &&
+          entry.msg.perfetto.title === "Live Perf Trace" &&
+          entry.msg.perfetto.buffer.byteLength > 0,
+      ),
+    );
   });
 });

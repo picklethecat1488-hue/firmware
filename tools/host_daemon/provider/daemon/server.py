@@ -18,12 +18,17 @@ if str(dashboard_dir) not in sys.path:
 from host_daemon.model.trace_mode import (
     TRACE_MODE_DESCRIPTORS,
     TraceMode,
+    build_perfetto_deep_link,
     get_external_trace_viewer,
     normalize_trace_mode,
 )
 from host_daemon.provider.daemon.bug_report_service import create_target_worm_report
 from host_daemon.provider.daemon.rerun_bridge import open_trace_in_rerun
-from host_daemon.provider.daemon.runner import DEFAULT_CLI_OUTPUT_TIMEOUT_SEC, DaemonRunner
+from host_daemon.provider.daemon.runner import (
+    DEFAULT_CLI_OUTPUT_TIMEOUT_SEC,
+    DaemonRunner,
+    open_url_in_system_browser,
+)
 from host_daemon.provider.daemon.test_manager import DeviceTestRunnerManager
 from host_daemon.provider.daemon.trace_store import TraceSessionStore
 
@@ -66,6 +71,46 @@ def _resolve_runner_device_ts(runner: Any) -> str:
     return f"{max(0.0, now - float(anchor)):.6f}s"
 
 
+HIGH_FREQUENCY_POLL_PATHS: frozenset[str] = frozenset(
+    {
+        "/api/status",
+        "/api/sync",
+        "/api/sync/status",
+        "/api/logs",
+        "/api/cli/output",
+        "/api/fs/output",
+        "/api/manual_prompt",
+        "/api/tests/status",
+        "/api/trace/events",
+    }
+)
+
+
+def _record_runner_api_call(
+    server: Any,
+    method: str,
+    path: str,
+    status: int,
+    duration_ms: float,
+    detail: str = "",
+) -> None:
+    """Log `/api/*` invocations to `runner.log_api_invocation`, rate-limiting high-frequency UI pollers."""
+    if not path.startswith("/api/"):
+        return
+    runner = getattr(server, "runner", None)
+    if runner is None or not hasattr(runner, "log_api_invocation"):
+        return
+    if method == "GET" and path in HIGH_FREQUENCY_POLL_PATHS and status < 400:
+        seen = getattr(server, "_seen_poll_paths", None)
+        if not isinstance(seen, set):
+            seen = set()
+            setattr(server, "_seen_poll_paths", seen)
+        if path in seen:
+            return
+        seen.add(path)
+    runner.log_api_invocation(method, path, status, duration_ms, detail)
+
+
 class HostDaemonRequestHandler(BaseHTTPRequestHandler):
     """HTTP request handler for host daemon web workstation and IPC APIs."""
 
@@ -74,6 +119,27 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args) -> None:  # noqa: A002
         """Suppress default HTTP logging to keep console clean."""
         return
+
+    def send_response(self, code: int, message: Any = None) -> None:
+        """Record HTTP status code for structured API telemetry before delegating to BaseHTTPRequestHandler."""
+        self._last_http_status = int(code)
+        super().send_response(code, message)
+
+    def _flush_api_log_once(self) -> None:
+        """Flush structured `/api/*` telemetry to `host_daemon.log` before socket write completes."""
+        if getattr(self, "_api_logged", True):
+            return
+        self._api_logged = True
+        start_t = getattr(self, "_req_start_mono", None)
+        elapsed_ms = (time.monotonic() - float(start_t)) * 1000.0 if start_t is not None else 0.0
+        _record_runner_api_call(
+            self.server,
+            str(getattr(self, "_req_method", "GET")),
+            str(getattr(self, "_req_path", "")),
+            int(getattr(self, "_last_http_status", 200)),
+            elapsed_ms,
+            str(getattr(self, "_req_detail", "")),
+        )
 
     def _send_json(self, data: Any, status: int = 200) -> None:
         payload = json.dumps(data).encode("utf-8")
@@ -84,20 +150,34 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
+        self._flush_api_log_once()
         self.wfile.write(payload)
 
     def do_OPTIONS(self) -> None:  # noqa: N802
-        """Respond to CORS preflight requests (e.g. from `https://ui.perfetto.dev`)."""
+        """Respond to CORS and Private Network preflight requests (e.g. from `https://ui.perfetto.dev`)."""
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "*")
         self.send_header("Access-Control-Allow-Private-Network", "true")
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
         """Handle GET requests for UI and telemetry APIs."""
-        path = self.path.split("?")[0]
+        self._req_start_mono = time.monotonic()
+        self._req_method = "GET"
+        self._req_path = self.path.split("?")[0]
+        self._req_detail = ""
+        self._last_http_status = 200
+        self._api_logged = False
+        try:
+            self._handle_get(self._req_path)
+        finally:
+            self._flush_api_log_once()
+
+    def _handle_get(self, path: str) -> None:
+        """Dispatch GET requests across UI, static, and telemetry endpoints."""
         runner = self.server.runner
 
         if path in ("/", "/index.html"):
@@ -128,6 +208,16 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 self.send_error(500, f"Template rendering error: {e}")
         elif path == "/api/status":
             self._send_json(runner.get_status())
+        elif path == "/api/boot_status":
+            if hasattr(runner, "query_boot_status"):
+                self._send_json(runner.query_boot_status(refresh_probe=True))
+            else:
+                self._send_json({"state": "unknown", "boot_ready": False})
+        elif path == "/api/logs/files":
+            if hasattr(runner, "get_log_files"):
+                self._send_json({"log_dir": str(getattr(runner, "log_dir", "")), "files": runner.get_log_files()})
+            else:
+                self._send_json({"log_dir": "", "files": {}})
         elif path == "/api/targets":
             from host_daemon.provider.daemon.config import discover_target_packages, load_last_session
 
@@ -218,14 +308,26 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             qs = urllib.parse.parse_qs(raw_qs)
             raw_after = qs.get("after_seq", qs.get("after_id", ["0"]))[0]
             raw_limit = qs.get("limit", ["10000"])[0]
+            raw_epoch = qs.get("session_epoch", [None])[0]
             after_seq = int(raw_after) if str(raw_after).isdigit() else 0
             limit_val = int(raw_limit) if str(raw_limit).isdigit() else 10_000
+            session_epoch = int(raw_epoch) if raw_epoch is not None and str(raw_epoch).isdigit() else None
             if hasattr(runner, "get_trace_events"):
-                self._send_json(runner.get_trace_events(after_seq=after_seq, limit=limit_val))
+                self._send_json(
+                    runner.get_trace_events(
+                        after_seq=after_seq,
+                        limit=limit_val,
+                        session_epoch=session_epoch,
+                    )
+                )
             else:
                 store = _get_trace_store(runner)
                 cur_tmode = _get_runner_trace_mode(runner)
-                data = store.get_events(after_seq=after_seq, limit=limit_val)
+                data = store.get_events(
+                    after_seq=after_seq,
+                    limit=limit_val,
+                    session_epoch=session_epoch,
+                )
                 data["trace_mode"] = cur_tmode.value
                 data["external_viewer"] = get_external_trace_viewer(cur_tmode).value
                 data["chip"] = getattr(runner, "chip", None)
@@ -250,7 +352,10 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "*")
             self.send_header("Access-Control-Allow-Private-Network", "true")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
             if path == "/api/trace/download":
                 self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
             self.end_headers()
@@ -315,7 +420,19 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         """Handle POST requests for command execution and controls."""
-        path = self.path.split("?")[0]
+        self._req_start_mono = time.monotonic()
+        self._req_method = "POST"
+        self._req_path = self.path.split("?")[0]
+        self._req_detail = ""
+        self._last_http_status = 200
+        self._api_logged = False
+        try:
+            self._req_detail = self._handle_post(self._req_path)
+        finally:
+            self._flush_api_log_once()
+
+    def _handle_post(self, path: str) -> str:
+        """Dispatch POST requests across target control, CLI/FS, debug, trace, and bug report endpoints."""
         runner = self.server.runner
 
         content_len = int(self.headers.get("Content-Length", 0))
@@ -324,6 +441,18 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             payload = json.loads(body) if body else {}
         except Exception:
             payload = {}
+
+        api_detail = ""
+        if isinstance(payload, dict):
+            if "mode" in payload and path == "/api/mode":
+                api_detail = f"mode={payload.get('mode')}"
+            elif "action" in payload and path == "/api/trace/control":
+                api_detail = f"action={payload.get('action')}"
+            elif "command" in payload and path in ("/api/cli/execute", "/api/fs/execute"):
+                api_detail = f"cmd={str(payload.get('command'))[:64]!r}"
+            elif path in ("/api/sync", "/api/target/configure") and (payload.get("bin") or payload.get("bin_name")):
+                api_detail = f"bin={payload.get('bin') or payload.get('bin_name')}"
+        self._req_detail = api_detail
 
         if path == "/api/sync":
             if payload:
@@ -391,7 +520,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 )
             except ValueError as exc:
                 self._send_json({"error": str(exc)}, status=400)
-                return
+                return api_detail
 
             if not tgt:
                 tgt = infer_arm_target(pkg, bin_name, chip=chp, repo_root=runner.repo_root)
@@ -559,6 +688,8 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                         "trace_mode": _get_runner_trace_mode(runner).value,
                     }
                 self._send_json(res)
+                if hasattr(runner, "log") and not hasattr(runner, "control_trace_session"):
+                    runner.log(f"Trace session control '{action}' applied", channel="trace")
             except ValueError as exc:
                 self._send_json({"error": str(exc)}, status=400)
         elif path == "/api/trace/export":
@@ -580,6 +711,28 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     )
                 self._send_json(res)
             except (OSError, ValueError) as exc:
+                self._send_json({"error": str(exc)}, status=400)
+        elif path == "/api/trace/open_perfetto":
+            server_host = str(self.server.server_address[0] or "127.0.0.1")
+            server_port = int(self.server.server_address[1])
+            try:
+                if hasattr(runner, "open_trace_in_perfetto"):
+                    res = runner.open_trace_in_perfetto(
+                        daemon_host=server_host,
+                        daemon_port=server_port,
+                    )
+                else:
+                    store = _get_trace_store(runner)
+                    trace_url, perfetto_url = build_perfetto_deep_link(server_host)
+                    opened = open_url_in_system_browser(perfetto_url)
+                    res = {
+                        "success": opened,
+                        "url": perfetto_url,
+                        "trace_url": trace_url,
+                        "event_count": len(store.snapshot_all()),
+                    }
+                self._send_json(res)
+            except (OSError, RuntimeError, ValueError) as exc:
                 self._send_json({"error": str(exc)}, status=400)
         elif path == "/api/trace/open_rerun":
             spawn_viewer = bool(payload.get("spawn", True))
@@ -617,7 +770,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 )
             except ValueError as exc:
                 self._send_json({"error": str(exc)}, status=400)
-                return
+                return api_detail
             self._send_json({"success": True, "status": status})
         elif path == "/api/tests/cancel":
             status = _get_test_manager(runner).cancel_run()
@@ -648,13 +801,13 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     raise ValueError("Manual prompt responder is not supported on this runner")
             except ValueError as exc:
                 self._send_json({"error": str(exc)}, status=400)
-                return
+                return api_detail
             self._send_json({"success": True, "manual_prompt": state})
         elif path == "/api/target_bug":
             title = str(payload.get("title") or "").strip()
             if not title:
                 self._send_json({"error": "Bug title is required"}, status=400)
-                return
+                return api_detail
             result = create_target_worm_report(
                 runner.repo_root,
                 payload,
@@ -672,6 +825,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             threading.Thread(target=_shutdown, daemon=True).start()
         else:
             self.send_error(404, "Unknown endpoint")
+        return api_detail
 
 
 class HostDaemonServer(ThreadingHTTPServer):

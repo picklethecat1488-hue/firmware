@@ -41,22 +41,29 @@ def main() -> None:
     c1 = int(args[args.index("--gdb-core1-port") + 1])
     rtt = int(args[args.index("--rtt-bridge-port") + 1])
     halted = "--halt-on-reset" in args
-    print(
-        json.dumps(
-            {
-                "event": "ready",
-                "chip": "rp2040",
-                "cores": 2,
-                "gdb_core0_port": c0,
-                "gdb_core1_port": c1,
-                "rtt_bridge_port": rtt,
-                "halted_on_reset": halted,
-            }
-        ),
-        flush=True,
+    log_file = Path(args[args.index("--log-file") + 1]) if "--log-file" in args else None
+    ready_line = json.dumps(
+        {
+            "event": "ready",
+            "chip": "rp2040",
+            "cores": 2,
+            "gdb_core0_port": c0,
+            "gdb_core1_port": c1,
+            "rtt_bridge_port": rtt,
+            "halted_on_reset": halted,
+        }
     )
+    if log_file is not None:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        with log_file.open("a", encoding="utf-8") as fh:
+            fh.write(ready_line + "\n")
+    print(ready_line, flush=True)
     sys.stdin.read()
-    print(json.dumps({"event": "stopped"}), flush=True)
+    stopped_line = json.dumps({"event": "stopped"})
+    if log_file is not None:
+        with log_file.open("a", encoding="utf-8") as fh:
+            fh.write(stopped_line + "\n")
+    print(stopped_line, flush=True)
 
 
 if __name__ == "__main__":

@@ -149,6 +149,9 @@ fn read_elf_addr(file: &object::File, addr: u64, len: usize) -> Option<Vec<u8>> 
     None
 }
 
+pub const RTT_CONTROL_BLOCK_MAGIC: &[u8; 10] = b"SEGGER RTT";
+pub const RTT_RESET_WIPE_BYTES: usize = 96;
+
 pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
     target: &mut T,
     rtt_symbol_addr: u64,
@@ -157,10 +160,16 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
     let mut initial_header = [0u8; 24];
     target.read_mem(rtt_symbol_addr, &mut initial_header)?;
 
+    if &initial_header[..RTT_CONTROL_BLOCK_MAGIC.len()] != RTT_CONTROL_BLOCK_MAGIC {
+        return Err(
+            "RTT control block header magic ('SEGGER RTT') not yet initialized".to_string(),
+        );
+    }
+
     let max_up = u32::from_le_bytes(initial_header[16..20].try_into().unwrap()) as usize;
     let max_down = u32::from_le_bytes(initial_header[20..24].try_into().unwrap()) as usize;
 
-    if max_up > 32 || max_down > 32 {
+    if (max_up == 0 && max_down == 0) || max_up > 32 || max_down > 32 {
         return Err(format!(
             "RTT control block has invalid channel counts: up={}, down={}",
             max_up, max_down
@@ -171,15 +180,36 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
     let mut header = vec![0u8; full_size];
     target.read_mem(rtt_symbol_addr, &mut header)?;
 
+    if &header[..RTT_CONTROL_BLOCK_MAGIC.len()] != RTT_CONTROL_BLOCK_MAGIC {
+        return Err("RTT control block header changed during read".to_string());
+    }
+
+    let expected_elf_header = elf_file
+        .and_then(|elf| read_elf_addr(elf, rtt_symbol_addr, full_size))
+        .filter(|bytes| bytes.len() == full_size && bytes.starts_with(RTT_CONTROL_BLOCK_MAGIC));
+
     let mut up_channels = Vec::new();
     let mut down_channels = Vec::new();
 
     let mut offset = 24;
     for _ in 0..max_up {
         let chunk = &header[offset..offset + 24];
+        if let Some(ref exp) = expected_elf_header {
+            if chunk[0..12] != exp[offset..offset + 12] {
+                return Err(
+                    "Target SRAM RTT up-channel descriptor does not match active ELF (.data not yet copied)"
+                        .to_string(),
+                );
+            }
+        }
         let name_ptr = u32::from_le_bytes(chunk[0..4].try_into().unwrap()) as u64;
         let buffer_ptr = u32::from_le_bytes(chunk[4..8].try_into().unwrap()) as u64;
         let size = u32::from_le_bytes(chunk[8..12].try_into().unwrap()) as usize;
+        if name_ptr != 0 && (buffer_ptr == 0 || size == 0) {
+            return Err(
+                "Target RTT up-channel buffer pointer/size not yet initialized".to_string(),
+            );
+        }
         let write_offset_ptr = rtt_symbol_addr + offset as u64 + 12;
         let read_offset_ptr = rtt_symbol_addr + offset as u64 + 16;
         let flags_offset_ptr = rtt_symbol_addr + offset as u64 + 20;
@@ -218,9 +248,22 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
 
     for _ in 0..max_down {
         let chunk = &header[offset..offset + 24];
+        if let Some(ref exp) = expected_elf_header {
+            if chunk[0..12] != exp[offset..offset + 12] {
+                return Err(
+                    "Target SRAM RTT down-channel descriptor does not match active ELF (.data not yet copied)"
+                        .to_string(),
+                );
+            }
+        }
         let name_ptr = u32::from_le_bytes(chunk[0..4].try_into().unwrap()) as u64;
         let buffer_ptr = u32::from_le_bytes(chunk[4..8].try_into().unwrap()) as u64;
         let size = u32::from_le_bytes(chunk[8..12].try_into().unwrap()) as usize;
+        if name_ptr != 0 && (buffer_ptr == 0 || size == 0) {
+            return Err(
+                "Target RTT down-channel buffer pointer/size not yet initialized".to_string(),
+            );
+        }
         let write_offset_ptr = rtt_symbol_addr + offset as u64 + 12;
         let read_offset_ptr = rtt_symbol_addr + offset as u64 + 16;
         let flags_offset_ptr = rtt_symbol_addr + offset as u64 + 20;
@@ -303,6 +346,8 @@ pub struct RttOptions<'a> {
     pub duration: Option<u64>,
     /// Probe protocol speed in kHz
     pub speed: u32,
+    /// Optional log file path receiving decoded RTT defmt and CLI streams instead of terminal stdout
+    pub log_file: Option<&'a std::path::Path>,
 }
 
 /// Establish and run an RTT streaming session against the target device.
@@ -334,7 +379,23 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         trace,
         duration,
         speed,
+        log_file,
     } = opts;
+    let mut log_file_writer: Option<std::io::BufWriter<std::fs::File>> =
+        if let Some(path) = log_file {
+            if let Some(parent) = path.parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent)?;
+                }
+            }
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)?;
+            Some(std::io::BufWriter::new(file))
+        } else {
+            None
+        };
     // Locate Symbol Address first
     let rtt_symbol_addr = match tool_common::find_symbol_address(elf_path, "_SEGGER_RTT") {
         Ok(Some(addr)) => {
@@ -383,6 +444,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut is_reconnecting = false;
     let mut shell_idle_poller = host_cli::ShellIdlePoller::new();
+    let mut boot_status_poller = host_cli::BootStatusPoller::new();
     let mut live_trace_processor = host_cli::LiveTraceStreamProcessor::new();
     let mut pending_stdin = std::collections::VecDeque::<Vec<u8>>::new();
     loop {
@@ -427,10 +489,15 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                 let mut core = session.core(0).map_err(|e| format!("{:?}", e))?;
                                 if reset && !is_reconnecting {
                                     spinner.set_message("Resetting target CPU...");
+                                    let _ = core.halt(Duration::from_millis(50));
+                                    let _ =
+                                        core.write_8(rtt_symbol_addr, &[0u8; RTT_RESET_WIPE_BYTES]);
+                                    let _ = core.flush();
                                     core.reset().map_err(|e| {
                                         format!("Failed to reset target CPU: {:?}", e)
                                     })?;
                                     shell_idle_poller = host_cli::ShellIdlePoller::new();
+                                    boot_status_poller = host_cli::BootStatusPoller::new();
                                     std::thread::sleep(Duration::from_millis(50));
                                     let _ = core.run();
                                     std::thread::sleep(Duration::from_millis(50));
@@ -513,8 +580,8 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
             match parse_rtt_channels(target.as_mut(), rtt_symbol_addr, object_file.as_ref()) {
                 Ok(chans) => chans,
                 Err(e) => {
-                    const BRIDGE_RETRY_DELAY_MS: u64 = 250;
-                    const DIRECT_RETRY_DELAY_MS: u64 = 1000;
+                    const BRIDGE_RETRY_DELAY_MS: u64 = 100;
+                    const DIRECT_RETRY_DELAY_MS: u64 = 100;
                     if stream_cli && !dump && stdin_eof.load(std::sync::atomic::Ordering::SeqCst) {
                         break;
                     }
@@ -686,7 +753,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
 
-        if !json_events {
+        if !json_events && log_file_writer.is_none() {
             println!("\nRTT Session Started (Press Ctrl+C to exit):");
             if cli_up_channel.is_some() && cli_down_channel.is_some() {
                 println!("Interactive RTT console active. Type commands and press Enter.");
@@ -840,6 +907,13 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                                     format!("{}{}", module_context, line_str);
                                             }
                                         }
+                                        if let Some(ref mut lw) = log_file_writer {
+                                            use std::io::Write as _;
+                                            if !line_str.contains("Device Telemetry: ") {
+                                                let _ = writeln!(lw, "[DEFMT] {}", plain_line);
+                                                let _ = lw.flush();
+                                            }
+                                        }
                                         if json_events {
                                             if !line_str.contains("Device Telemetry: ") {
                                                 emit_json(&host_cli::HostCliEvent::Defmt {
@@ -861,7 +935,9 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                             {
                                                 pending_completions.push(comp_ev);
                                             }
-                                        } else if !line_str.contains("Device Telemetry: ") {
+                                        } else if log_file_writer.is_none()
+                                            && !line_str.contains("Device Telemetry: ")
+                                        {
                                             if !stdout_at_bol {
                                                 println!();
                                             }
@@ -895,11 +971,15 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                             did_work = true;
                             let write_buf = host_cli::cancel_echo(&rtt_buf[..n], &mut sent_buffer);
                             if !write_buf.is_empty() {
+                                if let Some(ref mut lw) = log_file_writer {
+                                    let _ = lw.write_all(&write_buf);
+                                    let _ = lw.flush();
+                                }
                                 if json_events {
                                     for ev in cli_chunk_parser.push_bytes(&write_buf) {
                                         emit_json(&ev);
                                     }
-                                } else {
+                                } else if log_file_writer.is_none() {
                                     if let Some(&last) = write_buf.last() {
                                         stdout_at_bol = last == b'\n';
                                     }
@@ -967,16 +1047,24 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            // 4. Poll RTT shell-idle control flag on `cli_down` once input/output buffers are quiet
+            // 4. Poll RTT boot-state and shell-idle control flags on `down_channels[0]`
             if json_events && !dump {
-                if let (Some(cli_up), Some(cli_down)) = (cli_up_channel, cli_down_channel) {
-                    if let (Ok(flags), Ok(up_empty), Ok(down_empty)) = (
-                        cli_down.read_flags(target.as_mut()),
-                        cli_up.is_empty(target.as_mut()),
-                        cli_down.is_empty(target.as_mut()),
-                    ) {
-                        if let Some(epoch) = shell_idle_poller.poll(flags, up_empty, down_empty) {
-                            emit_json(&cli_chunk_parser.on_shell_idle(epoch));
+                if let Some(status_down) = down_channels.first() {
+                    if let Ok(flags) = status_down.read_flags(target.as_mut()) {
+                        if let Some(boot_ev) = boot_status_poller.poll(flags) {
+                            emit_json(&boot_ev);
+                        }
+                        if let (Some(cli_up), Some(cli_down)) = (cli_up_channel, cli_down_channel) {
+                            if let (Ok(up_empty), Ok(down_empty)) = (
+                                cli_up.is_empty(target.as_mut()),
+                                cli_down.is_empty(target.as_mut()),
+                            ) {
+                                if let Some(epoch) =
+                                    shell_idle_poller.poll(flags, up_empty, down_empty)
+                                {
+                                    emit_json(&cli_chunk_parser.on_shell_idle(epoch));
+                                }
+                            }
                         }
                     }
                 }
@@ -1053,6 +1141,80 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Inspect `_SEGGER_RTT.down_channels[0].flags` over a [`TargetAccess`] handle and build a [`host_cli::TargetBootStatusReport`].
+pub fn inspect_target_boot_status<T: TargetAccess + ?Sized>(
+    target: &mut T,
+    chip: &str,
+    rtt_symbol_addr: u64,
+    elf_file: Option<&object::File>,
+) -> host_cli::TargetBootStatusReport {
+    match parse_rtt_channels(target, rtt_symbol_addr, elf_file) {
+        Ok((_, down_channels)) => match down_channels
+            .first()
+            .and_then(|ch| ch.read_flags(target).ok())
+        {
+            Some(flags) => host_cli::TargetBootStatusReport::from_rtt_flags(chip, flags),
+            None => host_cli::TargetBootStatusReport::reset_pending(chip),
+        },
+        Err(_) => host_cli::TargetBootStatusReport::reset_pending(chip),
+    }
+}
+
+/// Connect non-intrusively (via `--gdb-bridge` or direct SWD `probe-rs` without resetting) and print target boot status.
+pub fn run_boot_status(
+    chip: &str,
+    elf_path: &std::path::Path,
+    gdb_bridge: Option<&str>,
+    speed: u32,
+    json: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let rtt_symbol_addr = match tool_common::find_symbol_address(elf_path, "_SEGGER_RTT") {
+        Ok(Some(addr)) => addr,
+        _ => return Err("Could not locate symbol address of _SEGGER_RTT in ELF".into()),
+    };
+    let elf_data = std::fs::read(elf_path)?;
+    let object_file = object::File::parse(&*elf_data).ok();
+
+    let report = if let Some(host) = gdb_bridge {
+        let addr = tool_common::normalize_rtt_bridge_addr(host);
+        let mut client = GdbClient::connect(&addr)
+            .map_err(|e| format!("Failed to connect to GDB bridge '{}': {}", addr, e))?;
+        let mut wrapper = ProbeRsTargetWrapper {
+            client: &mut client,
+        };
+        inspect_target_boot_status(&mut wrapper, chip, rtt_symbol_addr, object_file.as_ref())
+    } else {
+        let lister = Lister::new();
+        let probes = lister.list_all();
+        let probe_info = probes
+            .first()
+            .ok_or_else(|| "No debug probes connected".to_string())?;
+        let mut probe = probe_info
+            .open()
+            .map_err(|e| format!("Failed to open debug probe: {:?}", e))?;
+        let _ = probe.set_speed(speed);
+        let mut session = probe
+            .attach(chip, probe_rs::Permissions::default())
+            .map_err(|e| format!("Failed to attach probe to '{}': {:?}", chip, e))?;
+        let core = session
+            .core(0)
+            .map_err(|e| format!("Failed to access Core 0: {:?}", e))?;
+        let mut wrapper = ProbeRsWrapper::new(core);
+        inspect_target_boot_status(&mut wrapper, chip, rtt_symbol_addr, object_file.as_ref())
+    };
+
+    if json {
+        println!("{}", report.to_json());
+    } else {
+        println!("chip: {}", report.chip);
+        println!("state: {}", report.state.as_str());
+        println!("boot_ready: {}", report.boot_ready);
+        println!("shell_idle: {}", report.shell_idle);
+        println!("epoch: {}", report.epoch);
+    }
+    Ok(())
+}
+
 struct ProbeRsTargetWrapper<'a> {
     client: &'a mut GdbClient,
 }
@@ -1122,7 +1284,8 @@ impl<'b> TargetAccess for ProbeRsWrapper<'b> {
     }
     fn write_mem(&mut self, addr: u64, buf: &[u8]) -> Result<(), String> {
         let core = unsafe { &mut *self.core_ptr };
-        core.write_8(addr, buf).map_err(|e| format!("{:?}", e))
+        core.write_8(addr, buf).map_err(|e| format!("{:?}", e))?;
+        core.flush().map_err(|e| format!("{:?}", e))
     }
 }
 

@@ -32,6 +32,25 @@ CSV_HEADER_COLUMNS: Tuple[str, ...] = (
 )
 
 
+def _is_root_parent_id(parent_id: Optional[str]) -> bool:
+    """Return `True` when `parent_id` is absent or denotes an all-zero root span ID."""
+    if not parent_id:
+        return True
+    stripped = parent_id.strip()
+    return not stripped or all(ch == "0" for ch in stripped)
+
+
+def _is_span_name_match(open_name: str, candidate_name: str) -> bool:
+    """Match span names ignoring trailing `(param=...)` formatting suffixes and `module::` prefixes."""
+    if not open_name or not candidate_name:
+        return False
+    base_open = open_name.split("(", 1)[0].strip()
+    base_cand = candidate_name.split("(", 1)[0].strip()
+    if base_open == base_cand:
+        return True
+    return base_open.endswith(f"::{base_cand}") or base_cand.endswith(f"::{base_open}")
+
+
 class TraceSessionStore:
     """Thread-safe store pairing streaming `B`/`E` spans and buffering counter/sensor trace events."""
 
@@ -40,6 +59,7 @@ class TraceSessionStore:
         self.max_events = max(100, int(max_events))
         self._lock = threading.Lock()
         self._recording: bool = True
+        self._session_epoch: int = 1
         self._next_id: int = 0
         self._next_seq: int = 0
         self._items: Deque[Dict[str, Any]] = deque()
@@ -54,6 +74,18 @@ class TraceSessionStore:
         with self._lock:
             return self._recording
 
+    @property
+    def session_epoch(self) -> int:
+        """Return the current monotonically increasing trace session epoch."""
+        with self._lock:
+            return self._session_epoch
+
+    @property
+    def event_count(self) -> int:
+        """Return the number of currently buffered trace items."""
+        with self._lock:
+            return len(self._items)
+
     def set_recording(self, active: bool) -> bool:
         """Pause (`False`) or resume (`True`) live trace capture and return the new state."""
         with self._lock:
@@ -61,14 +93,16 @@ class TraceSessionStore:
             return self._recording
 
     def clear(self) -> None:
-        """Purge all buffered trace events, open span stacks, and time bounds."""
+        """Purge all buffered trace events, open span stacks, and time bounds, advancing `session_epoch`."""
         with self._lock:
             self._items.clear()
             self._items_by_id.clear()
             self._open_spans_by_track.clear()
             self._min_ts_us = None
             self._max_ts_us = None
-            self._next_seq += 1
+            self._next_id = 0
+            self._next_seq = 0
+            self._session_epoch += 1
 
     def _evict_oldest_unlocked(self) -> None:
         while len(self._items) >= self.max_events:
@@ -121,11 +155,15 @@ class TraceSessionStore:
                     if matched_pos is None:
                         for idx in range(len(stack) - 1, -1, -1):
                             cand = self._items_by_id.get(stack[idx])
-                            if cand is not None and cand.get("name") == name:
+                            if cand is not None and (
+                                cand.get("name") == name or _is_span_name_match(str(cand.get("name") or ""), name)
+                            ):
                                 matched_pos = idx
                                 break
-                    if matched_pos is None:
+                    if matched_pos is None and span_id is None and not name:
                         matched_pos = len(stack) - 1
+                    if matched_pos is None:
+                        return None
 
                     # Implicitly close any nested child spans above `matched_pos`
                     while len(stack) > matched_pos:
@@ -142,6 +180,46 @@ class TraceSessionStore:
                     matched_item = self._items_by_id.get(popped_id) if "popped_id" in locals() else None
                     return dict(matched_item) if matched_item is not None else None
                 return None
+
+            if ph == "B":
+                stack = self._open_spans_by_track.setdefault(track, [])
+                if stack:
+                    unwind_pos: Optional[int] = None
+                    if _is_root_parent_id(parent_id) and ev_obj.get("parent_id") is not None:
+                        unwind_pos = 0
+                    else:
+                        for idx, open_id in enumerate(stack):
+                            cand = self._items_by_id.get(open_id)
+                            if cand is None:
+                                continue
+                            cand_span_id = cand.get("span_id")
+                            cand_name = str(cand.get("name") or "")
+                            if (
+                                (span_id is not None and cand_span_id == span_id)
+                                or cand_name == name
+                                or _is_span_name_match(cand_name, name)
+                            ):
+                                unwind_pos = idx
+                                break
+                        if unwind_pos is None and parent_id and not _is_root_parent_id(parent_id):
+                            for idx, open_id in enumerate(stack):
+                                cand = self._items_by_id.get(open_id)
+                                if cand is not None and cand.get("span_id") == parent_id:
+                                    if idx + 1 < len(stack):
+                                        unwind_pos = idx + 1
+                                    break
+                    if unwind_pos is not None:
+                        while len(stack) > unwind_pos:
+                            popped_id = stack.pop()
+                            open_item = self._items_by_id.get(popped_id)
+                            if open_item is not None:
+                                start_ts = int(open_item["ts_us"])
+                                end_ts = max(start_ts, ts_us)
+                                self._next_seq += 1
+                                open_item["ph"] = "X"
+                                open_item["end_ts_us"] = end_ts
+                                open_item["dur_us"] = end_ts - start_ts
+                                open_item["seq"] = self._next_seq
 
             self._evict_oldest_unlocked()
             self._next_id += 1
@@ -177,11 +255,18 @@ class TraceSessionStore:
             self._items_by_id[item_id] = item
             return dict(item)
 
-    def get_events(self, after_seq: int = 0, limit: int = 10_000) -> Dict[str, Any]:
+    def get_events(
+        self,
+        after_seq: int = 0,
+        limit: int = 10_000,
+        session_epoch: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """Return incremental trace events (`seq > after_seq`), track summaries, and session metadata."""
         capped_limit = max(1, min(int(limit), self.max_events))
         with self._lock:
-            changed = [dict(it) for it in self._items if int(it["seq"]) > after_seq]
+            epoch_mismatch = session_epoch is not None and int(session_epoch) != self._session_epoch
+            effective_after_seq = 0 if (epoch_mismatch or after_seq > self._next_seq) else after_seq
+            changed = [dict(it) for it in self._items if int(it["seq"]) > effective_after_seq]
             if len(changed) > capped_limit:
                 changed = changed[-capped_limit:]
 
@@ -212,6 +297,7 @@ class TraceSessionStore:
 
             return {
                 "recording": self._recording,
+                "session_epoch": self._session_epoch,
                 "cursor": self._next_seq,
                 "total_events": len(self._items),
                 "min_ts_us": self._min_ts_us or 0,

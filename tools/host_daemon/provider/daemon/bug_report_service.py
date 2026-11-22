@@ -89,6 +89,67 @@ def _normalize_reproduction_steps(raw_steps: Any, runner: Optional[Any] = None) 
     return synthesized
 
 
+def _collect_host_daemon_log_content(repo_root: Path, runner: Optional[Any], now_str: str) -> str:
+    """Collect `host_daemon.log` (and `host_debug.log` tail when present) for automatic bug report attachment."""
+    candidates: List[Path] = []
+    debug_candidates: List[Path] = []
+    if runner is not None:
+        if hasattr(runner, "get_canonical_daemon_log_path"):
+            cand = runner.get_canonical_daemon_log_path()
+            if isinstance(cand, Path):
+                candidates.append(cand)
+        if hasattr(runner, "get_log_files"):
+            files = runner.get_log_files()
+            if isinstance(files, dict):
+                if files.get("daemon"):
+                    candidates.append(Path(str(files["daemon"])))
+                if files.get("debug"):
+                    debug_candidates.append(Path(str(files["debug"])))
+    candidates.extend(
+        [
+            repo_root / "target" / "host_daemon.log",
+            repo_root / "target" / "logs" / "host_daemon.log",
+        ]
+    )
+    debug_candidates.append(repo_root / "target" / "logs" / "host_debug.log")
+
+    daemon_text = ""
+    for path in candidates:
+        if path.is_file():
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if text.strip():
+                daemon_text = text
+                break
+
+    if not daemon_text and runner is not None:
+        lock = getattr(runner, "_lock", None)
+        if lock is not None and hasattr(lock, "__enter__"):
+            with lock:
+                entries = list(getattr(runner, "logs", []) or [])
+        else:
+            entries = list(getattr(runner, "logs", []) or [])
+        daemon_lines = [
+            f"[{entry.get('timestamp') or entry.get('time') or ''}] "
+            f"[{entry.get('level', 'INFO')}] [{entry.get('channel', 'daemon')}] {entry.get('message', '')}"
+            for entry in entries
+            if isinstance(entry, dict) and entry.get("channel", "daemon") != "target"
+        ]
+        if daemon_lines:
+            daemon_text = "\n".join(daemon_lines)
+
+    if not daemon_text:
+        daemon_text = f"Host daemon log initialized at {now_str}."
+
+    for dbg_path in debug_candidates:
+        if dbg_path.is_file():
+            dbg_text = dbg_path.read_text(encoding="utf-8", errors="replace").strip()
+            if dbg_text:
+                daemon_text = f"{daemon_text.rstrip()}\n\n--- host_debug.log ---\n{dbg_text}\n"
+            break
+
+    return daemon_text
+
+
 def _execute_runner_fs_attachment(runner: Optional[Any], fs_cmd: str, label: str) -> str:
     """Execute `runner.execute_fs(fs_cmd)` safely for bug attachment capture."""
     if runner is None:
@@ -161,7 +222,7 @@ def create_target_worm_report(
                 log_entries = list(getattr(runner, "logs", []))
             if log_entries:
                 lines = [
-                    f"[{entry.get('time', '')}] [{entry.get('channel', 'daemon')}] "
+                    f"[{entry.get('timestamp') or entry.get('time', '')}] [{entry.get('channel', 'daemon')}] "
                     f"[{entry.get('level', 'INFO')}] {entry.get('message', '')}"
                     for entry in log_entries
                 ]
@@ -186,6 +247,23 @@ def create_target_worm_report(
                 file_path=f"attachments/{worm_id}/{log_filename}",
                 size_bytes=len(sanitized_logs.encode("utf-8")),
                 description="Target system and defmt logs from host daemon session",
+                created_at=now_str,
+            )
+        )
+
+    if bool(payload.get("attach_daemon_logs", payload.get("attach_system_logs", True))):
+        daemon_raw = _collect_host_daemon_log_content(repo_root, runner, now_str)
+        daemon_filename = f"host_daemon_{worm_id}.log"
+        sanitized_daemon = elide_personal_info(daemon_raw)
+        (worm_att_dir / daemon_filename).write_text(sanitized_daemon, encoding="utf-8")
+        attachments.append(
+            WormAttachmentModel(
+                id=f"att-{len(attachments) + 1}",
+                filename=daemon_filename,
+                file_type="log",
+                file_path=f"attachments/{worm_id}/{daemon_filename}",
+                size_bytes=len(sanitized_daemon.encode("utf-8")),
+                description="Host daemon API, state transition, debug, and trace backend logs",
                 created_at=now_str,
             )
         )

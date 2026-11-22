@@ -1,7 +1,14 @@
 """Strongly typed compile-time & runtime tracing modes and external viewer mappings for host.py."""
 
 from enum import Enum
+import time
 from typing import Any, Dict, List, Optional, Tuple
+import urllib.parse
+
+PERFETTO_UI_ORIGIN: str = "https://ui.perfetto.dev"
+DEFAULT_LOCAL_DAEMON_HOST: str = "127.0.0.1"
+PERFETTO_CSP_ALLOWED_PORT: int = 9001
+DEFAULT_PERFETTO_TRACE_PATH: str = "/trace.perfetto.json"
 
 
 class TraceMode(str, Enum):
@@ -100,3 +107,18 @@ def get_cargo_feature_args(mode: TraceMode) -> List[str]:
 def get_external_trace_viewer(mode: TraceMode) -> ExternalTraceViewer:
     """Return the canonical [`ExternalTraceViewer`] (`perfetto` for `PERF`, `rerun` for `SENSOR`/`AUDIO`)."""
     return TRACE_MODE_EXTERNAL_VIEWER.get(mode, ExternalTraceViewer.NONE)
+
+
+def build_perfetto_deep_link(
+    daemon_host: str = DEFAULT_LOCAL_DAEMON_HOST,
+    daemon_port: int = PERFETTO_CSP_ALLOWED_PORT,
+    cache_bust_ms: Optional[int] = None,
+    trace_path: str = DEFAULT_PERFETTO_TRACE_PATH,
+) -> Tuple[str, str]:
+    """Build `(trace_url, perfetto_url)` pointing `https://ui.perfetto.dev` at the CSP-allowed `:9001` trace bridge."""
+    clean_host = DEFAULT_LOCAL_DAEMON_HOST if daemon_host in ("", "0.0.0.0", "::") else str(daemon_host)
+    ts_ms = int(time.time() * 1000) if cache_bust_ms is None else int(cache_bust_ms)
+    norm_path = trace_path if str(trace_path).startswith("/") else f"/{trace_path}"
+    trace_url = f"http://{clean_host}:{int(daemon_port)}{norm_path}?ts={ts_ms}"
+    perfetto_url = f"{PERFETTO_UI_ORIGIN}/#!/?url={urllib.parse.quote(trace_url, safe='')}"
+    return trace_url, perfetto_url
