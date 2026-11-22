@@ -78,6 +78,10 @@ pub const RP2040_TIMER_DBGPAUSE_ADDR: u64 = 0x4005_402C;
 /// `TIMER.DBGPAUSE` value (`DBG0 = 1 << 1, DBG1 = 0`) pausing `embassy_time` when Core 0 halts without deadlocking Core 0 `.await` timers when Core 1 is halted.
 pub const RP2040_TIMER_DBGPAUSE_CORE0_ONLY: u32 = 0x0000_0002;
 
+/// Bounded duration (`8 ms`) to advance the hardware timer when single-stepping across a `WFE`/`WFI`
+/// sleep hint on RP2040 so pending `embassy_time` alarms mature and wake tasks on the next poll.
+pub const WFE_STEP_TIMER_ADVANCE_MS: u64 = 8;
+
 /// Base XIP flash address on RP2040 (`0x1000_0000`) distinguishing Mask Boot ROM (`< 0x1000_0000`) from application code.
 pub const RP2040_FLASH_BASE_ADDR: u32 = 0x1000_0000;
 
@@ -252,44 +256,177 @@ pub fn build_arm_cortex_m_register_layout(
     TargetRegisterLayout::new(arch, features)
 }
 
-/// Return `(r7_preserved, sp_lr_preserved)` for a 16-bit Thumb instruction (`hw`) stepped from `pc` to `next_pc`.
-#[inline]
-fn thumb16_preserved_unwind_regs(hw: u16, pc: u32, next_pc: u32) -> (bool, bool) {
+/// Compute `(dirty_gpr_mask, dirty_xpsr)` for a 16-bit Thumb instruction (`hw < 0xE800`) stepped
+/// with `DHCSR.C_MASKINTS = 1` from `pc` to `next_pc`.
+///
+/// Bit `r` (`0..=14`) in `dirty_gpr_mask` is `1` when core register `r` (`r0..r12, sp, lr`) may
+/// have been modified by `hw`. Returns `None` for 32-bit Thumb-2 prefixes (`>= 0xE800`), system/trap
+/// instructions, `EXC_RETURN`, or unexpected control-flow jumps so the caller refreshes all registers.
+pub fn thumb16_dirty_core_regs(
+    hw: u16,
+    pc: u32,
+    next_pc: u32,
+    prev_xpsr: Option<u32>,
+) -> Option<(u32, bool)> {
     const THUMB32_PREFIX_MIN: u16 = 0xE800;
-    const THUMB16_HIGH_REG_MASK: u16 = 0xFC00;
-    const THUMB16_HIGH_REG_VAL: u16 = 0x4400;
-    const THUMB16_MISC_SP_MASK: u16 = 0xF000;
-    const THUMB16_MISC_SP_VAL: u16 = 0xB000;
-    const THUMB16_SVC_MASK: u16 = 0xFF00;
-    const THUMB16_SVC_VAL: u16 = 0xDF00;
-    const THUMB16_BCOND_VAL: u16 = 0xD000;
-    const THUMB16_UNCOND_B_MASK: u16 = 0xF800;
-    const THUMB16_UNCOND_B_VAL: u16 = 0xE000;
-    const THUMB16_LDMIA_VAL: u16 = 0xC800;
-    const THUMB16_R7_BIT: u16 = 0x0080;
+    const XPSR_IPSR_MASK: u32 = 0x0000_01FF;
+    const XPSR_IT_MASK: u32 = 0x0600_FC00;
+    const NON_CODE_PC_MIN: u32 = 0xF000_0000;
 
-    if hw >= THUMB32_PREFIX_MIN {
-        return (false, false);
+    if hw >= THUMB32_PREFIX_MIN || next_pc >= NON_CODE_PC_MIN {
+        return None;
     }
-    if (hw & THUMB16_HIGH_REG_MASK) == THUMB16_HIGH_REG_VAL
-        || (hw & THUMB16_MISC_SP_MASK) == THUMB16_MISC_SP_VAL
-        || (hw & THUMB16_SVC_MASK) == THUMB16_SVC_VAL
-    {
-        return (false, false);
+    let in_it_block = prev_xpsr.map(|x| (x & XPSR_IT_MASK) != 0).unwrap_or(true);
+    let in_handler = prev_xpsr.map(|x| (x & XPSR_IPSR_MASK) != 0).unwrap_or(true);
+    let seq_next = next_pc == pc.wrapping_add(2);
+
+    match hw >> 12 {
+        0x0 | 0x1 => {
+            if !seq_next {
+                return None;
+            }
+            Some((1u32 << (hw & 0x7), true))
+        }
+        0x2 | 0x3 => {
+            if !seq_next {
+                return None;
+            }
+            let is_cmp_imm = (hw & 0xF800) == 0x2800;
+            let mask = if is_cmp_imm {
+                0
+            } else {
+                1u32 << ((hw >> 8) & 0x7)
+            };
+            Some((mask, true))
+        }
+        0x4 => {
+            if (hw & 0x0800) != 0 {
+                // `LDR Rt, [PC, #imm8]`
+                return seq_next.then_some((1u32 << ((hw >> 8) & 0x7), in_it_block));
+            }
+            if (hw & 0x0C00) == 0 {
+                // 16-bit ALU data-processing (`Rdn = hw & 0x7`)
+                return seq_next.then_some((1u32 << (hw & 0x7), true));
+            }
+            match (hw >> 8) & 0x3 {
+                0x0 => {
+                    // `ADD Rdn, Rm` (high registers)
+                    let rdn = ((hw & 0x0080) >> 4) | (hw & 0x7);
+                    if rdn == DCRSR_PC {
+                        None
+                    } else {
+                        seq_next.then_some((1u32 << rdn, in_it_block))
+                    }
+                }
+                0x1 => {
+                    // `CMP Rn, Rm` (high registers)
+                    seq_next.then_some((0, true))
+                }
+                0x2 => {
+                    // `MOV Rd, Rm` (high registers)
+                    let rd = ((hw & 0x0080) >> 4) | (hw & 0x7);
+                    if rd == DCRSR_PC {
+                        (!in_handler).then_some((0, in_it_block))
+                    } else {
+                        seq_next.then_some((1u32 << rd, in_it_block))
+                    }
+                }
+                _ => {
+                    // `BX Rm` / `BLX Rm`
+                    if in_handler {
+                        None
+                    } else {
+                        let mask = if (hw & 0x0080) != 0 {
+                            1u32 << DCRSR_LR
+                        } else {
+                            0
+                        };
+                        Some((mask, in_it_block))
+                    }
+                }
+            }
+        }
+        0x5 => {
+            if !seq_next {
+                return None;
+            }
+            let is_store = (hw & 0x0E00) <= 0x0400;
+            let mask = if is_store { 0 } else { 1u32 << (hw & 0x7) };
+            Some((mask, in_it_block))
+        }
+        0x6..=0x8 => {
+            if !seq_next {
+                return None;
+            }
+            let is_store = (hw & 0x0800) == 0;
+            let mask = if is_store { 0 } else { 1u32 << (hw & 0x7) };
+            Some((mask, in_it_block))
+        }
+        0x9 => {
+            if !seq_next {
+                return None;
+            }
+            let is_store = (hw & 0x0800) == 0;
+            let mask = if is_store {
+                0
+            } else {
+                1u32 << ((hw >> 8) & 0x7)
+            };
+            Some((mask, in_it_block))
+        }
+        0xA => seq_next.then_some((1u32 << ((hw >> 8) & 0x7), in_it_block)),
+        0xB => {
+            if (hw & 0xFF00) == 0xB000 || (hw & 0xFE00) == 0xB400 {
+                // `ADD/SUB SP, #imm` or `PUSH {reglist, lr?}`
+                seq_next.then_some((1u32 << DCRSR_SP, in_it_block))
+            } else if (hw & 0xFE00) == 0xBC00 {
+                // `POP {reglist, pc?}`
+                let writes_pc = (hw & 0x0100) != 0;
+                if writes_pc && in_handler {
+                    None
+                } else if !writes_pc && !seq_next {
+                    None
+                } else {
+                    Some((((hw as u32) & 0x00FF) | (1u32 << DCRSR_SP), in_it_block))
+                }
+            } else if (hw & 0xF500) == 0xB100 {
+                // `CBZ` / `CBNZ`
+                Some((0, in_it_block))
+            } else if (hw & 0xFF00) == 0xB200 || (hw & 0xFF00) == 0xBA00 {
+                // `SXTH`/`SXTB`/`UXTH`/`UXTB` or `REV`/`REV16`/`REVSH`
+                seq_next.then_some((1u32 << (hw & 0x7), in_it_block))
+            } else {
+                None
+            }
+        }
+        0xC => {
+            if !seq_next {
+                return None;
+            }
+            let rn_bit = 1u32 << ((hw >> 8) & 0x7);
+            if (hw & 0x0800) == 0 {
+                // `STMIA Rn!, {reglist}`
+                Some((rn_bit, in_it_block))
+            } else {
+                // `LDMIA Rn!, {reglist}`
+                Some((((hw as u32) & 0x00FF) | rn_bit, in_it_block))
+            }
+        }
+        0xD => {
+            if (hw & 0x0E00) == 0x0E00 {
+                // `UDF` (`0xDExx`) or `SVC` (`0xDFxx`)
+                None
+            } else {
+                // `B<cond> label`
+                Some((0, in_it_block))
+            }
+        }
+        0xE => {
+            // Unconditional 16-bit `B label` (`0xE000..0xE7FF`)
+            Some((0, in_it_block))
+        }
+        _ => None,
     }
-    let is_branch = (hw & THUMB16_MISC_SP_MASK) == THUMB16_BCOND_VAL
-        || (hw & THUMB16_UNCOND_B_MASK) == THUMB16_UNCOND_B_VAL;
-    if !is_branch && next_pc != pc.wrapping_add(2) {
-        return (false, false);
-    }
-    let r7_preserved = if is_branch {
-        true
-    } else if (hw & THUMB16_UNCOND_B_MASK) == THUMB16_LDMIA_VAL {
-        (hw & THUMB16_R7_BIT) == 0 && ((hw >> 8) & 0x7) != DCRSR_R7
-    } else {
-        (hw & 0x7) != DCRSR_R7 && ((hw >> 8) & 0x7) != DCRSR_R7
-    };
-    (r7_preserved, true)
 }
 
 /// Return `true` if the ARM hardware FPB/BPU for `arch` can match instruction fetches at `addr`.
@@ -1304,7 +1441,27 @@ pub mod probe_backend {
                 None
             };
 
-            let rom_segments = load_elf_rom_segments(elf_path);
+            let mut rom_segments = load_elf_rom_segments(elf_path);
+            if !rom_segments.is_empty() {
+                let verified = with_session_core(&mut session, 0, |core0| {
+                    for seg in &rom_segments {
+                        let check_len = seg.data.len().min(16);
+                        if check_len > 0 {
+                            let mut actual = vec![0u8; check_len];
+                            if core0.read_8(seg.vaddr, &mut actual).is_err()
+                                || actual.as_slice() != &seg.data[..check_len]
+                            {
+                                return Ok(false);
+                            }
+                        }
+                    }
+                    Ok(true)
+                })
+                .unwrap_or(false);
+                if !verified {
+                    rom_segments.clear();
+                }
+            }
             let core_count = core_archs.len();
             let mut backend = Self {
                 session,
@@ -1436,6 +1593,7 @@ pub mod probe_backend {
         fn advance_sleep_hint_or_hw_step(
             core: &mut probe_rs::Core<'_>,
             core_idx: usize,
+            is_rp2040: bool,
             pc: u64,
             insn_opt: Option<[u8; 4]>,
             bp_mgr_ref: &ArmBreakpointManager,
@@ -1445,6 +1603,18 @@ pub mod probe_backend {
                     let target_pc = (pc as u32).wrapping_add(sleep_len) & !1;
                     if !core.core_halted().unwrap_or(false) {
                         let _ = core.halt(Duration::from_millis(50));
+                    }
+                    if is_rp2040 && core_idx == 0 {
+                        // Allow the RP2040 1 MHz hardware timer to advance briefly while stepping
+                        // across `WFE`/`WFI` so pending `embassy_time` alarms mature and wake tasks
+                        // on the next `Executor::poll()` instead of spinning indefinitely at `wfe()`.
+                        let _ = core.write_word_32(RP2040_TIMER_DBGPAUSE_ADDR, 0);
+                        let _ = core.flush();
+                        thread::sleep(Duration::from_millis(WFE_STEP_TIMER_ADVANCE_MS));
+                        let _ = core.write_word_32(
+                            RP2040_TIMER_DBGPAUSE_ADDR,
+                            RP2040_TIMER_DBGPAUSE_CORE0_ONLY,
+                        );
                     }
                     core.write_core_reg(RegisterId(DCRSR_PC), target_pc)
                         .map_err(|e| format!("{:?}", e))?;
@@ -1509,49 +1679,62 @@ pub mod probe_backend {
             Ok((step_res?, false))
         }
 
-        /// Phase 4 of [`DebugBackend::step_core`]: assemble expedited GDB `T05` frame-unwind registers
-        /// (`r7`, `sp`, `lr`), reusing pre-step cached values when architecturally preserved by a 16-bit
-        /// Thumb instruction or sleep-hint bypass and reading only potentially modified registers over SWD.
-        fn prefetch_expedited_unwind_regs(
+        /// Phase 4 of [`DebugBackend::step_core`]: assemble all expedited GDB `T05` general-purpose
+        /// registers (`r0..r12`, `sp`, `lr`, `xpsr`), preserving architecturally untouched cached
+        /// values across 16-bit Thumb steps and fetching only modified/uncached registers over SWD.
+        fn refresh_expedited_step_regs(
             core: &mut probe_rs::Core<'_>,
             pc: u32,
             final_pc: u32,
             insn_opt: Option<[u8; 4]>,
             bypassed_sleep_hint: bool,
-            prev_unwind: (Option<u32>, Option<u32>, Option<u32>),
-        ) -> Vec<(u16, u32)> {
-            let (prev_r7, prev_sp, prev_lr) = prev_unwind;
-            let (r7_preserved, sp_lr_preserved) = if bypassed_sleep_hint {
-                (true, true)
-            } else if let Some(insn_buf) = insn_opt {
-                let hw = u16::from_le_bytes([insn_buf[0], insn_buf[1]]);
-                thumb16_preserved_unwind_regs(hw, pc, final_pc)
-            } else {
-                (false, false)
-            };
+            mut prev_cache: BTreeMap<u16, u32>,
+        ) -> BTreeMap<u16, u32> {
+            const EXPEDITED_CORE_REG_IDS: [u16; 16] = [
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, DCRSR_SP, DCRSR_LR, DCRSR_XPSR,
+            ];
+            prev_cache.remove(&DCRSR_PC);
 
-            let mut regs = Vec::with_capacity(3);
-            for (reg_id, cached_opt, preserved) in [
-                (DCRSR_R7, prev_r7, r7_preserved),
-                (DCRSR_SP, prev_sp, sp_lr_preserved),
-                (DCRSR_LR, prev_lr, sp_lr_preserved),
-            ] {
-                if preserved {
-                    if let Some(val) = cached_opt {
-                        regs.push((reg_id, val));
-                        continue;
+            if !bypassed_sleep_hint {
+                let dirty = insn_opt.and_then(|insn_buf| {
+                    let hw = u16::from_le_bytes([insn_buf[0], insn_buf[1]]);
+                    thumb16_dirty_core_regs(hw, pc, final_pc, prev_cache.get(&DCRSR_XPSR).copied())
+                });
+                match dirty {
+                    Some((dirty_gpr_mask, dirty_xpsr)) => {
+                        for reg_id in 0..=14u16 {
+                            if (dirty_gpr_mask & (1u32 << reg_id)) != 0 {
+                                prev_cache.remove(&reg_id);
+                            }
+                        }
+                        if (dirty_gpr_mask & (1u32 << DCRSR_SP)) != 0 {
+                            prev_cache.remove(&DCRSR_MSP);
+                            prev_cache.remove(&DCRSR_PSP);
+                        }
+                        if dirty_xpsr {
+                            prev_cache.remove(&DCRSR_XPSR);
+                        }
                     }
+                    None => {
+                        prev_cache.clear();
+                    }
+                }
+            }
+
+            for reg_id in EXPEDITED_CORE_REG_IDS {
+                if prev_cache.contains_key(&reg_id) {
+                    continue;
                 }
                 if core
                     .write_word_32(CORTEX_M_DCRSR_ADDR, reg_id as u32)
                     .is_ok()
                 {
-                    if let Ok(v) = core.read_word_32(CORTEX_M_DCRDR_ADDR) {
-                        regs.push((reg_id, v));
+                    if let Ok(val) = core.read_word_32(CORTEX_M_DCRDR_ADDR) {
+                        prev_cache.insert(reg_id, val);
                     }
                 }
             }
-            regs
+            prev_cache
         }
     }
 
@@ -1639,47 +1822,43 @@ pub mod probe_backend {
                 return self.step_core_with_sw_patches(core_idx);
             }
 
-            // Snapshot pre-step `PC` and frame-unwind registers before invalidating the per-halt register cache.
-            let (cached_pc, prev_unwind) = match self.halted_reg_cache.get(core_idx) {
-                Some(c) => (
-                    c.get(&DCRSR_PC).copied(),
-                    (
-                        c.get(&DCRSR_R7).copied(),
-                        c.get(&DCRSR_SP).copied(),
-                        c.get(&DCRSR_LR).copied(),
-                    ),
-                ),
-                None => (None, (None, None, None)),
-            };
+            // Snapshot pre-step register cache before invalidating so unmodified registers can be preserved.
+            let prev_cache = self
+                .halted_reg_cache
+                .get(core_idx)
+                .cloned()
+                .unwrap_or_default();
+            let cached_pc = prev_cache.get(&DCRSR_PC).copied();
             self.clear_reg_cache(core_idx);
 
+            let is_rp2040 = self.chip.eq_ignore_ascii_case("rp2040");
             let rom_segs = &self.rom_segments;
             let bp_mgr_ref = &self.bp_mgr;
-            let (next_pc, prefetched) = with_session_core(&mut self.session, core_idx, |core| {
-                // Phase 2: Resolve current `PC` and fetch the 4-byte instruction window (ELF ROM cache or target RAM).
-                let (pc, insn_opt) = Self::fetch_step_pc_and_insn(core, cached_pc, rom_segs)?;
+            let (next_pc, mut updated_cache) =
+                with_session_core(&mut self.session, core_idx, |core| {
+                    // Phase 2: Resolve current `PC` and fetch the 4-byte instruction window (ELF ROM cache or target RAM).
+                    let (pc, insn_opt) = Self::fetch_step_pc_and_insn(core, cached_pc, rom_segs)?;
 
-                // Phase 3: Advance deterministically past `WFE`/`WFI` or execute a masked hardware `C_STEP`.
-                let (final_pc, bypassed_sleep_hint) =
-                    Self::advance_sleep_hint_or_hw_step(core, core_idx, pc, insn_opt, bp_mgr_ref)?;
+                    // Phase 3: Advance deterministically past `WFE`/`WFI` or execute a masked hardware `C_STEP`.
+                    let (final_pc, bypassed_sleep_hint) = Self::advance_sleep_hint_or_hw_step(
+                        core, core_idx, is_rp2040, pc, insn_opt, bp_mgr_ref,
+                    )?;
 
-                // Phase 4: Populate expedited `T05` unwind registers (`r7`, `sp`, `lr`) for GDB frame unwinding.
-                let regs = Self::prefetch_expedited_unwind_regs(
-                    core,
-                    pc as u32,
-                    final_pc,
-                    insn_opt,
-                    bypassed_sleep_hint,
-                    prev_unwind,
-                );
-                Ok((final_pc, regs))
-            })?;
+                    // Phase 4: Refresh expedited `T05` general registers (`r0..r12, sp, lr, xpsr`) so GDB never needs `$g`.
+                    let cache_after = Self::refresh_expedited_step_regs(
+                        core,
+                        pc as u32,
+                        final_pc,
+                        insn_opt,
+                        bypassed_sleep_hint,
+                        prev_cache,
+                    );
+                    Ok((final_pc, cache_after))
+                })?;
 
-            if let Some(cache) = self.halted_reg_cache.get_mut(core_idx) {
-                cache.insert(DCRSR_PC, next_pc);
-                for (reg_id, val) in prefetched {
-                    cache.insert(reg_id, val);
-                }
+            updated_cache.insert(DCRSR_PC, next_pc);
+            if let Some(slot) = self.halted_reg_cache.get_mut(core_idx) {
+                *slot = updated_cache;
             }
             Ok(next_pc)
         }
@@ -1725,7 +1904,9 @@ pub mod probe_backend {
             }
 
             // Fast hardware range-stepping path inside a single `session.core(core_idx)` borrow!
-            const EXPEDITED_PREFETCH_REGS: &[u16] = &[DCRSR_R7, DCRSR_SP, DCRSR_LR];
+            const EXPEDITED_PREFETCH_REGS: &[u16] = &[
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, DCRSR_SP, DCRSR_LR, DCRSR_XPSR,
+            ];
             self.clear_reg_cache(core_idx);
             let rom_segs = &self.rom_segments;
             let bp_mgr_ref = &self.bp_mgr;
@@ -1923,16 +2104,23 @@ pub mod probe_backend {
             if !missing.is_empty() {
                 let fetched = with_session_core(&mut self.session, core_idx, |core| {
                     let mut out = Vec::with_capacity(missing.len());
+                    // Secondary cores held in `PSM` hardware reset prior to `spawn_core1` (or cores
+                    // queried while briefly running) cannot service `DCRSR` reads; check `core_halted()`
+                    // once and issue direct `DCRSR`+`DCRDR` MMIO reads (avoiding 3x USB round-trips per
+                    // register in `core.read_core_reg`), falling back to `0` if not halted.
+                    let is_halted = core.core_halted().unwrap_or(false);
                     for &(idx, reg_id) in &missing {
-                        // Secondary cores held in `PSM` hardware reset prior to `spawn_core1` (or cores
-                        // queried while briefly running) cannot service `DCRSR` reads; fall back to `0`
-                        // for individual unreadable selectors so a `$g` packet still returns a well-formed
-                        // fixed-width hex payload rather than aborting the GDB session.
-                        if let Ok(val) = core.read_core_reg::<u32>(RegisterId(reg_id)) {
-                            out.push((idx, reg_id, Some(val)));
-                        } else {
-                            out.push((idx, reg_id, None));
+                        if is_halted
+                            && core
+                                .write_word_32(CORTEX_M_DCRSR_ADDR, reg_id as u32)
+                                .is_ok()
+                        {
+                            if let Ok(val) = core.read_word_32(CORTEX_M_DCRDR_ADDR) {
+                                out.push((idx, reg_id, Some(val)));
+                                continue;
+                            }
                         }
+                        out.push((idx, reg_id, None));
                     }
                     Ok(out)
                 });

@@ -1458,6 +1458,55 @@ fn test_worm_lithe_enchytraeid_678_single_step_across_wfe_wfi_and_abrupt_client_
     assert_eq!(gdb.send_cmd("vCont;r100213f6,10021406:1;c"), "S05");
     assert_eq!(gdb.read_pc(), 0x1002_1406);
 
+    // Once GDB fetches `target.xml`, `T05` stop replies MUST expedite general registers + `xpsr` (`19:`)
+    // so GDB's ARM Thumb unwinder (`arm_pc_is_thumb` + DWARF CFI) never falls back to 40ms `$g` reads
+    // on every inlined `vCont;s` instruction (`WORM-LITHE-ENCHYTRAEID-678`).
+    let xml = gdb.send_cmd("qXfer:features:read:target.xml:0,1000");
+    assert!(xml.starts_with('l'));
+    let t05 = gdb.send_cmd("vCont;s:1");
+    for required_tag in ["00:", "04:", "07:", "0d:", "0e:", "0f:", "19:"] {
+        assert!(
+            t05.contains(required_tag),
+            "Expedited T05 must include general + xpsr register '{}' to eliminate per-step $g reads; got: {}",
+            required_tag,
+            t05
+        );
+    }
+
+    // Verify Thumb-16 dirty-register classification across store, load, ALU, stack, branch, and Thumb-2 instructions.
+    use host_debug::thumb16_dirty_core_regs;
+    let thread_xpsr = Some(0x0100_0000);
+    // `str r1, [r0, #20]` (`0x6141`) -> 0 dirty GPRs, xpsr preserved
+    assert_eq!(
+        thumb16_dirty_core_regs(0x6141, 0x1000, 0x1002, thread_xpsr),
+        Some((0, false))
+    );
+    // `ldr r1, [sp, #300]` (`0x994B`) -> only r1 (`1 << 1`) dirty, xpsr preserved
+    assert_eq!(
+        thumb16_dirty_core_regs(0x994B, 0x1000, 0x1002, thread_xpsr),
+        Some((1 << 1, false))
+    );
+    // `adds r2, #4` (`0x3204`) -> r2 (`1 << 2`) + xpsr dirty
+    assert_eq!(
+        thumb16_dirty_core_regs(0x3204, 0x1000, 0x1002, thread_xpsr),
+        Some((1 << 2, true))
+    );
+    // `push {r4, lr}` (`0xB510`) -> only sp (`1 << 13`) dirty, xpsr preserved
+    assert_eq!(
+        thumb16_dirty_core_regs(0xB510, 0x1000, 0x1002, thread_xpsr),
+        Some((1 << 13, false))
+    );
+    // `b.n +8` (`0xE004`) -> 0 dirty GPRs, xpsr preserved
+    assert_eq!(
+        thumb16_dirty_core_regs(0xE004, 0x1000, 0x100C, thread_xpsr),
+        Some((0, false))
+    );
+    // 32-bit Thumb-2 `bl` prefix (`0xF000`) -> None (full register refresh)
+    assert_eq!(
+        thumb16_dirty_core_regs(0xF000, 0x1000, 0x2000, thread_xpsr),
+        None
+    );
+
     // Simulate VS Code killing GDB abruptly (closing TCP socket without sending `$D#44`):
     // `serve_core_gdb_client` must clear Core 0 breakpoints and resume Core 0 automatically!
     drop(gdb);

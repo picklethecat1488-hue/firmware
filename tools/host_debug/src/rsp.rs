@@ -308,10 +308,13 @@ impl RspCoreHandler {
         self.pending_diagnostics.push((level, message));
     }
 
-    /// Build a `SIGTRAP` stop-reply string (`T05...;thread:01;` with expedited frame-unwind registers
+    /// Build a `SIGTRAP` stop-reply string (`T05...;thread:01;` with expedited general registers
     /// once `target.xml` has been transferred to GDB, or `"S05"` for minimal raw RSP clients).
     pub fn format_trap_stop_reply<B: DebugBackend + ?Sized>(&mut self, backend: &mut B) -> String {
-        const EXPEDITED_STOP_REG_NAMES: &[&str] = &["r7", "sp", "lr", "pc"];
+        const EXPEDITED_STOP_REG_NAMES: &[&str] = &[
+            "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "sp",
+            "lr", "pc", "xpsr",
+        ];
         if !self.target_xml_complete {
             return RspReplyCode::SigTrap.as_reply_string();
         }
