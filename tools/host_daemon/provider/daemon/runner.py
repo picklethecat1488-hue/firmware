@@ -12,6 +12,7 @@ import subprocess
 import threading
 import time
 from typing import Any, Deque, Dict, List, Optional, Tuple
+import webbrowser
 
 from host_daemon.model.manual_prompt import ManualPromptState
 from host_daemon.model.metadata import (
@@ -23,6 +24,7 @@ from host_daemon.model.metadata import (
 )
 from host_daemon.model.trace_mode import (
     TraceMode,
+    build_perfetto_deep_link,
     get_cargo_feature_args,
     get_external_trace_viewer,
     normalize_trace_mode,
@@ -2239,6 +2241,27 @@ class DaemonRunner:
             channel="trace",
         )
         return res
+
+    def open_trace_in_perfetto(
+        self,
+        *,
+        daemon_host: str = "127.0.0.1",
+        daemon_port: int = 8899,
+    ) -> Dict[str, Any]:
+        """Launch `https://ui.perfetto.dev` in the OS default browser pointing at `/api/trace/perfetto.json`."""
+        trace_url, perfetto_url = build_perfetto_deep_link(daemon_host, daemon_port)
+        event_count = len(self.trace_store.snapshot_all())
+        opened = bool(webbrowser.open(perfetto_url, new=2, autoraise=True))
+        self.log(
+            f"Opening {event_count} trace events in Perfetto UI (opened={opened}, trace_url={trace_url})",
+            channel="trace",
+        )
+        return {
+            "success": opened,
+            "url": perfetto_url,
+            "trace_url": trace_url,
+            "event_count": event_count,
+        }
 
     def open_trace_in_rerun(
         self,

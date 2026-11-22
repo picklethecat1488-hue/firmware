@@ -553,12 +553,12 @@ def _add_trace_subparser(subparsers: Any) -> None:
     """Register the `host.py trace` live trace control, export, and Rerun viewer subcommand parser."""
     trace_parser = subparsers.add_parser(
         "trace",
-        help="Inspect, pause/resume/clear, export (.csv / Perfetto .json), or open Rerun viewer for live traces",
+        help="Inspect, pause/resume/clear, export (.csv / Perfetto .json), or open Perfetto/Rerun viewers for live traces",
     )
     trace_parser.add_argument(
         "trace_action",
         nargs="?",
-        choices=["status", "clear", "pause", "resume", "export", "open-rerun"],
+        choices=["status", "clear", "pause", "resume", "export", "open-perfetto", "open-rerun"],
         default="status",
         help="Trace session operation to perform on the active host.py daemon.",
     )
@@ -1350,6 +1350,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                     print(json.dumps(res, indent=2))
                 else:
                     print(f"Exported {res.get('event_count')} trace events ({res.get('format')}) -> {res.get('path')}")
+                return 0
+            if action == "open-perfetto":
+                res = send_daemon_request("/api/trace/open_perfetto", {}, port=args.host_port, host=args.host)
+                if "error" in res:
+                    print(f"Error: {res['error']}", file=sys.stderr)
+                    return 1
+                if args.json:
+                    print(json.dumps(res, indent=2))
+                else:
+                    print(f"Opened Perfetto UI ({res.get('event_count', 0)} events) -> {res.get('url')}")
                 return 0
             if action == "open-rerun":
                 rr_payload: Dict[str, Any] = {"spawn": True}

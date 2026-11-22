@@ -950,23 +950,42 @@ export class TraceViewerController {
     }
 
     try {
-      const response = await this.ctx.fetchRaw("/api/trace/perfetto.json");
-      const rawJson = await response.text();
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      const bridge = this.ctx.getDesktopBridge();
+      const isDesktopWebview = Boolean(bridge && (bridge.pywebview || bridge.eel));
+      if (isDesktopWebview) {
+        const res = await this.ctx.postJson("/api/trace/open_perfetto", {});
+        const backendOpened = Boolean(res && res.success);
+        showToast(
+          this.ctx,
+          backendOpened ? "Opened trace in Perfetto UI" : "Failed to open Perfetto UI tab",
+          backendOpened ? "success" : "error",
+        );
+        return backendOpened;
       }
+
       const loc = this.ctx.getLocation();
       const fallbackUrl = `${loc.origin || "http://127.0.0.1:8899"}/api/trace/perfetto.json`;
-      const opened = await this.ctx.openPerfettoTrace({
-        buffer: rawJson,
+      let opened = await this.ctx.openPerfettoTrace({
+        loadBuffer: async () => {
+          const response = await this.ctx.fetchRaw("/api/trace/perfetto.json");
+          const rawJson = await response.text();
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          return rawJson;
+        },
         title: `${this.binName} (${this.traceMode})`,
         fileName: `${this.binName}_${this.traceMode.toLowerCase()}.perfetto.json`,
         fallbackUrl,
       });
+      if (!opened) {
+        const res = await this.ctx.postJson("/api/trace/open_perfetto", {});
+        opened = Boolean(res && res.success);
+      }
       showToast(
         this.ctx,
-        opened ? "Opened trace in Perfetto UI" : "Opened Perfetto UI tab",
-        "success",
+        opened ? "Opened trace in Perfetto UI" : "Failed to open Perfetto UI tab",
+        opened ? "success" : "error",
       );
       return opened;
     } catch (err) {

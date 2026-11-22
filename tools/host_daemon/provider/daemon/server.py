@@ -18,6 +18,7 @@ if str(dashboard_dir) not in sys.path:
 from host_daemon.model.trace_mode import (
     TRACE_MODE_DESCRIPTORS,
     TraceMode,
+    build_perfetto_deep_link,
     get_external_trace_viewer,
     normalize_trace_mode,
 )
@@ -149,12 +150,13 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def do_OPTIONS(self) -> None:  # noqa: N802
-        """Respond to CORS preflight requests (e.g. from `https://ui.perfetto.dev`)."""
+        """Respond to CORS and Private Network preflight requests (e.g. from `https://ui.perfetto.dev`)."""
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "*")
         self.send_header("Access-Control-Allow-Private-Network", "true")
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
@@ -346,7 +348,10 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "*")
             self.send_header("Access-Control-Allow-Private-Network", "true")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
             if path == "/api/trace/download":
                 self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
             self.end_headers()
@@ -702,6 +707,30 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     )
                 self._send_json(res)
             except (OSError, ValueError) as exc:
+                self._send_json({"error": str(exc)}, status=400)
+        elif path == "/api/trace/open_perfetto":
+            server_host = str(self.server.server_address[0] or "127.0.0.1")
+            server_port = int(self.server.server_address[1])
+            try:
+                if hasattr(runner, "open_trace_in_perfetto"):
+                    res = runner.open_trace_in_perfetto(
+                        daemon_host=server_host,
+                        daemon_port=server_port,
+                    )
+                else:
+                    import webbrowser
+
+                    store = _get_trace_store(runner)
+                    trace_url, perfetto_url = build_perfetto_deep_link(server_host, server_port)
+                    opened = bool(webbrowser.open(perfetto_url, new=2, autoraise=True))
+                    res = {
+                        "success": opened,
+                        "url": perfetto_url,
+                        "trace_url": trace_url,
+                        "event_count": len(store.snapshot_all()),
+                    }
+                self._send_json(res)
+            except (OSError, RuntimeError, ValueError) as exc:
                 self._send_json({"error": str(exc)}, status=400)
         elif path == "/api/trace/open_rerun":
             spawn_viewer = bool(payload.get("spawn", True))

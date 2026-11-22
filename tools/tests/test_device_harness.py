@@ -3673,3 +3673,101 @@ def test_worm_dirt_pupa_301_trace_store_closes_parameterized_and_sibling_spans()
         if str(ev.get("name", "")).startswith("configure_alerts") and ev.get("args", {}).get("in_flight")
     ]
     assert in_flight_cfg == []
+
+
+def test_worm_segmented_cocoon_284_open_perfetto_api_cors_and_cli(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify `POST /api/trace/open_perfetto`, Perfetto CORS/PNA headers, and `host.py trace open-perfetto` CLI."""
+    import threading
+    import urllib.parse
+    import urllib.request
+    import webbrowser
+
+    from host_daemon.cli import parse_arguments
+    from host_daemon.provider.daemon.runner import DaemonRunner
+    from host_daemon.provider.daemon.server import HostDaemonServer
+
+    parsed_cli = parse_arguments(["trace", "open-perfetto"])
+    assert parsed_cli.subcommand == "trace"
+    assert parsed_cli.trace_action == "open-perfetto"
+
+    opened_urls: List[str] = []
+    monkeypatch.setattr(webbrowser, "open", lambda url, new=2, autoraise=True: opened_urls.append(url) or True)
+
+    runner = DaemonRunner(
+        repo_root=tmp_path,
+        target="thumbv6m-none-eabi",
+        package="cat_detector",
+        bin_name="cat_detector_app",
+        release=True,
+        speed=4000,
+        chip="rp2040",
+        trace_mode="PERF",
+        log_dir=tmp_path / "logs",
+    )
+    runner.trace_store.ingest_event(
+        {
+            "ts_us": 10_000,
+            "end_ts_us": 12_500,
+            "dur_us": 2_500,
+            "track": "CPU Core 0",
+            "ph": "X",
+            "category": "span",
+            "name": "battery_controller::update",
+        }
+    )
+
+    server = HostDaemonServer("127.0.0.1", 0, runner)
+    port = int(server.server_address[1])
+    srv_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    srv_thread.start()
+    try:
+        # 1. Verify OPTIONS preflight + GET /api/trace/perfetto.json expose full CORS + Private Network headers
+        opt_req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/trace/perfetto.json",
+            method="OPTIONS",
+            headers={
+                "Origin": "https://ui.perfetto.dev",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Private-Network": "true",
+            },
+        )
+        with urllib.request.urlopen(opt_req, timeout=5.0) as opt_resp:
+            assert opt_resp.status == 204
+            assert opt_resp.headers.get("Access-Control-Allow-Origin") == "*"
+            assert opt_resp.headers.get("Access-Control-Allow-Private-Network") == "true"
+            assert opt_resp.headers.get("Access-Control-Allow-Headers") == "*"
+
+        # 2. Verify POST /api/trace/open_perfetto opens https://ui.perfetto.dev/#!/?url=... in OS browser
+        post_req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/trace/open_perfetto",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(post_req, timeout=5.0) as post_resp:
+            assert post_resp.status == 200
+            res_body = json.loads(post_resp.read().decode("utf-8"))
+
+        assert res_body["success"] is True
+        assert res_body["event_count"] == 1
+        assert len(opened_urls) == 1
+        launched_url = opened_urls[0]
+        assert launched_url.startswith("https://ui.perfetto.dev/#!/?url=")
+        encoded_trace_url = launched_url.split("url=", 1)[1]
+        decoded_trace_url = urllib.parse.unquote(encoded_trace_url)
+        assert decoded_trace_url.startswith(f"http://127.0.0.1:{port}/api/trace/perfetto.json")
+
+        # 3. Verify the decoded trace URL actually serves valid Perfetto JSON with PNA headers
+        with urllib.request.urlopen(decoded_trace_url, timeout=5.0) as trace_resp:
+            assert trace_resp.status == 200
+            assert trace_resp.headers.get("Access-Control-Allow-Origin") == "*"
+            assert trace_resp.headers.get("Access-Control-Allow-Private-Network") == "true"
+            trace_json = json.loads(trace_resp.read().decode("utf-8"))
+            assert any(ev.get("name") == "battery_controller::update" for ev in trace_json["traceEvents"])
+    finally:
+        server.shutdown()
+        server.server_close()
+        runner.stop()

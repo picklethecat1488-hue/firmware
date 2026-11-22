@@ -697,4 +697,104 @@ describe("Host Daemon Trace & Telemetry Workstation (TraceViewerController)", ()
 
     viewer.destroy();
   });
+
+  it("opens ui.perfetto.dev via POST /api/trace/open_perfetto in pywebview or popup-blocked browsers and opens popup synchronously before fetch in browser tabs (WORM-SEGMENTED-COCOON-284)", async () => {
+    // 1. Desktop pywebview mode (`python tools/host.py` default): delegates directly to backend system browser launcher
+    const backendOpenCalls = [];
+    const pywebviewCtx = createMockRuntimeContext({
+      pywebview: { api: {} },
+      fetchRoutes: {
+        "POST /api/trace/open_perfetto": (_url, opts) => {
+          backendOpenCalls.push(JSON.parse(opts.body || "{}"));
+          return {
+            status: 200,
+            body: {
+              success: true,
+              url: "https://ui.perfetto.dev/#!/?url=http%3A%2F%2F127.0.0.1%3A8899%2Fapi%2Ftrace%2Fperfetto.json",
+              event_count: 5,
+            },
+          };
+        },
+      },
+    });
+    buildTraceViewerDom(pywebviewCtx);
+    const pywebviewViewer = createTraceViewer(pywebviewCtx, {
+      initialTraceMode: "PERF",
+      initialBinName: "cat_detector_app",
+    });
+    pywebviewViewer.init();
+
+    const pywebviewOpened = await pywebviewViewer.openExternalViewer();
+    assert.equal(pywebviewOpened, true);
+    assert.equal(backendOpenCalls.length, 1);
+    assert.equal(pywebviewCtx.openedPerfettoTraces.length, 0);
+    pywebviewViewer.destroy();
+
+    // 2. Standard browser tab: calls openPerfettoTrace synchronously BEFORE fetching /api/trace/perfetto.json
+    const callSequence = [];
+    const browserCtx = createMockRuntimeContext({
+      onOpenPerfettoTraceStart: () => {
+        callSequence.push("open_popup_sync");
+      },
+      fetchHandler: async (url) => {
+        callSequence.push(`fetch:${url}`);
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return '{"traceEvents":[{"name":"main"}]}';
+          },
+          async json() {
+            return { traceEvents: [{ name: "main" }] };
+          },
+        };
+      },
+    });
+    buildTraceViewerDom(browserCtx);
+    const browserViewer = createTraceViewer(browserCtx, {
+      initialTraceMode: "PERF",
+      initialBinName: "cat_detector_app",
+    });
+    browserViewer.init();
+
+    const browserOpened = await browserViewer.openExternalViewer();
+    assert.equal(browserOpened, true);
+    assert.deepEqual(callSequence, ["open_popup_sync", "fetch:/api/trace/perfetto.json"]);
+    assert.equal(browserCtx.openedPerfettoTraces.length, 1);
+    assert.ok(browserCtx.openedPerfettoTraces[0].byteLength > 0);
+    browserViewer.destroy();
+
+    // 3. Popup-blocked browser (`perfettoOpenResult: false`): falls back to POST /api/trace/open_perfetto
+    const fallbackCalls = [];
+    const blockedCtx = createMockRuntimeContext({
+      perfettoOpenResult: false,
+      fetchRoutes: {
+        "GET /api/trace/perfetto.json": {
+          status: 200,
+          body: { traceEvents: [] },
+        },
+        "POST /api/trace/open_perfetto": () => {
+          fallbackCalls.push(true);
+          return {
+            status: 200,
+            body: {
+              success: true,
+              url: "https://ui.perfetto.dev/#!/?url=http%3A%2F%2F127.0.0.1%3A8899%2Fapi%2Ftrace%2Fperfetto.json",
+            },
+          };
+        },
+      },
+    });
+    buildTraceViewerDom(blockedCtx);
+    const blockedViewer = createTraceViewer(blockedCtx, {
+      initialTraceMode: "PERF",
+      initialBinName: "cat_detector_app",
+    });
+    blockedViewer.init();
+
+    const fallbackOpened = await blockedViewer.openExternalViewer();
+    assert.equal(fallbackOpened, true);
+    assert.equal(fallbackCalls.length, 1);
+    blockedViewer.destroy();
+  });
 });
