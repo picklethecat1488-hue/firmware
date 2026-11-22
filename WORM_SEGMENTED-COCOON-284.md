@@ -1,12 +1,13 @@
-# 🔴 `[WORM-SEGMENTED-COCOON-284]` “Open in perfetto” did not work
+# 🟢 `[WORM-SEGMENTED-COCOON-284]` “Open in perfetto” did not work
 
 - **UUID**: `b33f3c4c-516e-41de-a3ef-8622377ff9f6`
 - **ID**: `WORM-SEGMENTED-COCOON-284`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-21 23:54:29 UTC`
+- **Resolved**: `2026-11-22 02:43:10 UTC`
 
 #### Description
 
@@ -82,3 +83,7 @@ I didn’t see a “perfetto.ui” tab open in my browser when I clicked “Open
 
 - [ ] Launch host.py in PERF trace mode and click Open in Perfetto in the TRACE tab to verify ui.perfetto.dev opens in the system browser | `python tools/host.py --package cat_detector --bin cat_detector_app --trace-mode PERF` <!-- id:c5101ffc -->
 - [ ] Open buffered Perfetto trace directly from the host.py CLI | `python tools/host.py trace open-perfetto` <!-- id:5bfb0706 -->
+
+#### Resolution Notes
+
+Added POST /api/trace/open_perfetto and 'host.py trace open-perfetto' launching https://ui.perfetto.dev/#!/?url=... in the OS default browser with full CORS/Private Network headers; updated TraceViewerController and openPerfettoTrace (cross-patched to hardware) so pywebview/popup-blocked sessions delegate to /api/trace/open_perfetto while browser tabs open ui.perfetto.dev synchronously before fetching the trace.
