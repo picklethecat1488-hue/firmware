@@ -3679,9 +3679,8 @@ def test_worm_segmented_cocoon_284_open_perfetto_api_cors_and_cli(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify `POST /api/trace/open_perfetto` serves on Perfetto's CSP-allowed port (`9001`), activates the OS browser, and answers `/status` with 404."""
+    """Verify `POST /api/trace/open_perfetto` opens same-origin `/perfetto` (`<iframe>` + `postMessage` bridge) so Safari never hits mixed-content `TypeError: Load failed`."""
     import threading
-    import urllib.error
     import urllib.parse
     import urllib.request
 
@@ -3695,10 +3694,12 @@ def test_worm_segmented_cocoon_284_open_perfetto_api_cors_and_cli(
     assert parsed_cli.subcommand == "trace"
     assert parsed_cli.trace_action == "open-perfetto"
 
-    # Perfetto UI's Content-Security-Policy `connect-src` allowlists localhost port 9001 (`http://127.0.0.1:9001`), NOT 8899!
-    assert getattr(trace_mode_mod, "PERFETTO_CSP_ALLOWED_PORT", None) == 9001
-    default_trace_url, _ = trace_mode_mod.build_perfetto_deep_link("127.0.0.1")
-    assert default_trace_url.startswith("http://127.0.0.1:9001/")
+    # Safari blocks https://ui.perfetto.dev -> http://127.0.0.1:* fetches as mixed content (`TypeError: Load failed`).
+    # Verify `build_perfetto_bridge_url` constructs a same-origin HTTP `/perfetto` page URL on the daemon port.
+    trace_url_default, bridge_url_default = trace_mode_mod.build_perfetto_bridge_url("127.0.0.1", 8899)
+    assert bridge_url_default.startswith("http://127.0.0.1:8899/perfetto?ts=")
+    assert trace_url_default.startswith("/api/trace/perfetto.json?ts=")
+    assert not hasattr(runner_mod, "_PerfettoTraceBridgeServer")
 
     opened_urls: List[str] = []
     monkeypatch.setattr(
@@ -3719,10 +3720,6 @@ def test_worm_segmented_cocoon_284_open_perfetto_api_cors_and_cli(
         trace_mode="PERF",
         log_dir=tmp_path / "logs",
     )
-    # Bind the dedicated Perfetto CSP bridge to an ephemeral port if 9001 is busy on a shared test runner,
-    # while asserting the default configured port is 9001 (`PERFETTO_CSP_ALLOWED_PORT`).
-    assert getattr(runner, "perfetto_http_port", None) == 9001
-    runner.perfetto_http_port = 0
     runner.trace_store.ingest_event(
         {
             "ts_us": 10_000,
@@ -3740,7 +3737,7 @@ def test_worm_segmented_cocoon_284_open_perfetto_api_cors_and_cli(
     srv_thread = threading.Thread(target=server.serve_forever, daemon=True)
     srv_thread.start()
     try:
-        # 1. Verify OPTIONS preflight + GET /api/trace/perfetto.json expose full CORS + Private Network headers
+        # 1. Verify OPTIONS preflight + GET /api/trace/perfetto.json expose CORS + Private Network headers
         opt_req = urllib.request.Request(
             f"http://127.0.0.1:{port}/api/trace/perfetto.json",
             method="OPTIONS",
@@ -3756,7 +3753,7 @@ def test_worm_segmented_cocoon_284_open_perfetto_api_cors_and_cli(
             assert opt_resp.headers.get("Access-Control-Allow-Private-Network") == "true"
             assert opt_resp.headers.get("Access-Control-Allow-Headers") == "*"
 
-        # 2. Verify POST /api/trace/open_perfetto spins up the dedicated Perfetto trace HTTP bridge (NOT daemon :8899!)
+        # 2. Verify POST /api/trace/open_perfetto launches the same-origin `/perfetto` bridge page (NOT `https://ui.perfetto.dev/#!/?url=http://...`)
         post_req = urllib.request.Request(
             f"http://127.0.0.1:{port}/api/trace/open_perfetto",
             data=b"{}",
@@ -3771,23 +3768,27 @@ def test_worm_segmented_cocoon_284_open_perfetto_api_cors_and_cli(
         assert res_body["event_count"] == 1
         assert len(opened_urls) == 1
         launched_url = opened_urls[0]
-        assert launched_url.startswith("https://ui.perfetto.dev/#!/?url=")
-        encoded_trace_url = launched_url.split("url=", 1)[1]
-        decoded_trace_url = urllib.parse.unquote(encoded_trace_url)
-        parsed_bridge = urllib.parse.urlparse(decoded_trace_url)
-        assert parsed_bridge.port is not None and parsed_bridge.port != port
+        parsed_launched = urllib.parse.urlparse(launched_url)
+        assert parsed_launched.scheme == "http"
+        assert parsed_launched.hostname == "127.0.0.1"
+        assert parsed_launched.port == port
+        assert parsed_launched.path == "/perfetto"
 
-        # 3. Verify the dedicated Perfetto bridge serves valid Perfetto JSON with PNA headers and 404s `/status`
-        with urllib.request.urlopen(decoded_trace_url, timeout=5.0) as trace_resp:
+        # 3. Verify GET /perfetto renders the embedded `https://ui.perfetto.dev` iframe + module entrypoint with zero inline JS
+        with urllib.request.urlopen(launched_url, timeout=5.0) as bridge_resp:
+            assert bridge_resp.status == 200
+            assert "text/html" in (bridge_resp.headers.get("Content-Type") or "")
+            bridge_html = bridge_resp.read().decode("utf-8")
+        assert 'id="perfettoEmbedFrame"' in bridge_html
+        assert 'src="https://ui.perfetto.dev"' in bridge_html
+        assert 'id="app-boot-config"' in bridge_html
+        assert 'src="/js/daemon/perfetto_bridge.js"' in bridge_html
+
+        # 4. Verify same-origin GET /api/trace/perfetto.json serves the buffered trace events cleanly
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}{res_body['trace_url']}", timeout=5.0) as trace_resp:
             assert trace_resp.status == 200
-            assert trace_resp.headers.get("Access-Control-Allow-Origin") == "*"
-            assert trace_resp.headers.get("Access-Control-Allow-Private-Network") == "true"
             trace_json = json.loads(trace_resp.read().decode("utf-8"))
             assert any(ev.get("name") == "battery_controller::update" for ev in trace_json["traceEvents"])
-
-        with pytest.raises(urllib.error.HTTPError) as status_err:
-            urllib.request.urlopen(f"http://127.0.0.1:{parsed_bridge.port}/status", timeout=5.0)
-        assert status_err.value.code == 404
     finally:
         server.shutdown()
         server.server_close()

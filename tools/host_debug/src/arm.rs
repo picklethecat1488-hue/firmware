@@ -109,8 +109,42 @@ pub const CORTEX_M_BP_CTRL_ADDR: u64 = 0xE000_2000;
 /// `FP_CTRL` / `BP_CTRL` write value (`KEY = 1 << 1 | ENABLE = 1`) enabling hardware comparators.
 pub const CORTEX_M_BP_CTRL_KEY_ENABLE: u32 = 0x0000_0003;
 
-/// Base address of Cortex-M Breakpoint Comparator Register 0 (`FP_COMP0` / `BP_COMP0`).
+/// Cortex-M Breakpoint Comparator Register 0 (`FP_COMP0` / `BP_COMP0`) base address.
 pub const CORTEX_M_BP_COMP0_ADDR: u64 = 0xE000_2008;
+
+/// Verify whether raw `DHCSR`, `BP_CTRL`/`FP_CTRL`, and `BP_COMPn`/`FP_COMPn` register readbacks
+/// confirm that halting debug (`DHCSR.C_DEBUGEN`), the hardware breakpoint unit (`BP_CTRL.ENABLE`),
+/// and every requested comparator in `slots` are armed at their expected target addresses.
+pub fn are_hw_breakpoint_registers_armed(
+    dhcsr: u32,
+    bp_ctrl: u32,
+    comp_vals: &[u32],
+    slots: &[Option<u64>],
+) -> bool {
+    if (dhcsr & 1) == 0 || (bp_ctrl & 1) == 0 {
+        return false;
+    }
+    let is_fpb_v2 = (bp_ctrl >> 28) >= 1;
+    for (slot_idx, entry) in slots.iter().enumerate() {
+        let Some(raw_addr) = *entry else {
+            continue;
+        };
+        let addr = (raw_addr as u32) & !1;
+        let comp_val = comp_vals.get(slot_idx).copied().unwrap_or(0);
+        if (comp_val & 1) == 0 {
+            return false;
+        }
+        if is_fpb_v2 {
+            if (comp_val & 0xFFFF_FFFE) != addr {
+                return false;
+            }
+        } else if (comp_val & 0x1FFF_FFFC) != (addr & 0x1FFF_FFFC) || (comp_val & 0xC000_0000) == 0
+        {
+            return false;
+        }
+    }
+    true
+}
 
 /// Exclusive upper address bound for ARMv6-M BPU v1 hardware comparators (`0x2000_0000`).
 pub const ARMV6M_HW_BP_LIMIT: u64 = 0x2000_0000;
@@ -1148,17 +1182,46 @@ pub mod probe_backend {
         ) -> Result<(), String> {
             let program_slot = |session: &mut Session| -> Result<(), String> {
                 with_session_core(session, core_idx, |core| {
-                    if let Ok(dhcsr) = core.read_word_32(CORTEX_M_DHCSR_ADDR) {
-                        if (dhcsr & 1) == 0 {
-                            let _ = core
-                                .write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_ENABLE);
-                        }
+                    let dhcsr = core
+                        .read_word_32(CORTEX_M_DHCSR_ADDR)
+                        .map_err(|e| format!("{:?}", e))?;
+                    if (dhcsr & 1) == 0 {
+                        let dhcsr_enable = if (dhcsr & CORTEX_M_DHCSR_S_HALT_MASK) != 0 {
+                            CORTEX_M_DHCSR_DBGKEY_HALT
+                        } else {
+                            CORTEX_M_DHCSR_DBGKEY_ENABLE
+                        };
+                        core.write_word_32(CORTEX_M_DHCSR_ADDR, dhcsr_enable)
+                            .map_err(|e| format!("{:?}", e))?;
                     }
                     core.write_word_32(CORTEX_M_BP_CTRL_ADDR, CORTEX_M_BP_CTRL_KEY_ENABLE)
                         .map_err(|e| format!("{:?}", e))?;
                     core.set_hw_breakpoint_unit(slot_idx, addr)
                         .map_err(|e| format!("{:?}", e))?;
-                    core.flush().map_err(|e| format!("{:?}", e))
+                    core.flush().map_err(|e| format!("{:?}", e))?;
+
+                    let dhcsr_after = core
+                        .read_word_32(CORTEX_M_DHCSR_ADDR)
+                        .map_err(|e| format!("{:?}", e))?;
+                    let bp_ctrl_after = core
+                        .read_word_32(CORTEX_M_BP_CTRL_ADDR)
+                        .map_err(|e| format!("{:?}", e))?;
+                    let comp_addr = CORTEX_M_BP_COMP0_ADDR + (slot_idx as u64) * 4;
+                    let comp_val = core
+                        .read_word_32(comp_addr)
+                        .map_err(|e| format!("{:?}", e))?;
+                    if !are_hw_breakpoint_registers_armed(
+                        dhcsr_after,
+                        bp_ctrl_after,
+                        &[comp_val],
+                        &[Some(addr)],
+                    ) {
+                        return Err(format!(
+                            "FPB slot {} on Core {} failed readback verification (dhcsr=0x{:08x}, bp_ctrl=0x{:08x}, comp=0x{:08x})",
+                            slot_idx, core_idx, dhcsr_after, bp_ctrl_after, comp_val
+                        ));
+                    }
+                    Ok(())
                 })
             };
             match program_slot(self.session) {
@@ -1206,34 +1269,35 @@ pub mod probe_backend {
                     thread::sleep(Duration::from_millis(SECONDARY_FPB_REARM_RETRY_DELAY_MS));
                 }
                 let res = with_session_core(self.session, core_idx, |core| {
+                    let dhcsr = core
+                        .read_word_32(CORTEX_M_DHCSR_ADDR)
+                        .map_err(|e| format!("{:?}", e))?;
                     let bp_ctrl = core
                         .read_word_32(CORTEX_M_BP_CTRL_ADDR)
                         .map_err(|e| format!("{:?}", e))?;
-
-                    let mut all_armed = (bp_ctrl & 1) != 0;
-                    if all_armed {
+                    let mut comp_vals = vec![0u32; slots.len()];
+                    if (dhcsr & 1) != 0 && (bp_ctrl & 1) != 0 {
                         for (slot_idx, entry) in slots.iter().enumerate() {
                             if entry.is_some() {
                                 let comp_addr = CORTEX_M_BP_COMP0_ADDR + (slot_idx as u64) * 4;
-                                let comp_val = core
+                                comp_vals[slot_idx] = core
                                     .read_word_32(comp_addr)
                                     .map_err(|e| format!("{:?}", e))?;
-                                if (comp_val & 1) == 0 {
-                                    all_armed = false;
-                                    break;
-                                }
                             }
                         }
-                    }
-                    if all_armed {
-                        return Ok(false);
+                        if are_hw_breakpoint_registers_armed(dhcsr, bp_ctrl, &comp_vals, slots) {
+                            return Ok(false);
+                        }
                     }
 
-                    if let Ok(dhcsr) = core.read_word_32(CORTEX_M_DHCSR_ADDR) {
-                        if (dhcsr & 1) == 0 {
-                            let _ = core
-                                .write_word_32(CORTEX_M_DHCSR_ADDR, CORTEX_M_DHCSR_DBGKEY_ENABLE);
-                        }
+                    if (dhcsr & 1) == 0 {
+                        let dhcsr_enable = if (dhcsr & CORTEX_M_DHCSR_S_HALT_MASK) != 0 {
+                            CORTEX_M_DHCSR_DBGKEY_HALT
+                        } else {
+                            CORTEX_M_DHCSR_DBGKEY_ENABLE
+                        };
+                        core.write_word_32(CORTEX_M_DHCSR_ADDR, dhcsr_enable)
+                            .map_err(|e| format!("{:?}", e))?;
                     }
                     core.write_word_32(CORTEX_M_BP_CTRL_ADDR, CORTEX_M_BP_CTRL_KEY_ENABLE)
                         .map_err(|e| format!("{:?}", e))?;
@@ -1247,20 +1311,32 @@ pub mod probe_backend {
                     }
                     core.flush().map_err(|e| format!("{:?}", e))?;
 
-                    // Read back every active FPB comparator to verify hardware latched `ENABLE` (`bit 0`).
+                    // Read back `DHCSR`, `BP_CTRL`, and every active FPB comparator to verify hardware latched `C_DEBUGEN` + `ENABLE`.
+                    let dhcsr_after = core
+                        .read_word_32(CORTEX_M_DHCSR_ADDR)
+                        .map_err(|e| format!("{:?}", e))?;
+                    let bp_ctrl_after = core
+                        .read_word_32(CORTEX_M_BP_CTRL_ADDR)
+                        .map_err(|e| format!("{:?}", e))?;
+                    let mut comp_after = vec![0u32; slots.len()];
                     for (slot_idx, entry) in slots.iter().enumerate() {
                         if entry.is_some() {
                             let comp_addr = CORTEX_M_BP_COMP0_ADDR + (slot_idx as u64) * 4;
-                            let comp_val = core
+                            comp_after[slot_idx] = core
                                 .read_word_32(comp_addr)
                                 .map_err(|e| format!("{:?}", e))?;
-                            if (comp_val & 1) == 0 {
-                                return Err(format!(
-                                    "FPB comparator slot {} on Core {} read back unarmed (0x{:08x})",
-                                    slot_idx, core_idx, comp_val
-                                ));
-                            }
                         }
+                    }
+                    if !are_hw_breakpoint_registers_armed(
+                        dhcsr_after,
+                        bp_ctrl_after,
+                        &comp_after,
+                        slots,
+                    ) {
+                        return Err(format!(
+                            "FPB comparators on Core {} read back unarmed (dhcsr=0x{:08x}, bp_ctrl=0x{:08x}, comp={:?})",
+                            core_idx, dhcsr_after, bp_ctrl_after, comp_after
+                        ));
                     }
                     Ok(true)
                 });

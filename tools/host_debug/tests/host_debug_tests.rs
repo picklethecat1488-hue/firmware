@@ -1,10 +1,11 @@
 //! Unit, RSP command-coverage, and live `arm-none-eabi-gdb` TCP integration tests for `host_debug`.
 
 use host_debug::{
-    build_arm_cortex_m_register_layout, decode_hex, encode_hex, extract_next_rsp_frame,
-    format_rsp_packet, start_debug_server_with_backend, supports_arm_hw_breakpoint_at,
-    ArmBreakpointManager, ArmHardwareOps, DebugBackend, DebugServerConfig, ProcessorArch,
-    RspAction, RspCoreHandler, RspFrame, RspReplyCode, TargetArchProfile, TargetRegisterLayout,
+    are_hw_breakpoint_registers_armed, build_arm_cortex_m_register_layout, decode_hex, encode_hex,
+    extract_next_rsp_frame, format_rsp_packet, start_debug_server_with_backend,
+    supports_arm_hw_breakpoint_at, ArmBreakpointManager, ArmHardwareOps, DebugBackend,
+    DebugServerConfig, ProcessorArch, RspAction, RspCoreHandler, RspFrame, RspReplyCode,
+    TargetArchProfile, TargetRegisterLayout,
 };
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -1889,28 +1890,26 @@ fn test_xml_driven_expedited_registers_templated_memory_map_and_secondary_halt_d
     assert_eq!(c0_halt_res, RspAction::status(RspReplyCode::ErrTargetState));
 
     // 4. Verify DOM-based `parse_expedited_regnums_from_target_xml` ignores XML comments, supports
-    // single-quoted attributes, falls back to the first `<feature>` when `group` is omitted, and handles invalid XML.
-    let commented_xml = r#"<?xml version="1.0"?>
-<target version="1.0">
-  <!-- <reg name="fake" bitsize="32" regnum="99" group="general"/> -->
-  <feature name='org.example.first'>
-    <reg group='general' regnum='3' name='r3' bitsize='32'/>
-    <reg name='sys0' bitsize='32' regnum='19' group='system'/>
-  </feature>
-  <feature name="org.example.second">
-    <reg name="pc" bitsize="32" group="general" regnum="15"/>
-  </feature>
-</target>"#;
+    // single-quoted attributes, falls back to the first `<feature>` when `group` is omitted, and handles invalid XML
+    // using standalone XML test resource fixtures under `tests/resources/`.
+    let resources_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("resources");
+    let commented_xml = std::fs::read_to_string(resources_dir.join("commented_target.xml"))
+        .expect("read commented_target.xml fixture");
     assert_eq!(
-        parse_expedited_regnums_from_target_xml(commented_xml),
+        parse_expedited_regnums_from_target_xml(&commented_xml),
         vec![3, 15]
     );
-    let ungrouped_xml = r#"<target><feature name="primary"><reg name="a0" bitsize="32" regnum="10"/></feature><feature name="aux"><reg name="f0" bitsize="32" regnum="40"/></feature></target>"#;
+    let ungrouped_xml = std::fs::read_to_string(resources_dir.join("ungrouped_target.xml"))
+        .expect("read ungrouped_target.xml fixture");
     assert_eq!(
-        parse_expedited_regnums_from_target_xml(ungrouped_xml),
+        parse_expedited_regnums_from_target_xml(&ungrouped_xml),
         vec![10]
     );
-    assert!(parse_expedited_regnums_from_target_xml("<target><unclosed>").is_empty());
+    let malformed_xml = std::fs::read_to_string(resources_dir.join("malformed_target.xml"))
+        .expect("read malformed_target.xml fixture");
+    assert!(parse_expedited_regnums_from_target_xml(&malformed_xml).is_empty());
 
     // 5. Verify `ArmBreakpointManager` keeps Core 0's `PSM.frce_off` helper trap armed if Core 1's FPB
     // re-arm transiently fails on the first `spawn_core1` FIFO iteration, then succeeds and clears on the next hit.
@@ -1962,4 +1961,75 @@ fn test_xml_driven_expedited_registers_templated_memory_map_and_secondary_halt_d
             Some(CORE1_RESET_HANDLER_ADDR as u64)
         );
     }
+
+    // 6. Verify `are_hw_breakpoint_registers_armed` rejects `DHCSR.C_DEBUGEN == 0` (e.g. after RP2040
+    // `PSM.frce_off.proc1` clears debug enable) and mismatched comparator target addresses across BPU v1 / FPB v2.
+    let bpu_v1_comp = 0x8000_0000 | ((CORE1_RESET_HANDLER_ADDR | 2) & 0x1FFF_FFFC) | 1;
+    let target_slot = [Some((CORE1_RESET_HANDLER_ADDR | 2) as u64)];
+    assert!(
+        !are_hw_breakpoint_registers_armed(0, 0x0000_0003, &[bpu_v1_comp], &target_slot),
+        "Expected C_DEBUGEN == 0 to report hardware breakpoints unarmed"
+    );
+    assert!(are_hw_breakpoint_registers_armed(
+        1,
+        0x0000_0003,
+        &[bpu_v1_comp],
+        &target_slot
+    ));
+    assert!(
+        !are_hw_breakpoint_registers_armed(1, 0x0000_0003, &[bpu_v1_comp], &[Some(0x1002_4840)]),
+        "Expected mismatched BPU v1 comparator address to report unarmed"
+    );
+    let fpb_v2_ctrl = (1u32 << 28) | 1;
+    let fpb_v2_comp = 0x1002_4846 | 1;
+    assert!(are_hw_breakpoint_registers_armed(
+        1,
+        fpb_v2_ctrl,
+        &[fpb_v2_comp],
+        &[Some(0x1002_4847)]
+    ));
+    assert!(!are_hw_breakpoint_registers_armed(
+        1,
+        fpb_v2_ctrl,
+        &[fpb_v2_comp],
+        &[Some(0x1002_4844)]
+    ));
+
+    // 7. Verify secondary-core `$c` reports an immediate stop reply (`T05...` when `target.xml` was fetched)
+    // even when `last_reported_stop_pc` is `None` (e.g. after coordinated `monitor reset halt`) if Core 0
+    // already booted Core 1 into `Core1_Reset_Handler` before Core 1's `$c` packet arrived.
+    let (mut race_backend, race_shared) = MockDualCoreBackend::new();
+    let mut race_c1 = RspCoreHandler::new(1, race_backend.core_register_layout(1), None);
+    race_c1.peer_core0_connected = true;
+    let _ = race_c1.handle_stateless_packet(b"qXfer:features:read:target.xml:0,fff");
+    assert!(race_c1.target_xml_complete);
+    let reset_halt_rcmd = format!("qRcmd,{}", encode_hex(b"reset halt"));
+    let _ = race_c1.handle_packet(reset_halt_rcmd.as_bytes(), &mut race_backend);
+    assert!(race_c1.secondary_awaiting_boot);
+    assert_eq!(
+        race_c1.handle_packet(
+            format!("Z1,{:x},2", CORE1_RESET_HANDLER_ADDR).as_bytes(),
+            &mut race_backend
+        ),
+        RspAction::status(RspReplyCode::Ok)
+    );
+    {
+        let mut guard = race_shared.lock().unwrap();
+        guard.cores[1].halted = true;
+        guard.cores[1].regs.insert(15, CORE1_RESET_HANDLER_ADDR);
+    }
+    match race_c1.handle_packet(b"c", &mut race_backend) {
+        RspAction::Reply(stop_reply) => {
+            assert!(
+                stop_reply.starts_with("T05"),
+                "Expected immediate T05 stop reply at Core1_Reset_Handler, got {stop_reply}"
+            );
+        }
+        other => panic!("Expected immediate RspAction::Reply(T05...), got {other:?}"),
+    }
+    assert_eq!(
+        race_shared.lock().unwrap().cores[1].regs.get(&15).copied(),
+        Some(CORE1_RESET_HANDLER_ADDR),
+        "Core 1 must remain halted at Core1_Reset_Handler without stepping past it"
+    );
 }

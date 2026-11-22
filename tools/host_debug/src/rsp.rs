@@ -897,22 +897,20 @@ impl RspCoreHandler {
         if let (Some(addr), Some(pc_desc)) = (opt_addr, self.arch_profile.pc_register().cloned()) {
             let norm = self.arch_profile.normalize_pc(addr);
             let _ = backend.write_core_reg(self.core_idx, pc_desc.hw_reg_id, norm);
-        } else if let (Some(prev_pc), Some(pc_desc)) = (
-            self.last_reported_stop_pc,
-            self.arch_profile.pc_register().cloned(),
-        ) {
-            // In dual-core sessions, Core 0 resuming can boot Core 1 out of Mask Boot ROM so Core 1
-            // advances and halts at an armed breakpoint (e.g. `Core1_Reset_Handler`) milliseconds
-            // before Core 1's own `$c` packet acquires the backend mutex. Report that pending trap
-            // immediately instead of resuming past the newly hit breakpoint!
+        } else if let Some(pc_desc) = self.arch_profile.pc_register().cloned() {
+            // In dual-core sessions, Core 0 resuming (or completing a coordinated `monitor reset halt`)
+            // can boot Core 1 out of Mask Boot ROM so Core 1 advances and halts at an armed breakpoint
+            // (e.g. `Core1_Reset_Handler`) milliseconds before Core 1's own `$c`/`$vCont;c` packet
+            // acquires the backend mutex—even when `last_reported_stop_pc` was `None` after `reset halt`
+            // or `Some(bootrom_pc)`. Report that pending trap immediately instead of stepping past it!
             if backend.core_halted(self.core_idx).unwrap_or(false) {
                 if let Ok(raw_pc) = backend.read_core_reg(self.core_idx, pc_desc.hw_reg_id) {
                     let cur_pc = self.arch_profile.normalize_pc(raw_pc);
-                    if cur_pc != prev_pc
+                    if self.last_reported_stop_pc != Some(cur_pc)
                         && backend.has_active_breakpoint_at(self.core_idx, cur_pc as u64)
                     {
                         self.last_reported_stop_pc = Some(cur_pc);
-                        return RspAction::status(RspReplyCode::SigTrap);
+                        return RspAction::Reply(self.format_trap_stop_reply(backend));
                     }
                 }
             }

@@ -3,7 +3,6 @@
 from collections import deque
 from datetime import datetime, timezone
 from enum import Enum
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
@@ -25,10 +24,9 @@ from host_daemon.model.metadata import (
     sync_active_target_elf_link,
 )
 from host_daemon.model.trace_mode import (
-    DEFAULT_PERFETTO_TRACE_PATH,
-    PERFETTO_CSP_ALLOWED_PORT,
+    DEFAULT_DAEMON_HTTP_PORT,
     TraceMode,
-    build_perfetto_deep_link,
+    build_perfetto_bridge_url,
     get_cargo_feature_args,
     get_external_trace_viewer,
     normalize_trace_mode,
@@ -119,71 +117,6 @@ def open_url_in_system_browser(url: str) -> bool:
         except (OSError, subprocess.SubprocessError):
             pass
     return bool(webbrowser.open(url, new=2, autoraise=True))
-
-
-class _PerfettoTraceBridgeHandler(BaseHTTPRequestHandler):
-    """Lightweight localhost `:9001` HTTP handler allowed by `https://ui.perfetto.dev` CSP `connect-src`."""
-
-    server: "_PerfettoTraceBridgeServer"
-
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
-        """Suppress per-request stderr noise from `BaseHTTPRequestHandler`."""
-        return
-
-    def _write_cors_headers(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "*")
-        self.send_header("Access-Control-Allow-Private-Network", "true")
-        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-
-    def do_OPTIONS(self) -> None:  # noqa: N802
-        """Answer CORS and Chrome Private Network Access preflights from `https://ui.perfetto.dev`."""
-        self.send_response(204)
-        self._write_cors_headers()
-        self.end_headers()
-
-    def do_POST(self) -> None:  # noqa: N802
-        """Return 404 on `/status` RPC probes so Perfetto UI treats `:9001` as a static trace HTTP host."""
-        self.send_response(404)
-        self.send_header("Content-Length", "0")
-        self._write_cors_headers()
-        self.end_headers()
-
-    def do_GET(self) -> None:  # noqa: N802
-        """Serve buffered Perfetto JSON on `/trace.perfetto.json` and 404 `/status` RPC checks."""
-        req_path = self.path.split("?", 1)[0]
-        if req_path == "/status":
-            self.send_response(404)
-            self.send_header("Content-Length", "0")
-            self._write_cors_headers()
-            self.end_headers()
-            return
-        if req_path in (DEFAULT_PERFETTO_TRACE_PATH, "/api/trace/perfetto.json") or req_path.endswith(".perfetto.json"):
-            runner = self.server.runner
-            payload = runner.trace_store.format_perfetto_json(chip=runner.chip).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(payload)))
-            self._write_cors_headers()
-            self.end_headers()
-            self.wfile.write(payload)
-            return
-        self.send_response(404)
-        self.send_header("Content-Length", "0")
-        self._write_cors_headers()
-        self.end_headers()
-
-
-class _PerfettoTraceBridgeServer(ThreadingHTTPServer):
-    """Reusable daemon-threaded HTTP server bound to Perfetto UI's CSP-allowed port (`127.0.0.1:9001`)."""
-
-    allow_reuse_address = True
-    daemon_threads = True
-
-    def __init__(self, host: str, port: int, runner: "DaemonRunner") -> None:
-        self.runner = runner
-        super().__init__((host, port), _PerfettoTraceBridgeHandler)
 
 
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
@@ -347,9 +280,6 @@ class DaemonRunner:
             "console": [],
         }
         self._sync_thread: Optional[threading.Thread] = None
-        self.perfetto_http_port: int = PERFETTO_CSP_ALLOWED_PORT
-        self._perfetto_http_server: Optional[_PerfettoTraceBridgeServer] = None
-        self._perfetto_http_thread: Optional[threading.Thread] = None
 
     def get_stream_log_path(self, stream: HostLogStream) -> Path:
         """Return the log file path for a specific `HostLogStream` under `self.log_dir`."""
@@ -2335,56 +2265,23 @@ class DaemonRunner:
         )
         return res
 
-    def ensure_perfetto_http_bridge(self, daemon_host: str = "127.0.0.1") -> int:
-        """Start or reuse the localhost `:9001` HTTP trace bridge permitted by `https://ui.perfetto.dev` CSP."""
-        clean_host = "127.0.0.1" if daemon_host in ("", "0.0.0.0", "::") else str(daemon_host)
-        with self._lock:
-            if self._perfetto_http_server is not None:
-                return int(self._perfetto_http_server.server_address[1])
-            srv = _PerfettoTraceBridgeServer(clean_host, int(self.perfetto_http_port), self)
-            bound_port = int(srv.server_address[1])
-            thread = threading.Thread(
-                target=srv.serve_forever,
-                name="perfetto-csp-http-bridge",
-                daemon=True,
-            )
-            thread.start()
-            self._perfetto_http_server = srv
-            self._perfetto_http_thread = thread
-            return bound_port
-
-    def stop_perfetto_http_bridge(self) -> None:
-        """Shut down the localhost `:9001` Perfetto HTTP trace bridge if active."""
-        with self._lock:
-            srv = self._perfetto_http_server
-            self._perfetto_http_server = None
-            self._perfetto_http_thread = None
-        if srv is not None:
-            try:
-                srv.shutdown()
-                srv.server_close()
-            except OSError:
-                pass
-
     def open_trace_in_perfetto(
         self,
         *,
         daemon_host: str = "127.0.0.1",
-        daemon_port: int = 8899,
+        daemon_port: int = DEFAULT_DAEMON_HTTP_PORT,
     ) -> Dict[str, Any]:
-        """Serve `/trace.perfetto.json` on `:9001` (Perfetto CSP allowlist) and open `https://ui.perfetto.dev` in the OS browser."""
-        _ = daemon_port
-        bridge_port = self.ensure_perfetto_http_bridge(daemon_host)
-        trace_url, perfetto_url = build_perfetto_deep_link(daemon_host, bridge_port)
+        """Open the same-origin `/perfetto` `<iframe>` + `postMessage` bridge in the OS default browser."""
+        trace_url, bridge_url = build_perfetto_bridge_url(daemon_host, daemon_port)
         event_count = len(self.trace_store.snapshot_all())
-        opened = open_url_in_system_browser(perfetto_url)
+        opened = open_url_in_system_browser(bridge_url)
         self.log(
-            f"Opening {event_count} trace events in Perfetto UI (opened={opened}, trace_url={trace_url})",
+            f"Opening {event_count} trace events in Perfetto UI (opened={opened}, url={bridge_url})",
             channel="trace",
         )
         return {
             "success": opened,
-            "url": perfetto_url,
+            "url": bridge_url,
             "trace_url": trace_url,
             "event_count": event_count,
         }
@@ -2443,7 +2340,6 @@ class DaemonRunner:
         self.test_manager.cancel_run(silent=True)
         self.stop_rtt_streaming()
         self.stop_debug_server()
-        self.stop_perfetto_http_bridge()
         if self._active_sync_process and self._active_sync_process.poll() is None:
             try:
                 self._active_sync_process.terminate()

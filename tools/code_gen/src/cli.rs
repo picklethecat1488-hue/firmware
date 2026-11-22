@@ -27,7 +27,10 @@ pub struct CliArg {
     #[serde(rename = "type")]
     pub arg_type: String,
     pub help: String,
-    pub attributes: Option<Vec<String>>,
+    #[serde(default)]
+    pub short_flag: Option<char>,
+    #[serde(default)]
+    pub long_flag: Option<String>,
     #[serde(default)]
     pub max_len: Option<usize>,
 }
@@ -63,19 +66,6 @@ impl CliArg {
             Some((max_opt_len + 8).next_power_of_two().max(16))
         } else {
             None
-        }
-    }
-    pub fn attributes_slice(&self) -> Vec<String> {
-        if let Some(ref attrs) = self.attributes {
-            attrs.clone()
-        } else if self.name != "arg1"
-            && self.name != "arg2"
-            && self.name != "arg3"
-            && self.name != "target"
-        {
-            vec![format!("#[arg(long = \"{}\")]", self.name)]
-        } else {
-            vec![]
         }
     }
 

@@ -710,7 +710,7 @@ describe("Host Daemon Trace & Telemetry Workstation (TraceViewerController)", ()
             status: 200,
             body: {
               success: true,
-              url: "https://ui.perfetto.dev/#!/?url=http%3A%2F%2F127.0.0.1%3A9001%2Ftrace.perfetto.json",
+              url: "http://127.0.0.1:8899/perfetto?ts=1700000000000",
               event_count: 5,
             },
           };
@@ -779,7 +779,7 @@ describe("Host Daemon Trace & Telemetry Workstation (TraceViewerController)", ()
             status: 200,
             body: {
               success: true,
-              url: "https://ui.perfetto.dev/#!/?url=http%3A%2F%2F127.0.0.1%3A9001%2Ftrace.perfetto.json",
+              url: "http://127.0.0.1:8899/perfetto?ts=1700000000000",
             },
           };
         },
@@ -796,5 +796,55 @@ describe("Host Daemon Trace & Telemetry Workstation (TraceViewerController)", ()
     assert.equal(fallbackOpened, true);
     assert.equal(fallbackCalls.length, 1);
     blockedViewer.destroy();
+  });
+
+  it("streams same-origin /api/trace/perfetto.json into embedded ui.perfetto.dev iframe without mixed content (WORM-SEGMENTED-COCOON-284)", async () => {
+    const { createPerfettoBridgeApp } = await import("../../js/daemon/perfetto_bridge.js");
+
+    const ctx = createMockRuntimeContext({
+      bootConfig: {
+        title: "cat_detector_app (PERF)",
+        fileName: "cat_detector_app_perf.perfetto.json",
+        traceUrl: "/api/trace/perfetto.json?ts=12345",
+        eventCount: 2,
+      },
+      fetchRoutes: {
+        "GET /api/trace/perfetto.json?ts=12345": {
+          status: 200,
+          body: { traceEvents: [{ name: "span_a" }, { name: "span_b" }] },
+        },
+      },
+    });
+    const doc = ctx.getDocument();
+    const banner = createEl(ctx, "div", { id: "perfettoBridgeBanner" });
+    const statusEl = createEl(ctx, "span", { id: "perfettoBridgeStatus", text: "Connecting..." });
+    const openTabBtn = createEl(ctx, "button", { id: "perfettoBridgeOpenTabBtn", text: "Open Tab" });
+    const dismissBtn = createEl(ctx, "button", { id: "perfettoBridgeDismissBtn", text: "×" });
+    const iframeEl = createEl(ctx, "iframe", {
+      id: "perfettoEmbedFrame",
+      attrs: { src: "https://ui.perfetto.dev" },
+    });
+    banner.appendChild(statusEl);
+    banner.appendChild(openTabBtn);
+    banner.appendChild(dismissBtn);
+    doc.body.appendChild(banner);
+    doc.body.appendChild(iframeEl);
+
+    const bridgeApp = createPerfettoBridgeApp(ctx);
+    const loaded = await bridgeApp.start();
+    assert.equal(loaded, true);
+    assert.equal(ctx.streamedPerfettoFrames.length, 1);
+    assert.equal(ctx.streamedPerfettoFrames[0].title, "cat_detector_app (PERF)");
+    assert.equal(ctx.streamedPerfettoFrames[0].fileName, "cat_detector_app_perf.perfetto.json");
+    assert.ok(statusEl.textContent.includes("Loaded"));
+
+    // Clicking "Open Tab" pushes the cached same-origin ArrayBuffer via postMessage without re-fetching mixed HTTP URLs.
+    openTabBtn.click();
+    await Promise.resolve();
+    assert.equal(ctx.openedPerfettoTraces.length, 1);
+    assert.equal(ctx.openedPerfettoTraces[0].fileName, "cat_detector_app_perf.perfetto.json");
+
+    ctx.advanceTime(4000);
+    assert.equal(banner.style.display, "none");
   });
 });

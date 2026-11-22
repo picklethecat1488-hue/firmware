@@ -522,6 +522,19 @@ def build_template_variants(template_path: Path, repo_root: Path) -> List[Templa
             ),
         ]
 
+    if name == "perfetto_bridge.html.j2":
+        return [
+            TemplateVariant(
+                variant_name="perfetto_bridge",
+                context={
+                    "trace_title": "cat_detector_app (PERF)",
+                    "trace_filename": "cat_detector_app_perf.perfetto.json",
+                    "trace_url": "/api/trace/perfetto.json?ts=1700000000000",
+                    "event_count": 42,
+                },
+            )
+        ]
+
     return [TemplateVariant(variant_name="default", context={})]
 
 

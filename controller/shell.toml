@@ -91,7 +91,7 @@ args = [
     { name = "arg1", type = "string", help = "First argument (speed or calibration state)" },
     { name = "arg2", type = "string", help = "Second argument (max_rpm)" },
     { name = "arg3", type = "string", help = "Third argument (rpm_limit)" },
-    { name = "partition", type = "string", help = "Optional partition name" }
+    { name = "partition", type = "string", long_flag = "partition", help = "Optional partition name" }
 ]
 
 [[cli_commands]]
@@ -104,7 +104,7 @@ handler = "sensor_controller::handle_sensor_cli"
 help = "Sensor commands"
 args = [
     { name = "arg1", type = "string", help = "First argument (direction: north, east, west)" },
-    { name = "partition", type = "string", help = "Optional partition name or calibration distance" }
+    { name = "partition", type = "string", long_flag = "partition", help = "Optional partition name or calibration distance" }
 ]
 
 [[cli_commands]]
@@ -117,7 +117,7 @@ handler = "filesystem_controller::handle_fs_cli"
 help = "Filesystem commands"
 args = [
     { name = "target", type = "Option<filesystem_controller::FormatTarget>", help = "Optional target to format (fs, telemetry, all)" },
-    { name = "partition", type = "string", help = "Optional partition name" }
+    { name = "partition", type = "string", long_flag = "partition", help = "Optional partition name" }
 ]
 
 [[cli_commands]]
@@ -138,11 +138,11 @@ async_cli = true
 handler = "platform::i2c::handle_i2c_cli"
 help = "I2C commands"
 args = [
-    { name = "reg16", type = "bool", attributes = ["#[arg(long = \"reg16\")]"], help = "Use 16-bit big-endian register address" },
-    { name = "bus", type = "string", attributes = ["#[arg(short = 'b', long = \"bus\")]"], help = "Target bus name" },
-    { name = "arg1", type = "string", max_len = 16, attributes = [], help = "7-bit I2C device address (hex 0x.. or decimal)" },
-    { name = "arg2", type = "string", max_len = 16, attributes = [], help = "Register offset (8-bit or 16-bit hex 0x.. or decimal)" },
-    { name = "arg3", type = "string", max_len = 16, attributes = [], help = "Value to write for poke8/poke16 (hex 0x.. or decimal)" }
+    { name = "reg16", type = "bool", long_flag = "reg16", help = "Use 16-bit big-endian register address" },
+    { name = "bus", type = "string", short_flag = "b", long_flag = "bus", help = "Target bus name" },
+    { name = "arg1", type = "string", max_len = 16, help = "7-bit I2C device address (hex 0x.. or decimal)" },
+    { name = "arg2", type = "string", max_len = 16, help = "Register offset (8-bit or 16-bit hex 0x.. or decimal)" },
+    { name = "arg3", type = "string", max_len = 16, help = "Value to write for poke8/poke16 (hex 0x.. or decimal)" }
 ]
 
 [[cli_commands]]
@@ -154,8 +154,8 @@ async_cli = true
 handler = "platform::gpio::handle_gpio_cli"
 help = "GPIO commands"
 args = [
-    { name = "pin", type = "Option<u32>", help = "Pin number to read or set", attributes = [] },
-    { name = "value", type = "Option<u8>", help = "Pin level to set (0 or 1)", attributes = [] }
+    { name = "pin", type = "Option<u32>", help = "Pin number to read or set" },
+    { name = "value", type = "Option<u8>", help = "Pin level to set (0 or 1)" }
 ]
 
 [[cli_commands]]
