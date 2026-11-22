@@ -710,7 +710,7 @@ describe("Host Daemon Trace & Telemetry Workstation (TraceViewerController)", ()
             status: 200,
             body: {
               success: true,
-              url: "https://ui.perfetto.dev/#!/?url=http%3A%2F%2F127.0.0.1%3A8899%2Fapi%2Ftrace%2Fperfetto.json",
+              url: "https://ui.perfetto.dev/#!/?url=http%3A%2F%2F127.0.0.1%3A9001%2Ftrace.perfetto.json",
               event_count: 5,
             },
           };
@@ -779,7 +779,7 @@ describe("Host Daemon Trace & Telemetry Workstation (TraceViewerController)", ()
             status: 200,
             body: {
               success: true,
-              url: "https://ui.perfetto.dev/#!/?url=http%3A%2F%2F127.0.0.1%3A8899%2Fapi%2Ftrace%2Fperfetto.json",
+              url: "https://ui.perfetto.dev/#!/?url=http%3A%2F%2F127.0.0.1%3A9001%2Ftrace.perfetto.json",
             },
           };
         },

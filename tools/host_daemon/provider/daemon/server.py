@@ -24,7 +24,11 @@ from host_daemon.model.trace_mode import (
 )
 from host_daemon.provider.daemon.bug_report_service import create_target_worm_report
 from host_daemon.provider.daemon.rerun_bridge import open_trace_in_rerun
-from host_daemon.provider.daemon.runner import DEFAULT_CLI_OUTPUT_TIMEOUT_SEC, DaemonRunner
+from host_daemon.provider.daemon.runner import (
+    DEFAULT_CLI_OUTPUT_TIMEOUT_SEC,
+    DaemonRunner,
+    open_url_in_system_browser,
+)
 from host_daemon.provider.daemon.test_manager import DeviceTestRunnerManager
 from host_daemon.provider.daemon.trace_store import TraceSessionStore
 
@@ -718,11 +722,9 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                         daemon_port=server_port,
                     )
                 else:
-                    import webbrowser
-
                     store = _get_trace_store(runner)
-                    trace_url, perfetto_url = build_perfetto_deep_link(server_host, server_port)
-                    opened = bool(webbrowser.open(perfetto_url, new=2, autoraise=True))
+                    trace_url, perfetto_url = build_perfetto_deep_link(server_host)
+                    opened = open_url_in_system_browser(perfetto_url)
                     res = {
                         "success": opened,
                         "url": perfetto_url,

@@ -963,8 +963,7 @@ export class TraceViewerController {
         return backendOpened;
       }
 
-      const loc = this.ctx.getLocation();
-      const fallbackUrl = `${loc.origin || "http://127.0.0.1:8899"}/api/trace/perfetto.json`;
+      const fallbackUrl = "http://127.0.0.1:9001/trace.perfetto.json";
       let opened = await this.ctx.openPerfettoTrace({
         loadBuffer: async () => {
           const response = await this.ctx.fetchRaw("/api/trace/perfetto.json");
