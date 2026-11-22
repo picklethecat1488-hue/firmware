@@ -42,7 +42,11 @@ code_gen = { path = "../tools/code_gen" }
 
 [features]
 default = []
-tracing = ["dep:tracing-defmt"]
+trace-perf = ["dep:tracing-defmt"]
+trace-sensors = []
+trace-sensor-spans = ["dep:tracing-defmt"]
+trace-audio = ["dep:tracing-defmt"]
+tracing = ["trace-perf", "trace-sensors", "trace-sensor-spans"]
 dual-core = []
 rp2040 = []
 

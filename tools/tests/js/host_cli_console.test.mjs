@@ -10,6 +10,31 @@ function buildCliDom(ctx) {
   const modeSelect = createEl(ctx, "select", { id: "modeSelect" });
   modeSelect.value = "CLI";
 
+  const modeTabCli = createEl(ctx, "button", {
+    className: "mode-tab-btn active",
+    attrs: { "data-mode": "CLI" },
+    text: "CLI",
+  });
+  const modeTabFs = createEl(ctx, "button", {
+    className: "mode-tab-btn",
+    attrs: { "data-mode": "FS" },
+    text: "FS",
+  });
+  const modeTabTest = createEl(ctx, "button", {
+    className: "mode-tab-btn",
+    attrs: { "data-mode": "TEST" },
+    text: "TEST",
+  });
+  const modeTabTrace = createEl(ctx, "button", {
+    className: "mode-tab-btn",
+    attrs: { "data-mode": "TRACE" },
+    text: "TRACE",
+  });
+  const modeTabGroup = createEl(ctx, "div", {
+    id: "modeTabGroup",
+    children: [modeTabCli, modeTabFs, modeTabTest, modeTabTrace],
+  });
+
   const panelTitle = createEl(ctx, "span", { id: "cliPanelTitle", text: "INTERACTIVE CLI CONSOLE" });
   const copyBtn = createEl(ctx, "button", { id: "btnCopyWorkstation", text: "📋 Copy" });
 
@@ -21,11 +46,10 @@ function buildCliDom(ctx) {
       createEl(ctx, "button", { className: "btn", dataset: { fsCmd: "crash-log" }, text: "crash-log" }),
     ],
   });
-  const bringupToolbar = createEl(ctx, "div", { id: "bringupToolbar", style: { display: "none" } });
-
   const cliView = createEl(ctx, "div", { id: "cliView", style: { display: "block" } });
   const fsView = createEl(ctx, "div", { id: "fsView", style: { display: "none" } });
-  const bringupView = createEl(ctx, "div", { id: "bringupView", style: { display: "none" } });
+  const testView = createEl(ctx, "div", { id: "testView", style: { display: "none" } });
+  const traceView = createEl(ctx, "div", { id: "traceView", style: { display: "none" } });
 
   const fuzzyCloseBtn = createEl(ctx, "button", { id: "btnCloseFuzzyHistory", text: "✕" });
   const fuzzySearchInput = createEl(ctx, "input", { id: "fuzzySearchInput" });
@@ -40,29 +64,34 @@ function buildCliDom(ctx) {
   const cmdInput = createEl(ctx, "input", { id: "cmdInput" });
   const submitBtn = createEl(ctx, "button", { id: "btnSubmitCmd", text: "Send [↵]" });
   const footer = createEl(ctx, "footer", {
+    id: "cliInputBar",
     className: "cli-input-bar",
     children: [fuzzyContainer, promptLabel, cmdInput, submitBtn],
   });
 
   doc.body.appendChild(modeSelect);
+  doc.body.appendChild(modeTabGroup);
   doc.body.appendChild(panelTitle);
   doc.body.appendChild(copyBtn);
   doc.body.appendChild(fsToolbar);
-  doc.body.appendChild(bringupToolbar);
   doc.body.appendChild(cliView);
   doc.body.appendChild(fsView);
-  doc.body.appendChild(bringupView);
+  doc.body.appendChild(testView);
+  doc.body.appendChild(traceView);
   doc.body.appendChild(footer);
 
   return {
     modeSelect,
+    modeTabGroup,
+    modeTabTrace,
     panelTitle,
     copyBtn,
     fsToolbar,
-    bringupToolbar,
     cliView,
     fsView,
-    bringupView,
+    testView,
+    traceView,
+    footer,
     fuzzyContainer,
     fuzzySearchInput,
     fuzzyResultsList,
@@ -128,10 +157,8 @@ describe("Host Daemon Interactive CLI & Filesystem Console", () => {
     });
 
     const dom = buildCliDom(ctx);
-    const bringupActions = [];
     const cli = createCliConsole(ctx, {
       initialMode: WORKSTATION_MODES.CLI,
-      onBringupAction: (act) => bringupActions.push(act),
     });
     await cli.init();
 
@@ -175,8 +202,31 @@ describe("Host Daemon Interactive CLI & Filesystem Console", () => {
     assert.ok(ctx.getCopiedText().includes("fs> ls"));
     assert.ok(ctx.getCopiedText().includes("telemetry.bin"));
 
+    // Switch to TEST mode -> shows #testView and hides CLI/FS views & command input bar
+    await cli.setMode(WORKSTATION_MODES.TEST);
+    assert.equal(cli.getMode(), WORKSTATION_MODES.TEST);
+    assert.equal(dom.testView.style.display, "flex");
+    assert.equal(dom.traceView.style.display, "none");
+    assert.equal(dom.cliView.style.display, "none");
+    assert.equal(dom.fsView.style.display, "none");
+    assert.equal(dom.fsToolbar.style.display, "none");
+    assert.equal(dom.footer.style.display, "none");
+    assert.ok(dom.panelTitle.textContent.includes("TEST RUNNER"));
+
+    // Click segmented TRACE tab -> shows #traceView, marks TRACE button active, and hides CLI input bar
+    dom.modeTabTrace.click();
+    await flushMicrotasks();
+    assert.equal(cli.getMode(), WORKSTATION_MODES.TRACE);
+    assert.equal(dom.traceView.style.display, "flex");
+    assert.equal(dom.testView.style.display, "none");
+    assert.equal(dom.footer.style.display, "none");
+    assert.equal(dom.modeTabTrace.classList.contains("active"), true);
+    assert.ok(dom.panelTitle.textContent.includes("TRACE"));
+
     // Switch back to CLI and verify target offline disables workstation
     await cli.setMode(WORKSTATION_MODES.CLI);
+    assert.equal(dom.testView.style.display, "none");
+    assert.equal(dom.footer.style.display, "flex");
     simulateOffline = true;
     await cli.submitCommand("help");
     assert.equal(dom.cmdInput.disabled, true);
@@ -188,9 +238,9 @@ describe("Host Daemon Interactive CLI & Filesystem Console", () => {
     assert.equal(dom.cmdInput.disabled, false);
     assert.equal(dom.submitBtn.disabled, false);
 
-    // OSC-8 clickable bringup choice forwards to onBringupAction
-    cli.handleCommandClick("pass");
-    assert.deepEqual(bringupActions, ["pass"]);
+    // Clickable command populates cmdInput
+    cli.handleCommandClick("battery status");
+    assert.equal(dom.cmdInput.value, "battery status");
 
     cli.destroy();
   });

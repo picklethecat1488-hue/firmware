@@ -88,7 +88,7 @@ pub(crate) unsafe fn flush_rtt_cli() {
 const BUF_SIZE: usize = 32768;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-const CLI_BUF_SIZE: usize = 1024;
+const CLI_BUF_SIZE: usize = 4096;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 const CLI_DOWN_BUF_SIZE: usize = 256;
@@ -213,6 +213,161 @@ pub static RTT_SIGNAL: embassy_sync::signal::Signal<
     (),
 > = embassy_sync::signal::Signal::new();
 
+/// Bit flag in `_SEGGER_RTT.down_channels[0].flags` asserted when the target shell loop is idle.
+///
+/// Bits `0..=1` are reserved by SEGGER RTT for channel buffer mode (`0..=2`); upper bits are
+/// ignored by SEGGER RTT readers and used for lock-free single-writer (MCU) / single-reader (host)
+/// boot and shell signaling without polling console text or guessing binary names.
+pub const RTT_SHELL_IDLE_FLAG: u32 = 1 << 8;
+
+/// Bit shift of the 2-bit [`TargetBootState`] field in `_SEGGER_RTT.down_channels[0].flags` (`bits 9..=10`).
+pub const RTT_BOOT_STATE_SHIFT: u32 = 9;
+
+/// Bitmask isolating the 2-bit [`TargetBootState`] field in `_SEGGER_RTT.down_channels[0].flags`.
+pub const RTT_BOOT_STATE_MASK: u32 = 0x3 << RTT_BOOT_STATE_SHIFT;
+
+/// Bit shift of the 16-bit wrapping idle-transition epoch in `_SEGGER_RTT.down_channels[0].flags`.
+pub const RTT_SHELL_EPOCH_SHIFT: u32 = 16;
+
+/// Mask preserving SEGGER RTT channel mode bits (`0..=1`).
+pub const RTT_CHANNEL_MODE_MASK: u32 = 0x3;
+
+/// Lifecycle boot status published by every target firmware binary in `_SEGGER_RTT.down_channels[0].flags`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[repr(u8)]
+pub enum TargetBootState {
+    /// Power-on or hardware reset prior to `Board::init`.
+    Reset = 0,
+    /// Target bootstrap task is initializing peripherals and domain controllers.
+    Booting = 1,
+    /// Target boot completed and main executor / runtime tasks are active.
+    Ready = 2,
+    /// Unrecoverable panic or fatal fault occurred.
+    Faulted = 3,
+}
+
+impl TargetBootState {
+    /// Convert a raw 2-bit code (`0..=3`) into a [`TargetBootState`].
+    pub const fn from_bits(bits: u32) -> Self {
+        match bits & 0x3 {
+            1 => Self::Booting,
+            2 => Self::Ready,
+            3 => Self::Faulted,
+            _ => Self::Reset,
+        }
+    }
+
+    /// Canonical lowercase status token serialized in `host_cli boot-status` and NDJSON events.
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Reset => "reset",
+            Self::Booting => "booting",
+            Self::Ready => "ready",
+            Self::Faulted => "faulted",
+        }
+    }
+
+    /// Return `true` once the firmware binary has reached [`TargetBootState::Ready`].
+    pub const fn is_ready(&self) -> bool {
+        matches!(self, Self::Ready)
+    }
+}
+
+/// Encode RTT `down_channels[0].flags` combining channel `mode`, `boot_state`, `idle` state, and wrapping `epoch`.
+pub const fn encode_rtt_status_flags(
+    mode: u32,
+    boot_state: TargetBootState,
+    idle: bool,
+    epoch: u16,
+) -> u32 {
+    let base = mode & RTT_CHANNEL_MODE_MASK;
+    let boot_bits = ((boot_state as u32) & 0x3) << RTT_BOOT_STATE_SHIFT;
+    let idle_bit = if idle { RTT_SHELL_IDLE_FLAG } else { 0 };
+    base | boot_bits | idle_bit | ((epoch as u32) << RTT_SHELL_EPOCH_SHIFT)
+}
+
+/// Encode RTT `down_channels[0].flags` combining channel `mode`, `idle` state, and wrapping `epoch` (with `Ready` when `idle` is true).
+pub const fn encode_rtt_shell_flags(mode: u32, idle: bool, epoch: u16) -> u32 {
+    let boot_state = if idle {
+        TargetBootState::Ready
+    } else {
+        TargetBootState::Reset
+    };
+    encode_rtt_status_flags(mode, boot_state, idle, epoch)
+}
+
+/// Decode [`TargetBootState`] from a 32-bit RTT `down_channels[0].flags` word.
+pub const fn decode_rtt_boot_state(flags: u32) -> TargetBootState {
+    TargetBootState::from_bits((flags & RTT_BOOT_STATE_MASK) >> RTT_BOOT_STATE_SHIFT)
+}
+
+/// Decode `(is_idle, epoch)` from a 32-bit RTT `down_channels[0].flags` word.
+pub const fn decode_rtt_shell_flags(flags: u32) -> (bool, u16) {
+    let idle = (flags & RTT_SHELL_IDLE_FLAG) != 0;
+    let epoch = (flags >> RTT_SHELL_EPOCH_SHIFT) as u16;
+    (idle, epoch)
+}
+
+/// Update the RTT control block's [`TargetBootState`] while preserving channel mode, shell-idle bit, and epoch.
+pub fn set_rtt_boot_state(state: TargetBootState) {
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    unsafe {
+        let prev = _SEGGER_RTT.down_channels[0]
+            .flags
+            .load(core::sync::atomic::Ordering::Relaxed) as u32;
+        let mode = prev & RTT_CHANNEL_MODE_MASK;
+        let (was_idle, prev_epoch) = decode_rtt_shell_flags(prev);
+        let next_idle = if matches!(state, TargetBootState::Faulted) {
+            false
+        } else {
+            was_idle
+        };
+        let next_flags = encode_rtt_status_flags(mode, state, next_idle, prev_epoch) as usize;
+        _SEGGER_RTT.down_channels[0]
+            .flags
+            .store(next_flags, core::sync::atomic::Ordering::Release);
+    }
+    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+    {
+        let _ = state;
+    }
+}
+
+/// Update the RTT control block's shell-idle flag (and advance its epoch when transitioning to idle).
+pub fn set_rtt_shell_idle(idle: bool) {
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    unsafe {
+        let prev = _SEGGER_RTT.down_channels[0]
+            .flags
+            .load(core::sync::atomic::Ordering::Relaxed) as u32;
+        let mode = prev & RTT_CHANNEL_MODE_MASK;
+        let prev_boot = decode_rtt_boot_state(prev);
+        let next_boot = if matches!(prev_boot, TargetBootState::Faulted) {
+            TargetBootState::Faulted
+        } else if idle {
+            TargetBootState::Ready
+        } else {
+            prev_boot
+        };
+        let (was_idle, prev_epoch) = decode_rtt_shell_flags(prev);
+        let next_epoch = if idle && !was_idle {
+            prev_epoch.wrapping_add(1)
+        } else {
+            prev_epoch
+        };
+        let next_flags = encode_rtt_status_flags(mode, next_boot, idle, next_epoch) as usize;
+        _SEGGER_RTT.down_channels[0]
+            .flags
+            .store(next_flags, core::sync::atomic::Ordering::Release);
+    }
+    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+    {
+        let _ = idle;
+    }
+}
+
 /// Check if the RTT down channel has unread data.
 pub fn rtt_has_input() -> bool {
     #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -231,14 +386,18 @@ pub fn rtt_has_input() -> bool {
 
 /// Helper macro to execute the RTT character receive loop,
 /// routing bytes into the embedded-cli processor, and automatically executing any
-/// pending async commands.
+/// pending async commands while signaling idle state via `RTT_SHELL_IDLE_FLAG`.
 #[macro_export]
 macro_rules! run_rtt_shell_loop {
     ($cli:expr, $proc:expr, $cmd_type:ty, $prompt:expr) => {
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         loop {
-            $crate::rtt::RTT_SIGNAL.wait().await;
+            if !$crate::rtt::rtt_has_input() {
+                $crate::rtt::set_rtt_shell_idle(true);
+                $crate::rtt::RTT_SIGNAL.wait().await;
+            }
             $crate::rtt::RTT_SIGNAL.reset();
+            $crate::rtt::set_rtt_shell_idle(false);
 
             let mut rx_byte = [0u8; 1];
             while $crate::rtt::read_rtt(&mut rx_byte) > 0 {

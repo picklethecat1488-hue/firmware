@@ -1,9 +1,20 @@
 [tool.pytest.ini_options]
 testpaths = ["tools/validation/tests", "tools/tests"]
+norecursedirs = ["resources"]
 pythonpath = ["tools/validation", "tools/helpers", "tools", "tools/dashboard"]
 addopts = "-qq -n auto --maxfail=1 --max-worker-restart=2 -m \"not slow\""
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "smoke: fast target hardware and actuator sanity checks",
+    "integration: stateful multi-subsystem and cross-tool device tests",
+    "bringup: full board qualification, destructive, and benchtop checks",
+    "project: target firmware project identifier (e.g. cat_detector, carrier_board)",
+    "manual: manual benchtop test requiring operator verification (--manual)",
+    "boards: glob or exact board_type patterns supported by a device test",
+    "target_binary: firmware binary to flash via host.py before running a device test",
+    "description: detailed human-readable description for a device test",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

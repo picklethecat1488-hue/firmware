@@ -25,10 +25,13 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     app::handle_panic(info);
 }
 
+board::emit_project_metadata!();
+
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[platform::tracing::instrument(name = "boot", level = "info", skip(spawner, p))]
 #[embassy_executor::task]
 async fn bootstrap_task(spawner: Spawner, p: embassy_rp::Peripherals) {
+    platform::rtt::set_rtt_boot_state(platform::rtt::TargetBootState::Booting);
     let mut board = app::Board::init(p).await;
     let peripherals = board.take_peripherals();
     if app::BOARD.set(board).is_err() {
@@ -122,6 +125,7 @@ async fn bootstrap_task(spawner: Spawner, p: embassy_rp::Peripherals) {
 
     // Spawn tasks on Core 0
     app::spawn_core0_controllers!(spawner, controllers, fs_controller, telemetry_ctrl);
+    platform::rtt::set_rtt_boot_state(platform::rtt::TargetBootState::Ready);
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]

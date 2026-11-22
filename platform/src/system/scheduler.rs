@@ -176,6 +176,10 @@ unsafe impl defmt::Logger for HostLogger {
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 defmt::timestamp!("{=u64}", 0);
 
+/// Minimum `wfe()` sleep duration in milliseconds emitted as a `CPU Idle` span (`2 ms`).
+#[cfg(all(target_arch = "arm", target_os = "none", feature = "trace-perf"))]
+const MIN_IDLE_SPAN_DURATION_MS: u64 = 2;
+
 /// Trait for executing the scheduler loop on a CPU core.
 pub trait CpuScheduler {
     /// Runs the infinite scheduler loop for the given CPU core.
@@ -189,23 +193,33 @@ pub trait CpuScheduler {
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 impl CpuScheduler for embassy_executor::raw::Executor {
     unsafe fn run_loop(&'static self, cpu_id: crate::types::CpuId) -> ! {
+        #[cfg(feature = "trace-perf")]
         let (ctx, name) = match cpu_id {
             crate::types::CpuId::Core0 => ("cpu_idle_c0", "Core 0: CPU Idle Core 0"),
             crate::types::CpuId::Core1 => ("cpu_idle_c1", "Core 1: CPU Idle Core 1"),
         };
+        #[cfg(not(feature = "trace-perf"))]
+        let _ = cpu_id;
         loop {
             self.poll();
 
-            let enter_time = embassy_time::Instant::now();
-            cortex_m::asm::wfe();
-            let exit_time = embassy_time::Instant::now();
+            #[cfg(feature = "trace-perf")]
+            {
+                let enter_time = embassy_time::Instant::now();
+                cortex_m::asm::wfe();
+                let exit_time = embassy_time::Instant::now();
 
-            let idle_duration = exit_time - enter_time;
-            if idle_duration >= embassy_time::Duration::from_millis(10) {
-                let enter_us = enter_time.as_micros();
-                let exit_us = exit_time.as_micros();
-                defmt::trace!("ctx={} parent=0 span_enter: {} ts={}", ctx, name, enter_us);
-                defmt::trace!("{} span_exit: {} ts={}", ctx, name, exit_us);
+                let idle_duration = exit_time - enter_time;
+                if idle_duration >= embassy_time::Duration::from_millis(MIN_IDLE_SPAN_DURATION_MS) {
+                    let enter_us = enter_time.as_micros();
+                    let exit_us = exit_time.as_micros();
+                    defmt::trace!("ctx={} parent=0 span_enter: {} ts={}", ctx, name, enter_us);
+                    defmt::trace!("{} span_exit: {} ts={}", ctx, name, exit_us);
+                }
+            }
+            #[cfg(not(feature = "trace-perf"))]
+            {
+                cortex_m::asm::wfe();
             }
         }
     }

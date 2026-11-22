@@ -106,7 +106,7 @@ critical_soc = 10
 hysteresis = 5
 low_soc = 20
 mid_soc = 50
-high_soc = 80
+high_soc = 70
 
 [apps.cat_detector.features.proximity]
 channels = ["sensor_north", "sensor_east", "sensor_west"]
@@ -121,6 +121,76 @@ channel = "led"
 brightness = 50
 
 [apps.cat_detector.features.thermal]
+channel = "thermal"
+overheating_threshold = 70000
+critical_threshold = 85000
+
+[apps.carrier_board]
+shell_config = "CarrierBoardShellConfig"
+core1_enabled = true
+cli_handlers = ["Battery", "Thermal", "Fs", "System", "I2c", "Gpio", "Led", "Core"]
+
+[apps.carrier_board.channels]
+system = { type = "controller::SystemChannel", capacity = 16 }
+thermal = { type = "controller::ThermalChannel", capacity = 4 }
+thermal_action = { type = "embassy_sync::channel::Channel<MutexRaw, controller::types::ThermalUpdateAction, 4>", val = "embassy_sync::channel::Channel::new()" }
+battery = { type = "controller::BatteryChannel", capacity = 4 }
+led = { type = "controller::LedChannel", capacity = 4 }
+telemetry = { type = "controller::TelemetryChannel", capacity = "{ controller::telemetry_controller::CHANNEL_CAPACITY }" }
+filesystem = { type = "controller::FilesystemChannel", capacity = 16 }
+
+[[apps.carrier_board.controllers]]
+name = "Thermal"
+instance = "controllers.core0.thermal"
+generics = "app::TempSensorDevice"
+
+[[apps.carrier_board.controllers]]
+name = "Battery"
+instance = "controllers.core0.battery"
+generics = "app::BatteryDevice, app::ChargerDevice, app::AlertPinType"
+
+[[apps.carrier_board.controllers]]
+name = "Led"
+instance = "controllers.core0.led"
+generics = "app::LedDevice"
+
+[[apps.carrier_board.controllers]]
+name = "System"
+instance = "controllers.core0.system"
+channel = "SYSTEM_CHANNEL, THERMAL_ACTION_CHANNEL"
+generics = "app::SystemControllerType"
+
+[[apps.carrier_board.partitions]]
+name = "metadata"
+board_partition = "metadata"
+kind = "Map"
+
+[[apps.carrier_board.partitions]]
+name = "panic"
+board_partition = "fs"
+kind = "Map"
+
+[[apps.carrier_board.partitions]]
+name = "telemetry"
+board_partition = "telemetry"
+kind = "Queue"
+
+[apps.carrier_board.features]
+inactivity_timeout_seconds = 30
+
+[apps.carrier_board.features.battery]
+channel = "battery"
+critical_soc = 10
+hysteresis = 5
+low_soc = 20
+mid_soc = 50
+high_soc = 70
+
+[apps.carrier_board.features.led]
+channel = "led"
+brightness = 50
+
+[apps.carrier_board.features.thermal]
 channel = "thermal"
 overheating_threshold = 70000
 critical_threshold = 85000

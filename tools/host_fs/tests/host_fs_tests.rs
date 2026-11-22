@@ -419,3 +419,210 @@ fn test_cli_rm_small_dump() {
     let _ = std::fs::remove_file(&dump_path);
     let _ = std::fs::remove_file(&src_path);
 }
+
+#[test]
+fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
+    use std::process::Command;
+
+    let bin_path = env!("CARGO_BIN_EXE_host_fs");
+    let temp_dir = std::env::temp_dir().join("test_query_metadata_elf_geometry_ws");
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).unwrap();
+
+    let (rp_writer, rp_elf_writer) = platform::types::ProjectMetadata::serialize_pair(
+        "rp2040",
+        "rp2040_flash_2mb",
+        "cat_detector_shell",
+        true,
+        platform::types::FirmwareTraceMode::Sensor,
+        1,
+        4096,
+        2048,
+        0x1000_0000,
+        0x101C_0000,
+        64 * 1024,
+        0x101D_0000,
+        192 * 1024,
+        0x101B_0000,
+        64 * 1024,
+    );
+    assert!(
+        rp_writer.len <= 12,
+        "Compact .program_metadata must be <= 12 bytes, got {}",
+        rp_writer.len
+    );
+
+    let fixture_rs = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../platform/host/tests/resources/dummy_metadata_bin.rs");
+    let elf_bin_path = temp_dir.join("dummy_elf_bin");
+    let standalone_meta_path = temp_dir.join("standalone_prog_meta.bin");
+    let standalone_elf_meta_path = temp_dir.join("standalone_prog_meta_elf.bin");
+    std::fs::write(&standalone_meta_path, &rp_writer.buf[..rp_writer.len]).unwrap();
+    std::fs::write(
+        &standalone_elf_meta_path,
+        &rp_elf_writer.buf[..rp_elf_writer.len],
+    )
+    .unwrap();
+    let status = Command::new("rustc")
+        .arg(&fixture_rs)
+        .arg("-o")
+        .arg(&elf_bin_path)
+        .env("TEST_PROJECT_METADATA_PATH", &standalone_meta_path)
+        .env("TEST_PROJECT_METADATA_ELF_PATH", &standalone_elf_meta_path)
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let elf_info = tool_common::autodetect_project_info(&elf_bin_path).unwrap();
+
+    // 1. Verify `--elf-only` dumps the entire target ELF `.program_metadata` specification
+    let elf_only_out = Command::new(bin_path)
+        .args([
+            "--elf",
+            elf_bin_path.to_str().unwrap(),
+            "query_metadata",
+            "--elf-only",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(elf_only_out.status.success());
+    let elf_stdout = String::from_utf8(elf_only_out.stdout).unwrap();
+    assert!(elf_stdout.contains("\"board_type\":\"rp2040_flash_2mb\""));
+    assert!(elf_stdout.contains("\"source\":\"elf\""));
+    assert!(elf_stdout.contains("\"partitions\":["));
+
+    // 2. Verify standalone `.program_metadata` dump validates 16-bit CRC-16 and dumps full section
+    let out = Command::new(bin_path)
+        .args([
+            "--elf",
+            elf_bin_path.to_str().unwrap(),
+            "--dump",
+            standalone_meta_path.to_str().unwrap(),
+            "query_metadata",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "query_metadata failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(stdout.contains("\"board_type\":\"rp2040_flash_2mb\""));
+    assert!(stdout.contains("\"chip\":\"rp2040\""));
+    assert!(stdout.contains("\"bin_name\":\"cat_detector_shell\""));
+    assert!(stdout.contains("\"release_build\":true"));
+    assert!(stdout.contains("\"trace_mode\":\"sensor\""));
+    assert!(stdout.contains("\"source\":\"program_metadata\""));
+    assert!(stdout.contains("\"stack_scan_limit\":2048"));
+    assert!(stdout.contains(&format!("\"0x{:04X}\"", elf_info.checksum)));
+
+    // 3. Provision an explicit `"board_type"` key in a 64 KB `metadata` map partition dump
+    // and verify it overrides compiled `.program_metadata`!
+    let meta_part_dump_path = temp_dir.join("metadata_part_dump.bin");
+    futures::executor::block_on(async {
+        let mut meta_flash = HostFlash::new(vec![0xFFu8; 64 * 1024]);
+        let mut cache = sequential_storage::cache::NoCache::new();
+        let mut scratch = vec![0u8; 512];
+        let key = string_to_key("board_type");
+        let board_val: &[u8] = b"rp2040_flash_4mb";
+        sequential_storage::map::store_item::<[u8; 32], &[u8], _>(
+            &mut meta_flash,
+            0..(64 * 1024),
+            &mut cache,
+            &mut scratch,
+            &key,
+            &board_val,
+        )
+        .await
+        .unwrap();
+        std::fs::write(&meta_part_dump_path, &meta_flash.data).unwrap();
+    });
+
+    let out_override = Command::new(bin_path)
+        .args([
+            "--elf",
+            elf_bin_path.to_str().unwrap(),
+            "--dump",
+            meta_part_dump_path.to_str().unwrap(),
+            "query_metadata",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(out_override.status.success());
+    let stdout_override = String::from_utf8(out_override.stdout).unwrap();
+    assert!(stdout_override.contains("\"board_type\":\"rp2040_flash_4mb\""));
+    assert!(stdout_override.contains("\"program_metadata_board_type\":\"rp2040_flash_2mb\""));
+    assert!(stdout_override.contains("\"source\":\"metadata_partition\""));
+
+    // 4. Verify Carrier Board compact `.program_metadata` (`<= 12` bytes) + deferred `.elf` strings
+    let carrier_dump_path = temp_dir.join("carrier_prog_meta.bin");
+    let carrier_elf_path = temp_dir.join("carrier_elf_bin");
+    let (cb_writer, cb_elf_writer) = platform::types::ProjectMetadata::serialize_pair(
+        "MCXN947",
+        "carrier_board",
+        "carrier_board_shell",
+        false,
+        platform::types::FirmwareTraceMode::Perf,
+        128,
+        8192,
+        2048,
+        0x0000_0000,
+        0x001E_8000,
+        32 * 1024,
+        0x001F_0000,
+        64 * 1024,
+        0x001E_0000,
+        32 * 1024,
+    );
+    assert!(
+        cb_writer.len <= 12,
+        "Carrier Board .program_metadata must be <= 12 bytes, got {}",
+        cb_writer.len
+    );
+    let carrier_elf_meta_path = temp_dir.join("carrier_prog_meta_elf.bin");
+    std::fs::write(&carrier_dump_path, &cb_writer.buf[..cb_writer.len]).unwrap();
+    std::fs::write(
+        &carrier_elf_meta_path,
+        &cb_elf_writer.buf[..cb_elf_writer.len],
+    )
+    .unwrap();
+    let cb_status = Command::new("rustc")
+        .arg(&fixture_rs)
+        .arg("-o")
+        .arg(&carrier_elf_path)
+        .env("TEST_PROJECT_METADATA_PATH", &carrier_dump_path)
+        .env("TEST_PROJECT_METADATA_ELF_PATH", &carrier_elf_meta_path)
+        .status()
+        .unwrap();
+    assert!(cb_status.success());
+
+    let out_cb = Command::new(bin_path)
+        .args([
+            "--elf",
+            carrier_elf_path.to_str().unwrap(),
+            "--dump",
+            carrier_dump_path.to_str().unwrap(),
+            "query_metadata",
+        ])
+        .output()
+        .unwrap();
+    assert!(out_cb.status.success());
+    let stdout_cb = String::from_utf8(out_cb.stdout).unwrap();
+    assert!(stdout_cb.contains("board_type: carrier_board"));
+    assert!(stdout_cb.contains("chip: MCXN947"));
+    assert!(stdout_cb.contains("bin_name: carrier_board_shell"));
+    assert!(stdout_cb.contains("release_build: false"));
+    assert!(stdout_cb.contains("trace_mode: perf"));
+    assert!(
+        stdout_cb.contains("program_metadata_size: 11")
+            || stdout_cb.contains("program_metadata_size: 10")
+            || stdout_cb.contains("program_metadata_size: 9")
+    );
+    assert!(stdout_cb.contains("partition[2] (metadata): address=0x001E0000 size=32768"));
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}

@@ -1,6 +1,6 @@
 use std::io::Read;
 
-/// A minimal GDB Remote Serial Protocol client for connecting to an existing OpenOCD GDB server session.
+/// A minimal GDB Remote Serial Protocol client for connecting to an active `host_debug` or GDB RSP server session.
 pub struct GdbClient {
     stream: std::net::TcpStream,
 }
@@ -196,10 +196,10 @@ impl GdbClient {
         Ok(console_output)
     }
 
-    /// Resets the target CPU using OpenOCD monitor reset commands.
+    /// Resets the target CPU using GDB RSP `qRcmd` monitor reset commands.
     pub fn reset(&mut self) -> Result<(), String> {
-        self.run_monitor_cmd("monitor reset halt")?;
-        self.run_monitor_cmd("monitor reset run")?;
+        self.run_monitor_cmd("reset halt")?;
+        self.run_monitor_cmd("reset run")?;
         Ok(())
     }
 }

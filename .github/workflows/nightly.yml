@@ -71,15 +71,15 @@ jobs:
       - name: Run Ruff & JavaScript Lint Checks
         shell: bash -el {0}
         run: |
-          ruff check tools/validation/ tools/helpers/
-          ruff format --check tools/validation/ tools/helpers/
+          ruff check tools/validation/ tools/helpers/ tools/device_tests/
+          ruff format --check tools/validation/ tools/helpers/ tools/device_tests/
           python tools/validation/validate_js.py
           node --test --test-concurrency=4 tools/tests/js/*.test.mjs
 
       - name: Run Pytest
         shell: bash -el {0}
         run: |
-          pytest tools/validation/tests --junitxml=python_test_report.xml
+          pytest tools/validation/tests tools/tests/test_device_harness.py tools/tests/test_ci_workflows.py --junitxml=python_test_report.xml
 
       - name: Upload Python Test Report
         if: always()

@@ -105,9 +105,15 @@ def test_runner_package_selection_mode():
     assert runner.sync_status["step"] == "idle"
 
 
-def test_api_targets_and_configure_endpoints():
+def test_api_targets_and_configure_endpoints(monkeypatch):
     """Verify /api/targets GET and /api/target/configure POST endpoints."""
+    import host_daemon.cli as daemon_cli
+    import host_daemon.provider.daemon.config as daemon_cfg
+
+    monkeypatch.setattr(daemon_cfg, "save_last_session", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(daemon_cli, "write_lock_file", lambda *_args, **_kwargs: None)
     runner = DaemonRunner(repo_root=REPO_ROOT, package_selection_mode=True)
+    runner.sync_async = MagicMock()
     server = HostDaemonServer("127.0.0.1", 0, runner)
 
     try:
@@ -150,5 +156,6 @@ def test_api_targets_and_configure_endpoints():
         assert runner.release is True
         assert runner.target == "thumbv6m-none-eabi"
         assert runner.package_selection_mode is False
+        runner.sync_async.assert_called_once()
     finally:
         server.server_close()

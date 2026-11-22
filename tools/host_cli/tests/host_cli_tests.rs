@@ -499,15 +499,18 @@ fn test_post_process_trace_telemetry() {
 }
 
 #[test]
-fn test_post_process_cpu_usage_step_chart() {
+fn test_post_process_cpu_usage_integrated_curve() {
     use std::io::Write;
     let temp_dir = std::env::temp_dir();
-    let file_path = temp_dir.join("test_cpu_usage_step.json");
+    let file_path = temp_dir.join("test_cpu_usage_integrated.json");
     let path = file_path.to_str().unwrap();
 
+    // Core 0 sleeps [10_000..40_000] (0% busy), works [40_000..70_000] (30ms busy), then sleeps [70_000..120_000] (50ms idle)
     let mock_trace = r#"[
         {"cat": "device_span_enter", "ts": 10000, "pid": 42, "tid": 1, "args": {"span_id": "cpu_idle_c0", "span_name": "Core 0: CPU Idle Core 0"}},
-        {"cat": "device_span_exit", "ts": 15000, "pid": 42, "tid": 1, "args": {"span_id": "cpu_idle_c0"}}
+        {"cat": "device_span_exit", "ts": 40000, "pid": 42, "tid": 1, "args": {"span_id": "cpu_idle_c0"}},
+        {"cat": "device_span_enter", "ts": 70000, "pid": 42, "tid": 1, "args": {"span_id": "cpu_idle_c0", "span_name": "Core 0: CPU Idle Core 0"}},
+        {"cat": "device_span_exit", "ts": 120000, "pid": 42, "tid": 1, "args": {"span_id": "cpu_idle_c0"}}
     ]"#;
 
     {
@@ -515,47 +518,42 @@ fn test_post_process_cpu_usage_step_chart() {
         file.write_all(mock_trace.as_bytes()).unwrap();
     }
 
-    // Run post processor
     host_cli::tracing::post_process_trace(path, None).unwrap();
 
-    // Read and parse output
     let content = std::fs::read_to_string(path).unwrap();
     let events: Vec<serde_json::Value> = serde_json::from_str(&content).unwrap();
-
-    // Clean up temp file
     let _ = std::fs::remove_file(path);
 
-    // Let's filter out Core 0 CPU Usage events
     let usage_events: Vec<&serde_json::Value> = events
         .iter()
         .filter(|e| e.get("name").and_then(|n| n.as_str()) == Some("Core 0 CPU Usage (%)"))
         .collect();
 
-    // We expect exactly 2 counter events: 0% at ts=10000, and 100% at ts=15000
-    assert_eq!(usage_events.len(), 2);
-
-    assert_eq!(
-        usage_events[0].get("ts").and_then(|t| t.as_f64()),
-        Some(10000.0)
+    // Multi-point continuous curve (>= 5 sample points) instead of binary 0/100 step chatter
+    assert!(
+        usage_events.len() >= 5,
+        "Expected continuous integrated CPU Usage curve samples, got {:?}",
+        usage_events
     );
-    assert_eq!(
-        usage_events[0]
-            .get("args")
-            .and_then(|a| a.get("value"))
-            .and_then(|v| v.as_i64()),
-        Some(0)
+    let values: Vec<f64> = usage_events
+        .iter()
+        .map(|e| e["args"]["value"].as_f64().unwrap())
+        .collect();
+    // Starts at 0% during initial sleep, rises into intermediate (0% < v < 100%) usage during busy [40ms..70ms], and decays afterward
+    assert!(
+        (values[0] - 0.0).abs() < 1e-6,
+        "Initial idle usage must be 0.0%, got {:?}",
+        values
     );
-
-    assert_eq!(
-        usage_events[1].get("ts").and_then(|t| t.as_f64()),
-        Some(15000.0)
+    assert!(
+        values.iter().any(|&v| v > 15.0 && v < 85.0),
+        "Integrated curve must produce smooth intermediate utilization percentages (not binary 0/100), got {:?}",
+        values
     );
-    assert_eq!(
-        usage_events[1]
-            .get("args")
-            .and_then(|a| a.get("value"))
-            .and_then(|v| v.as_i64()),
-        Some(100)
+    assert!(
+        *values.last().unwrap() < values.iter().copied().fold(0.0_f64, f64::max),
+        "Usage curve must decay after Core 0 returns to 50ms sleep, got {:?}",
+        values
     );
 }
 
@@ -820,4 +818,657 @@ fn test_cancel_echo_preserves_target_output() {
         "Target command response must be preserved while echoed command is dropped"
     );
     assert!(sent.is_empty());
+}
+
+#[test]
+fn test_structured_json_events_rtt_shell_idle_flag_and_cli_chunk_parser() {
+    let mut parser = host_cli::CliChunkParser::new();
+    let mut poller = host_cli::ShellIdlePoller::new();
+
+    // 1. Encode/decode RTT control flags (`RTT_SHELL_IDLE_FLAG` + 16-bit wrapping epoch)
+    let busy_flags = tool_common::encode_rtt_shell_flags(1, false, 0);
+    assert_eq!(tool_common::decode_rtt_shell_flags(busy_flags), (false, 0));
+    assert_eq!(poller.poll(busy_flags, true, true), None);
+
+    let idle_epoch1 = tool_common::encode_rtt_shell_flags(1, true, 1);
+    assert_eq!(tool_common::decode_rtt_shell_flags(idle_epoch1), (true, 1));
+    // Must wait until both `cli_up` and `cli_down` ring buffers are empty before reporting idle!
+    assert_eq!(poller.poll(idle_epoch1, false, true), None);
+    assert_eq!(poller.poll(idle_epoch1, true, false), None);
+    assert_eq!(poller.poll(idle_epoch1, true, true), Some(1));
+    // Polling the same epoch again does not emit a duplicate idle event.
+    assert_eq!(poller.poll(idle_epoch1, true, true), None);
+
+    // 2. Empty `\x1b[2K\r` (`cli.set_prompt("")` when an async command begins) produces no events
+    assert!(parser.push_bytes(b"\x1b[2K\r").is_empty());
+
+    // 3. Partial line split across RTT chunks + `\x1b[2K\r\n<prompt>` followed by RTT idle flag epoch 2
+    let ev1 = parser.push_bytes(b"Battery Status:\r\n  Voltage: 40");
+    assert_eq!(
+        ev1,
+        vec![host_cli::HostCliEvent::CliOutput {
+            text: "Battery Status:".to_string()
+        }]
+    );
+
+    let ev2 = parser.push_bytes(b"22 mV\r\n\x1b[2K\r\nshell> ");
+    assert_eq!(
+        ev2,
+        vec![host_cli::HostCliEvent::CliOutput {
+            text: "  Voltage: 4022 mV".to_string()
+        }]
+    );
+
+    let idle_epoch2 = tool_common::encode_rtt_shell_flags(1, true, 2);
+    let epoch = poller
+        .poll(idle_epoch2, true, true)
+        .expect("epoch 2 must trigger ShellIdle");
+    let idle_ev = parser.on_shell_idle(epoch);
+    assert_eq!(idle_ev, host_cli::HostCliEvent::ShellIdle { epoch: 2 });
+    let idle_json: serde_json::Value = serde_json::from_str(&idle_ev.to_json_line()).unwrap();
+    assert_eq!(idle_json["event"], "shell_idle");
+    assert_eq!(idle_json["epoch"], 2);
+
+    // 4. Verify `detect_shell_completion_event` and JSON serialization
+    let ok_ev = host_cli::detect_shell_completion_event(
+        "0.412300 INFO command execution succeeded",
+        Some(0.4123),
+    )
+    .expect("must detect success");
+    let parsed_ok: serde_json::Value = serde_json::from_str(&ok_ev.to_json_line()).unwrap();
+    assert_eq!(parsed_ok["event"], "command_completed");
+    assert_eq!(parsed_ok["success"], true);
+
+    let err_ev = host_cli::detect_shell_completion_event(
+        "0.512000 ERROR command execution failed: Target out of range",
+        Some(0.512),
+    )
+    .expect("must detect failure");
+    let parsed_err: serde_json::Value = serde_json::from_str(&err_ev.to_json_line()).unwrap();
+    assert_eq!(parsed_err["event"], "command_completed");
+    assert_eq!(parsed_err["success"], false);
+    assert_eq!(parsed_err["error"], "Target out of range");
+    assert_eq!(
+        host_cli::extract_defmt_level("0.512000 WARN battery low"),
+        "WARN"
+    );
+}
+
+#[test]
+fn test_live_trace_stream_processor_perf_spans_sensor_reports_and_exports() {
+    use host_cli::{
+        export_trace_events_to_csv, export_trace_events_to_perfetto_json, HostCliEvent,
+        LiveTraceStreamProcessor,
+    };
+    use model::telemetry::TelemetryRecord;
+    use model::types::{
+        Direction, Gesture, GestureSource, SensorReading, SensorTelemetry, ThermalStatus,
+    };
+
+    let mut proc = LiveTraceStreamProcessor::new();
+
+    // 1. PERF execution spans on Core 0 and Core 1 + CPU Idle counter
+    let mut emitted = Vec::new();
+    emitted.extend(proc.process_defmt_frame(
+        "1.122000 TRACE [controller::motor_controller] ctx=10 parent=0 span_enter: Core 1: motor_controller::update",
+        "ctx=10 parent=0 span_enter: Core 1: motor_controller::update",
+        Some("controller::motor_controller"),
+        Some(1_122_000.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "1.158000 TRACE [controller::motor_controller] 10 parent=0 span_exit: Core 1: motor_controller::update",
+        "10 parent=0 span_exit: Core 1: motor_controller::update",
+        Some("controller::motor_controller"),
+        Some(1_158_000.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "1.200000 TRACE [platform::system] ctx=cpu_idle_c0 parent=0 span_enter: Core 0: CPU Idle Core 0 ts=1200000",
+        "ctx=cpu_idle_c0 parent=0 span_enter: Core 0: CPU Idle Core 0 ts=1200000",
+        Some("platform::system"),
+        Some(1_200_000.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "1.240000 TRACE [platform::system] cpu_idle_c0 span_exit: Core 0: CPU Idle Core 0 ts=1240000",
+        "cpu_idle_c0 span_exit: Core 0: CPU Idle Core 0 ts=1240000",
+        Some("platform::system"),
+        Some(1_240_000.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "1.260000 TRACE [platform::system] ctx=cpu_idle_c1 parent=0 span_enter: Core 1: CPU Idle Core 1 ts=1260000",
+        "ctx=cpu_idle_c1 parent=0 span_enter: Core 1: CPU Idle Core 1 ts=1260000",
+        Some("platform::system"),
+        Some(1_260_000.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "1.300000 TRACE [platform::system] cpu_idle_c1 span_exit: Core 1: CPU Idle Core 1 ts=1300000",
+        "cpu_idle_c1 span_exit: Core 1: CPU Idle Core 1 ts=1300000",
+        Some("platform::system"),
+        Some(1_300_000.0),
+    ));
+
+    // 2. SENSOR CBOR Device Telemetry frames (Proximity North 118 mm, Thermal 25062 mC, Gesture DualLongPress)
+    let format_device_telemetry = |ts_us: u64, rec: TelemetryRecord| -> String {
+        let serialized = rec.serialize(ts_us);
+        let len = serialized[0] as usize;
+        let payload = &serialized[1..1 + len];
+        let joined = payload
+            .iter()
+            .map(|b| b.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("Device Telemetry: [{}]", joined)
+    };
+
+    let prox_msg = format_device_telemetry(
+        5_204_110,
+        TelemetryRecord::Proximity(SensorTelemetry::Status(
+            Direction::North,
+            SensorReading::Proximity(118),
+        )),
+    );
+    emitted.extend(proc.process_defmt_frame(
+        &format!("5.204110 TRACE {}", prox_msg),
+        &prox_msg,
+        Some("platform::tracing"),
+        Some(5_204_110.0),
+    ));
+
+    let therm_msg = format_device_telemetry(
+        5_150_880,
+        TelemetryRecord::Thermal(ThermalStatus::TempOverheating(25_062, false)),
+    );
+    emitted.extend(proc.process_defmt_frame(
+        &format!("5.150880 TRACE {}", therm_msg),
+        &therm_msg,
+        Some("platform::tracing"),
+        Some(5_150_880.0),
+    ));
+
+    let gest_msg = format_device_telemetry(
+        5_810_220,
+        TelemetryRecord::Gesture(Gesture::DualLongPress(GestureSource::Proximity)),
+    );
+    emitted.extend(proc.process_defmt_frame(
+        &format!("5.810220 TRACE {}", gest_msg),
+        &gest_msg,
+        Some("platform::tracing"),
+        Some(5_810_220.0),
+    ));
+
+    // Verify span B/E events, Core 0 & Core 1 continuous CPU usage curves, and sensor value events
+    assert!(emitted.iter().any(|ev| matches!(
+        ev,
+        HostCliEvent::Trace {
+            track,
+            ph,
+            category,
+            value: Some(_),
+            ..
+        } if track == "Core 0 CPU Usage (%)" && ph == "C" && category == "cpu_usage"
+    )));
+    assert!(emitted.iter().any(|ev| matches!(
+        ev,
+        HostCliEvent::Trace {
+            track,
+            ph,
+            category,
+            value: Some(v),
+            ..
+        } if track == "Core 1 CPU Usage (%)" && ph == "C" && category == "cpu_usage" && *v > 0.0 && *v < 100.0
+    )));
+    assert!(emitted.iter().any(|ev| matches!(
+        ev,
+        HostCliEvent::Trace {
+            ts_us: 1_122_000,
+            track,
+            ph,
+            category,
+            name,
+            ..
+        } if track == "CPU Core 1" && ph == "B" && category == "span" && name == "motor_controller::update"
+    )));
+    assert!(emitted.iter().any(|ev| matches!(
+        ev,
+        HostCliEvent::Trace {
+            ts_us: 5_204_110,
+            track,
+            ph,
+            category,
+            value: Some(v),
+            unit: Some(u),
+            ..
+        } if track == "Proximity (North)" && ph == "C" && category == "sensor" && (*v - 118.0).abs() < 1e-6 && u == "mm"
+    )));
+    assert!(emitted.iter().any(|ev| matches!(
+        ev,
+        HostCliEvent::Trace {
+            ts_us: 5_150_880,
+            track,
+            category,
+            value: Some(v),
+            unit: Some(u),
+            ..
+        } if track == "MCU / Board Thermal" && category == "sensor" && (*v - 25_062.0).abs() < 1e-6 && u == "mC"
+    )));
+
+    // Verify NDJSON serialization, CSV export, and Perfetto JSON export
+    let ndjson: serde_json::Value = serde_json::from_str(&emitted[0].to_json_line()).unwrap();
+    assert_eq!(ndjson["event"], "trace_event");
+    assert_eq!(ndjson["track"], "CPU Core 1");
+
+    let csv_out = export_trace_events_to_csv(&emitted);
+    assert!(csv_out.starts_with(
+        "timestamp_us,track,phase,category,name,value,unit,record_type,val1,val2,val3,val4\n"
+    ));
+    assert!(csv_out.contains(
+        "5204110,Proximity (North),C,sensor,Proximity (North),118,mm,Proximity,Valid,118,North,"
+    ));
+    assert!(csv_out.contains(
+        "5150880,MCU / Board Thermal,C,sensor,MCU Temperature (mC),25062,mC,Thermal,25062,false,,"
+    ));
+
+    let perfetto_str = export_trace_events_to_perfetto_json(&emitted, "rp2040");
+    let perfetto_doc: serde_json::Value = serde_json::from_str(&perfetto_str).unwrap();
+    let trace_events = perfetto_doc["traceEvents"].as_array().unwrap();
+    assert!(trace_events
+        .iter()
+        .any(|e| e["name"] == "process_name" && e["args"]["name"] == "RP2040 MCU"));
+    assert!(trace_events
+        .iter()
+        .any(|e| e["name"] == "motor_controller::update" && e["ph"] == "B" && e["tid"] == 2));
+    assert!(trace_events.iter().any(|e| e["name"] == "Proximity (North)"
+        && e["ph"] == "C"
+        && e["args"]["value"] == 118.0));
+}
+
+#[test]
+fn test_worm_dirt_tubeworm_731_live_processor_suspends_long_lived_tasks_across_idle() {
+    use host_cli::{HostCliEvent, LiveTraceStreamProcessor};
+
+    let mut proc = LiveTraceStreamProcessor::new();
+    let mut emitted = Vec::new();
+
+    // 1. Long-lived `TELEMETRY_CHANNEL` task (`span_id=9`) enters at boot (31,800 µs) and runs `push_record` (`span_id=10`)
+    emitted.extend(proc.process_defmt_frame(
+        "0.031800 TRACE [cat_detector_app::__bootstrap_task_task] ctx=9 parent=0 span_enter: TELEMETRY_CHANNEL",
+        "ctx=9 parent=0 span_enter: TELEMETRY_CHANNEL",
+        Some("cat_detector_app::__bootstrap_task_task"),
+        Some(31_800.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "0.032100 TRACE [controller::telemetry_controller] ctx=a parent=9 span_enter: telemetry_controller::push_record",
+        "ctx=a parent=9 span_enter: telemetry_controller::push_record",
+        Some("controller::telemetry_controller"),
+        Some(32_100.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "0.037200 TRACE [controller::telemetry_controller] a parent=9 span_exit: telemetry_controller::push_record",
+        "a parent=9 span_exit: telemetry_controller::push_record",
+        Some("controller::telemetry_controller"),
+        Some(37_200.0),
+    ));
+
+    // 2. Core 0 yields into `CPU Idle Core 0` (`38,000 .. 1,038,000 µs`) -> must suspend `TELEMETRY_CHANNEL` (`ph = "E"`)!
+    emitted.extend(proc.process_defmt_frame(
+        "1.038000 TRACE [platform::system] ctx=cpu_idle_c0 parent=0 span_enter: Core 0: CPU Idle Core 0 ts=38000",
+        "ctx=cpu_idle_c0 parent=0 span_enter: Core 0: CPU Idle Core 0 ts=38000",
+        Some("platform::system"),
+        Some(1_038_000.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "1.038000 TRACE [platform::system] cpu_idle_c0 span_exit: Core 0: CPU Idle Core 0 ts=1038000",
+        "cpu_idle_c0 span_exit: Core 0: CPU Idle Core 0 ts=1038000",
+        Some("platform::system"),
+        Some(1_038_000.0),
+    ));
+
+    // 3. `TELEMETRY_CHANNEL` wakes up 1s later (`1,038,500 µs`) and enters `push_record` (`span_id=19`, `parent=9`) -> must resume `TELEMETRY_CHANNEL` (`ph = "B"`)!
+    emitted.extend(proc.process_defmt_frame(
+        "1.038500 TRACE [controller::telemetry_controller] ctx=19 parent=9 span_enter: telemetry_controller::push_record",
+        "ctx=19 parent=9 span_enter: telemetry_controller::push_record",
+        Some("controller::telemetry_controller"),
+        Some(1_038_500.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "1.042800 TRACE [controller::telemetry_controller] 19 parent=9 span_exit: telemetry_controller::push_record",
+        "19 parent=9 span_exit: telemetry_controller::push_record",
+        Some("controller::telemetry_controller"),
+        Some(1_042_800.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "1.060000 TRACE [platform::system] ctx=cpu_idle_c0 parent=0 span_enter: Core 0: CPU Idle Core 0 ts=1043000",
+        "ctx=cpu_idle_c0 parent=0 span_enter: Core 0: CPU Idle Core 0 ts=1043000",
+        Some("platform::system"),
+        Some(1_060_000.0),
+    ));
+
+    let telemetry_ch_begins = emitted
+        .iter()
+        .filter(|ev| {
+            matches!(
+                ev,
+                HostCliEvent::Trace {
+                    category,
+                    ph,
+                    name,
+                    ..
+                } if category == "span" && ph == "B" && name == "TELEMETRY_CHANNEL"
+            )
+        })
+        .count();
+    let telemetry_ch_ends = emitted
+        .iter()
+        .filter(|ev| {
+            matches!(
+                ev,
+                HostCliEvent::Trace {
+                    category,
+                    ph,
+                    name,
+                    ..
+                } if category == "span" && ph == "E" && name == "TELEMETRY_CHANNEL"
+            )
+        })
+        .count();
+
+    assert_eq!(
+        telemetry_ch_begins, 2,
+        "Expected TELEMETRY_CHANNEL to begin at boot and resume on wakeup, got {} begins in {:?}",
+        telemetry_ch_begins, emitted
+    );
+    assert_eq!(
+        telemetry_ch_ends, 2,
+        "Expected TELEMETRY_CHANNEL to suspend cleanly at each CPU Idle entry, got {} ends in {:?}",
+        telemetry_ch_ends, emitted
+    );
+}
+
+#[test]
+fn test_live_task_span_stack_and_core_state_accessors() {
+    use host_cli::{HostCliEvent, LiveCoreSpanState, LiveSpanEntry, LiveTaskSpanStack};
+
+    let mut stack = LiveTaskSpanStack::default();
+    assert!(stack.is_empty());
+
+    let root = LiveSpanEntry::new(
+        "10".to_string(),
+        None,
+        "battery_controller".to_string(),
+        Some("controller::battery_controller".to_string()),
+        "10".to_string(),
+    );
+    let child = LiveSpanEntry::new(
+        "11".to_string(),
+        Some("10".to_string()),
+        "battery_controller::read_soc".to_string(),
+        Some("controller::battery_controller".to_string()),
+        "10".to_string(),
+    );
+    assert!(stack.push_dedup("10".to_string(), root.clone()).is_empty());
+    assert!(stack.push_dedup("11".to_string(), child.clone()).is_empty());
+    assert_eq!(stack.len(), 2);
+    assert!(stack.contains_id("10"));
+    assert_eq!(stack.find_matching_id_rev("read_soc"), Some("11"));
+
+    // Re-entering `battery_controller` without closing `read_soc` unwinds both in LIFO order
+    let unwound = stack.push_dedup("10".to_string(), root.clone());
+    assert_eq!(unwound.len(), 2);
+    assert_eq!(unwound[0].name(), "battery_controller::read_soc");
+    assert_eq!(unwound[1].name(), "battery_controller");
+    assert_eq!(stack.len(), 1);
+
+    let mut core_state = LiveCoreSpanState::default();
+    let mut events = Vec::new();
+    core_state.enter_span(
+        0,
+        1_000,
+        true,
+        "20".to_string(),
+        "0".to_string(),
+        "thermal_controller".to_string(),
+        Some("controller::thermal_controller"),
+        &mut events,
+    );
+    assert_eq!(core_state.running_task(), Some("20"));
+    assert_eq!(core_state.task_key_for_span("20"), Some("20"));
+    assert_eq!(
+        core_state.resolve_task_key(false, "21", "20", "poll_temp"),
+        "20"
+    );
+
+    core_state.enter_span(
+        0,
+        1_050,
+        false,
+        "21".to_string(),
+        "20".to_string(),
+        "poll_temp".to_string(),
+        Some("controller::thermal_controller"),
+        &mut events,
+    );
+    assert!(core_state.is_span_on_task_stack("20", "21"));
+    assert_eq!(
+        core_state.find_open_span_id("", "poll_temp"),
+        Some("21".to_string())
+    );
+    assert_eq!(
+        core_state.span_entry("21").and_then(LiveSpanEntry::module),
+        Some("controller::thermal_controller")
+    );
+
+    // Exiting root span `20` implicitly unwinds `21` (`poll_temp`) and closes `20`
+    core_state.exit_span(
+        0,
+        1_200,
+        "20",
+        "0",
+        "thermal_controller".to_string(),
+        Some("controller::thermal_controller"),
+        &mut events,
+    );
+    assert_eq!(core_state.running_task(), None);
+    assert!(core_state.task_stack("20").is_none());
+    let end_names: Vec<&str> = events
+        .iter()
+        .filter_map(|ev| match ev {
+            HostCliEvent::Trace { ph, name, .. } if ph == "E" => Some(name.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(end_names, vec!["poll_temp", "thermal_controller"]);
+}
+
+#[test]
+fn test_target_boot_status_flags_and_poller_across_binaries() {
+    use host_cli::{BootStatusPoller, HostCliEvent, TargetBootStatusReport};
+    use tool_common::{
+        decode_rtt_boot_state, encode_rtt_status_flags, TargetBootState, RTT_CHANNEL_MODE_MASK,
+    };
+
+    let booting_flags = encode_rtt_status_flags(1, TargetBootState::Booting, false, 0);
+    assert_eq!(booting_flags & RTT_CHANNEL_MODE_MASK, 1);
+    assert_eq!(
+        decode_rtt_boot_state(booting_flags),
+        TargetBootState::Booting
+    );
+
+    let app_ready_flags = encode_rtt_status_flags(1, TargetBootState::Ready, false, 0);
+    let app_report = TargetBootStatusReport::from_rtt_flags("rp2040", app_ready_flags);
+    assert_eq!(app_report.state, TargetBootState::Ready);
+    assert!(app_report.boot_ready);
+    assert!(!app_report.shell_idle);
+
+    let shell_ready_flags = encode_rtt_status_flags(1, TargetBootState::Ready, true, 7);
+    let shell_report = TargetBootStatusReport::from_rtt_flags("rp2040", shell_ready_flags);
+    assert_eq!(shell_report.state, TargetBootState::Ready);
+    assert!(shell_report.boot_ready);
+    assert!(shell_report.shell_idle);
+    assert_eq!(shell_report.epoch, 7);
+
+    let mut poller = BootStatusPoller::new();
+    assert_eq!(
+        poller.poll(booting_flags),
+        Some(HostCliEvent::BootStatus {
+            state: "booting".to_string(),
+            boot_ready: false,
+            shell_idle: false,
+            epoch: 0,
+        })
+    );
+    // Duplicate state is suppressed until boot state transitions
+    assert_eq!(poller.poll(booting_flags), None);
+    assert_eq!(
+        poller.poll(app_ready_flags),
+        Some(HostCliEvent::BootStatus {
+            state: "ready".to_string(),
+            boot_ready: true,
+            shell_idle: false,
+            epoch: 0,
+        })
+    );
+}
+
+#[test]
+fn test_worm_dirt_pupa_301_configure_alerts_terminates_cleanly_across_async_yield_and_missed_exit()
+{
+    use host_cli::{HostCliEvent, LiveTraceStreamProcessor};
+
+    // Case 1: Async yield during `configure_alerts` (`0x10`) followed by wakeup exit whose `span_id`
+    // raced with an already-closed span (`0x11` on Core 0) must still close `configure_alerts` by name
+    // and never leave `configure_alerts` stuck on `BATTERY_CHANNEL`'s stack across `CPU Idle Core 0`.
+    let mut proc = LiveTraceStreamProcessor::new();
+    let mut emitted = Vec::new();
+
+    emitted.extend(proc.process_defmt_frame(
+        "0.033050 TRACE [cat_detector_app::__bootstrap_task_task] ctx=0f parent=0 span_enter: Core 0: BATTERY_CHANNEL",
+        "ctx=0f parent=0 span_enter: Core 0: BATTERY_CHANNEL",
+        Some("cat_detector_app::__bootstrap_task_task"),
+        Some(33_050.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "0.033211 TRACE [peripheral::max17048] ctx=10 parent=0f span_enter: Core 0: configure_alerts(voltage_min_mv=3000, voltage_max_mv=4200, soc_threshold_pct=10, enable_soc_change_alert=true)",
+        "ctx=10 parent=0f span_enter: Core 0: configure_alerts(voltage_min_mv=3000, voltage_max_mv=4200, soc_threshold_pct=10, enable_soc_change_alert=true)",
+        Some("peripheral::max17048"),
+        Some(33_211.0),
+    ));
+    // Yield to `SYSTEM_CHANNEL` (`0d`), which enters and exits `handle_thermal_action` (`11`)
+    emitted.extend(proc.process_defmt_frame(
+        "0.033978 TRACE [cat_detector_app::__bootstrap_task_task] ctx=0d parent=0 span_enter: Core 0: SYSTEM_CHANNEL",
+        "ctx=0d parent=0 span_enter: Core 0: SYSTEM_CHANNEL",
+        Some("cat_detector_app::__bootstrap_task_task"),
+        Some(33_978.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "0.033980 TRACE [controller::system_controller] ctx=11 parent=0d span_enter: Core 0: handle_thermal_action",
+        "ctx=11 parent=0d span_enter: Core 0: handle_thermal_action",
+        Some("controller::system_controller"),
+        Some(33_980.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "0.034041 TRACE [controller::system_controller] ctx=11 parent=0d span_exit: Core 0: handle_thermal_action",
+        "ctx=11 parent=0d span_exit: Core 0: handle_thermal_action",
+        Some("controller::system_controller"),
+        Some(34_041.0),
+    ));
+    // `configure_alerts` finishes at 42,003 us, with `span_exit` carrying stale closed `ctx=11` from dual-core context race
+    emitted.extend(proc.process_defmt_frame(
+        "0.042003 TRACE [peripheral::max17048] ctx=11 parent=0d span_exit: Core 0: configure_alerts",
+        "ctx=11 parent=0d span_exit: Core 0: configure_alerts",
+        Some("peripheral::max17048"),
+        Some(42_003.0),
+    ));
+    // Next sibling `battery_controller::update` (`16`, `parent=0f`) enters and exits, then Core 0 goes idle
+    emitted.extend(proc.process_defmt_frame(
+        "0.042157 TRACE [controller::battery_controller] ctx=16 parent=0f span_enter: Core 0: battery_controller::update",
+        "ctx=16 parent=0f span_enter: Core 0: battery_controller::update",
+        Some("controller::battery_controller"),
+        Some(42_157.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "0.045040 TRACE [controller::battery_controller] ctx=16 parent=0f span_exit: Core 0: battery_controller::update",
+        "ctx=16 parent=0f span_exit: Core 0: battery_controller::update",
+        Some("controller::battery_controller"),
+        Some(45_040.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "2.045040 TRACE [platform::system] ctx=cpu_idle_c0 parent=0 span_enter: Core 0: CPU Idle Core 0 ts=45040",
+        "ctx=cpu_idle_c0 parent=0 span_enter: Core 0: CPU Idle Core 0 ts=45040",
+        Some("platform::system"),
+        Some(2_045_040.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "2.045040 TRACE [platform::system] cpu_idle_c0 span_exit: Core 0: CPU Idle Core 0 ts=2045040",
+        "cpu_idle_c0 span_exit: Core 0: CPU Idle Core 0 ts=2045040",
+        Some("platform::system"),
+        Some(2_045_040.0),
+    ));
+    // Wakeup 2s later: `configure_alerts` MUST NOT be resumed!
+    emitted.extend(proc.process_defmt_frame(
+        "2.045200 TRACE [controller::battery_controller] ctx=30 parent=0f span_enter: Core 0: battery_controller::update",
+        "ctx=30 parent=0f span_enter: Core 0: battery_controller::update",
+        Some("controller::battery_controller"),
+        Some(2_045_200.0),
+    ));
+
+    let late_configure_begins = emitted
+        .iter()
+        .filter(|ev| {
+            matches!(
+                ev,
+                HostCliEvent::Trace {
+                    ts_us,
+                    ph,
+                    name,
+                    ..
+                } if *ts_us >= 42_003 && ph == "B" && name.starts_with("configure_alerts")
+            )
+        })
+        .count();
+    assert_eq!(
+        late_configure_begins, 0,
+        "configure_alerts must not emit spurious 0-us wakeup B or stay on stack after 42,003 us: {:?}",
+        emitted
+    );
+
+    // Case 2: Completely dropped `span_exit` for `configure_alerts` (`10`, `parent=0f`) must be
+    // implicitly unwound as soon as sibling `battery_controller::update` (`16`, `parent=0f`) enters!
+    let mut proc2 = LiveTraceStreamProcessor::new();
+    let mut emitted2 = Vec::new();
+    emitted2.extend(proc2.process_defmt_frame(
+        "0.033050 TRACE [cat_detector_app::__bootstrap_task_task] ctx=0f parent=0 span_enter: Core 0: BATTERY_CHANNEL",
+        "ctx=0f parent=0 span_enter: Core 0: BATTERY_CHANNEL",
+        Some("cat_detector_app::__bootstrap_task_task"),
+        Some(33_050.0),
+    ));
+    emitted2.extend(proc2.process_defmt_frame(
+        "0.033211 TRACE [peripheral::max17048] ctx=10 parent=0f span_enter: Core 0: configure_alerts",
+        "ctx=10 parent=0f span_enter: Core 0: configure_alerts",
+        Some("peripheral::max17048"),
+        Some(33_211.0),
+    ));
+    // `configure_alerts` span_exit dropped! Sibling `battery_controller::update` (`parent=0f`) enters:
+    emitted2.extend(proc2.process_defmt_frame(
+        "0.042157 TRACE [controller::battery_controller] ctx=16 parent=0f span_enter: Core 0: battery_controller::update",
+        "ctx=16 parent=0f span_enter: Core 0: battery_controller::update",
+        Some("controller::battery_controller"),
+        Some(42_157.0),
+    ));
+
+    let implicit_exit = emitted2.iter().any(|ev| {
+        matches!(
+            ev,
+            HostCliEvent::Trace {
+                ts_us: 42_157,
+                ph,
+                name,
+                args,
+                ..
+            } if ph == "E" && name == "configure_alerts" && args.get("implicit").and_then(|v| v.as_bool()) == Some(true)
+        )
+    });
+    assert!(
+        implicit_exit,
+        "Expected sibling battery_controller::update (parent=0f) to implicitly unwind unclosed configure_alerts (parent=0f), got {:?}",
+        emitted2
+    );
 }

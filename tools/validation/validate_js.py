@@ -490,7 +490,8 @@ def build_template_variants(template_path: Path, repo_root: Path) -> List[Templa
     if name == "host_daemon.html.j2":
         sample_packages = [{"package": "cat_detector", "bins": ["app"]}]
         cli_runner = MockDaemonRunner(active_mode="CLI", release=False, show_system_logs=False)
-        bringup_runner = MockDaemonRunner(active_mode="BRINGUP", release=True, show_system_logs=True)
+        fs_runner = MockDaemonRunner(active_mode="FS", release=True, show_system_logs=True)
+        test_runner = MockDaemonRunner(active_mode="TEST", release=False, show_system_logs=True)
         return [
             TemplateVariant(
                 variant_name="cli_mode",
@@ -504,12 +505,34 @@ def build_template_variants(template_path: Path, repo_root: Path) -> List[Templa
             TemplateVariant(
                 variant_name="package_select",
                 context={
-                    "runner": bringup_runner,
+                    "runner": fs_runner,
                     "package_selection_mode": True,
                     "target_packages": sample_packages,
                     "last_session": {"package": "cat_detector", "bin_name": "app"},
                 },
             ),
+            TemplateVariant(
+                variant_name="test_mode",
+                context={
+                    "runner": test_runner,
+                    "package_selection_mode": False,
+                    "target_packages": sample_packages,
+                    "last_session": None,
+                },
+            ),
+        ]
+
+    if name == "perfetto_bridge.html.j2":
+        return [
+            TemplateVariant(
+                variant_name="perfetto_bridge",
+                context={
+                    "trace_title": "cat_detector_app (PERF)",
+                    "trace_filename": "cat_detector_app_perf.perfetto.json",
+                    "trace_url": "/api/trace/perfetto.json?ts=1700000000000",
+                    "event_count": 42,
+                },
+            )
         ]
 
     return [TemplateVariant(variant_name="default", context={})]

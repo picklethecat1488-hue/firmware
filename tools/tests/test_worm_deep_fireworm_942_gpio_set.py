@@ -68,9 +68,9 @@ def test_worm_deep_fireworm_942_shell_toml_gpio_arguments():
     assert "pin" in arg_names, "gpio command must have 'pin' argument."
     assert "value" in arg_names, "gpio command must have 'value' argument."
 
-    # Both arguments must have attributes = [] to ensure positional parsing in embedded-cli
+    # Both arguments must omit short_flag and long_flag to ensure positional parsing in embedded-cli
     for a in args:
         if a.get("name") in ("pin", "value"):
-            assert a.get("attributes") == [], (
-                f"gpio argument '{a.get('name')}' must have attributes = [] for positional CLI parsing."
+            assert a.get("short_flag") is None and a.get("long_flag") is None, (
+                f"gpio argument '{a.get('name')}' must omit short_flag/long_flag for positional CLI parsing."
             )

@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!-- Fixture verifying DOM target.xml parsing ignores commented-out <reg> tags and handles single/double quotes. -->
+<target version="1.0">
+  <!-- <reg name="fake" bitsize="32" regnum="99" group="general"/> -->
+  <feature name='org.example.first'>
+    <reg group='general' regnum='3' name='r3' bitsize='32'/>
+    <reg name='sys0' bitsize='32' regnum='19' group='system'/>
+  </feature>
+  <feature name="org.example.second">
+    <reg name="pc" bitsize="32" group="general" regnum="15"/>
+  </feature>
+</target>

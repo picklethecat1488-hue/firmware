@@ -481,6 +481,7 @@ pub fn handle_panic_with_sizes<
     cpu_id: CpuId,
     stack_top: u32,
 ) -> ! {
+    crate::rtt::set_rtt_boot_state(crate::rtt::TargetBootState::Faulted);
     let mut msg_buf = [0u8; 64];
     struct BufferWriter<'a> {
         buf: &'a mut [u8],

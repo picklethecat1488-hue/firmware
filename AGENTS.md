@@ -3,14 +3,14 @@
 Before finalizing any task, committing changes, or proposing modifications to the codebase, you MUST run the unified pre-commit verification script to ensure the codebase remains healthy:
 
 ```bash
-./tools/verify.sh
+./tools/verify.py
 ```
 
 ## Validation Guidelines
-1. **Execution**: Always run `./tools/verify.sh` from the repository root. Heavy test suites, linters, and verification runs may also be offloaded to the `anvil` cloud server via `tools/anvil verify` or `tools/anvil pytest` to conserve local compute.
+1. **Execution**: Always run `./tools/verify.py` from the repository root. Heavy test suites, linters, and verification runs may also be offloaded to the `anvil` cloud server via `tools/anvil verify` or `tools/anvil pytest` to conserve local compute.
 2. **Outcome Verification**: Confirm the script exits successfully and outputs `Verification PASSED`.
-3. **Resolution**: If any component fails (such as Cargo tests, Python tests, formatting, or firmware builds), you must address the failure and re-run `./tools/verify.sh` until it passes before concluding your work.
-4. **Process Management & Rerun Hygiene**: When restarting or re-running test suites (`./tools/verify.sh`, `pytest`, `cargo test`, `cargo nextest`, `tools/anvil pytest`, `tools/anvil verify`, etc.), you MUST explicitly terminate/kill any preceding running instances of that test or task before launching a new execution. Never allow multiple overlapping runs of the same test command.
+3. **Resolution**: If any component fails (such as Cargo tests, Python tests, formatting, or firmware builds), you must address the failure and re-run `./tools/verify.py` until it passes before concluding your work.
+4. **Process Management & Rerun Hygiene**: When restarting or re-running test suites (`./tools/verify.py`, `pytest`, `cargo test`, `cargo nextest`, `tools/anvil pytest`, `tools/anvil verify`, etc.), you MUST explicitly terminate/kill any preceding running instances of that test or task before launching a new execution. Never allow multiple overlapping runs of the same test command.
 5. **GitHub CI Monitoring & Local Stack Remediation**: When commits have been pushed to a remote feature branch or when instructed to inspect CI, you may inspect GitHub Actions CI workflow results (e.g. via `gh run list --limit 5`, `gh pr checks`, or `gh run view <run-id> --log-failed`) and resolve any reported failures. However, the agent MUST NOT autonomously create pull requests (`gh pr create`) or merge pull requests (`gh pr merge`). All pull request creation, peer code reviews, and PR merges MUST be performed manually by the user.
 6. **Host Daemon Firmware Synchronization**: When updating or re-flashing target firmware during iterative development, debugging, or test bringup, do NOT terminate or restart the running `host.py` daemon. Instead, execute `python tools/host.py sync` (or invoke `POST http://127.0.0.1:8899/api/sync`) to trigger incremental compilation, flashing via `probe-rs`, and RTT reconnection while preserving the running workstation and HTTP server session.
 
@@ -53,6 +53,7 @@ Host anvil
 ### 2. Firmware Target Compatibility Mandate
 * **Universal Target Compatibility**: Unless duly noted, any firmware code should apply to all firmware targets in the repository.
 * **Decoupled Architecture**: Avoid target-specific lock-in in core libraries, drivers, data models, state machines, and domain controllers. Peripheral and hardware specifics must be decoupled through `embedded-hal` trait interfaces and Board Support Package (BSP) abstractions so code is universally portable across all supported boards.
+* **Zero Default Chip, Target, Board, or Binary Fallbacks**: Never fall back to a default chip (e.g., `rp2040`), ARM target triple (e.g., `thumbv6m-none-eabi`), board type, or binary name in device code, BSPs, code generators, or host/test tooling. Declare per-binary hardware metadata explicitly in `app/Cargo.toml` (`[package.metadata.binaries.<bin>]`) and `board/board.toml`, resolve Cargo's single build output directory via `cargo metadata`, and fail explicitly when target or chip identity cannot be inferred.
 
 ### 3. Strict Code Cleanliness & Hygiene
 * **No Dead Code**: Unused code, dangling functions, dead branches, and parameters that do not affect execution must be removed from the repository.
@@ -74,6 +75,7 @@ Host anvil
 
 ### 6. Fast Search & Tooling Hygiene
 * **Silver Searcher (`ag`) Mandate**: For file, text, and code symbol searches across the codebase, always use The Silver Searcher (`ag`) instead of recursive `grep -rn` or unbounded `find .`. `ag` automatically respects `.gitignore` rules, ignores `target/` and build artifacts, and executes synchronously without spawning long-running background tasks.
+* **Host Output & Probe Log File Redirection**: `tools/host.py` automatically separates host and target streams into dedicated log files under `target/logs/` (`host_daemon.log`, `host_debug.log`, `target_defmt.log`, `target_cli.log`, `host_fs.log`; inspectable via `python tools/host.py logs --stream <stream> --lines <N>`). When invoking standalone `host_debug serve`, `host_cli`, or `arm-none-eabi-gdb` diagnostic commands, always forward verbose probe/RTT/GDB output to a log file (`--log-file <path>`, e.g. `target/logs/host_debug.log` or `/tmp/rp2040.log`) instead of streaming raw multi-kilobyte probe output or target ASCII banners to stdout/stderr, and inspect exit codes plus bounded line slices (`StartLine`/`EndLine` or `python tools/host.py logs --lines 40`).
 
 ---
 
@@ -95,7 +97,7 @@ Host anvil
   2. **Isolated Reproduction**: Construct an isolated reproduction script or minimal failing unit test asserting the flawed invariant *before* editing production code.
   3. **Targeted Fix**: Implement the minimal necessary change strictly scoped to the defect.
   4. **Dedicated Regression Test**: Codify the reproduction into an active unit test asserting the correct invariant.
-  5. **Verification**: Run pre-commit checks (`./tools/verify.sh`) to verify 100% pass rate.
+  5. **Verification**: Run pre-commit checks (`./tools/verify.py`) to verify 100% pass rate.
   6. **Review Tasks & Functional Checklist**: When changing status to `RESOLVED`, populate the worm's review tasks and functional checklist (`review_tasks`) with concise, actionable verification steps and executable demonstration commands that verify the change from a user-experience perspective (such as a host CLI command e.g. `python tools/host.py cli ...`, interactive diagnostic shell, or UI inspection). Do NOT use `pytest` commands as review verification tasks, as automated test suites are already run during pre-commit checks and CI; verification commands should demonstrate the actual behavioral outcome or visual fix in the user experience.
   7. **Resolution, Linkage & Commit**: Mark the worm resolved (`python tools/forge.py resolve-worm --id <ID> --notes "<Summary>"`), attach the fix commit hash (`python tools/forge.py attach-commit --id <ID> --commit <hash>`), and commit atomically before picking up the next task.
 

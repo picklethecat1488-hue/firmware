@@ -27,7 +27,10 @@ pub struct CliArg {
     #[serde(rename = "type")]
     pub arg_type: String,
     pub help: String,
-    pub attributes: Option<Vec<String>>,
+    #[serde(default)]
+    pub short_flag: Option<char>,
+    #[serde(default)]
+    pub long_flag: Option<String>,
     #[serde(default)]
     pub max_len: Option<usize>,
 }
@@ -65,26 +68,13 @@ impl CliArg {
             None
         }
     }
-    pub fn attributes_slice(&self) -> Vec<String> {
-        if let Some(ref attrs) = self.attributes {
-            attrs.clone()
-        } else if self.name != "arg1"
-            && self.name != "arg2"
-            && self.name != "arg3"
-            && self.name != "target"
-        {
-            vec![format!("#[arg(long = \"{}\")]", self.name)]
-        } else {
-            vec![]
-        }
-    }
 
     pub fn rust_type(&self) -> String {
         match self.arg_type.as_str() {
             "string" => "Option<&'a str>".to_string(),
             "int" => "Option<i32>".to_string(),
             "float" => "Option<f32>".to_string(),
-            "bool" => "Option<bool>".to_string(),
+            "bool" => "bool".to_string(),
             custom => resolve_crate_path(custom),
         }
     }

@@ -97,7 +97,15 @@ impl<F: embedded_storage_async::nor_flash::NorFlash> TelemetryController<F> {
 
         let len = serialized[0] as usize;
         if len == 0 || len >= model::telemetry::TELEMETRY_MAX_SIZE {
-            #[cfg(all(target_arch = "arm", target_os = "none", feature = "tracing"))]
+            #[cfg(all(
+                target_arch = "arm",
+                target_os = "none",
+                any(
+                    feature = "trace-perf",
+                    feature = "trace-sensors",
+                    feature = "trace-audio"
+                )
+            ))]
             defmt::warn!("Unsupported telemetry record length: {}", len);
             Err(())
         } else {

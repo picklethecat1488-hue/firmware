@@ -1,6 +1,40 @@
 {
   "lldb.rpcServer": "on",
-  "rust-analyzer.cargo.target": "thumbv6m-none-eabi",
+  "OcpCadViewer.advanced.watchByDefault": false,
+  "OcpCadViewer.advanced.autostart": false,
   "rust-analyzer.cargo.buildScripts.enable": true,
-  "rust-analyzer.procMacro.enable": true
+  "rust-analyzer.procMacro.enable": true,
+  "rust-analyzer.files.excludeDirs": [
+    "tools/tests/resources"
+  ],
+  "search.exclude": {
+    "**/tests/resources": true,
+    "**/tests/resources/**": true
+  },
+  "files.watcherExclude": {
+    "**/tests/resources/**": true
+  },
+  "python.analysis.exclude": [
+    "**/tests/resources/**"
+  ],
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": [
+    "-o",
+    "addopts=-v --maxfail=1",
+    "tools/device_tests/suites",
+    "tools/tests",
+    "tools/validation/tests"
+  ],
+  "python.analysis.extraPaths": [
+    "./tools",
+    "./tools/validation",
+    "./tools/helpers",
+    "./tools/dashboard"
+  ],
+  "workbench.browser.openLocalhostLinks": true,
+  "workbench.externalUriOpeners": {
+    "http://127.0.0.1:*": "simpleBrowser.open",
+    "http://localhost:*": "simpleBrowser.open"
+  }
 }

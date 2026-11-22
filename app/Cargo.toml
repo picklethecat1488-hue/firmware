@@ -28,6 +28,21 @@ path = "src/carrier_board_shell.rs"
 test = true
 bench = false
 
+[package.metadata.binaries.cat_detector_shell]
+board = "cat_detector"
+chip = "rp2040"
+target = "thumbv6m-none-eabi"
+
+[package.metadata.binaries.cat_detector_app]
+board = "cat_detector"
+chip = "rp2040"
+target = "thumbv6m-none-eabi"
+
+[package.metadata.binaries.carrier_board_shell]
+board = "carrier_board"
+chip = "MCXN947"
+target = "thumbv6m-none-eabi"
+
 [dependencies]
 model = { path = "../model" }
 platform = { path = "../platform", features = ["dual-core"] }
@@ -69,7 +84,35 @@ futures = "0.3"
 
 [features]
 default = []
-tracing = ["controller/tracing", "dep:tracing-defmt", "core1"]
+trace-perf = [
+    "platform/trace-perf",
+    "peripheral/trace-perf",
+    "controller/trace-perf",
+    "board/trace-perf",
+    "dep:tracing-defmt",
+    "core1",
+]
+trace-sensors = [
+    "platform/trace-sensors",
+    "peripheral/trace-sensors",
+    "controller/trace-sensors",
+    "board/trace-sensors",
+]
+trace-sensor-spans = [
+    "platform/trace-sensor-spans",
+    "peripheral/trace-sensor-spans",
+    "controller/trace-sensor-spans",
+    "board/trace-sensor-spans",
+    "dep:tracing-defmt",
+]
+trace-audio = [
+    "platform/trace-audio",
+    "peripheral/trace-audio",
+    "controller/trace-audio",
+    "board/trace-audio",
+    "dep:tracing-defmt",
+]
+tracing = ["trace-perf", "trace-sensors", "trace-sensor-spans"]
 core1 = [
     "controller/core1",
     "peripheral/core1",

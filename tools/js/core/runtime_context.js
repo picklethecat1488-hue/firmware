@@ -14,6 +14,139 @@ export const DEFAULT_BOOT_CONFIG_ID = "app-boot-config";
 const DEFAULT_VIEWPORT_WIDTH_PX = 1280;
 const DEFAULT_VIEWPORT_HEIGHT_PX = 800;
 const DEFAULT_FRAME_DT_MS = 16.6667;
+const PERFETTO_UI_ORIGIN = "https://ui.perfetto.dev";
+const PERFETTO_PING_INTERVAL_MS = 100;
+const PERFETTO_HANDSHAKE_TIMEOUT_MS = 12000;
+
+/**
+ * Normalize a trace payload (`ArrayBuffer`, `Uint8Array`, or UTF-8 string) into an `ArrayBuffer`.
+ *
+ * @param {ArrayBuffer|Uint8Array|string} payload - Trace payload.
+ * @returns {ArrayBuffer}
+ */
+function toTraceArrayBuffer(payload) {
+  if (payload instanceof ArrayBuffer) {
+    return payload;
+  }
+  if (ArrayBuffer.isView(payload)) {
+    return payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength);
+  }
+  const encoded = new globalThis.TextEncoder().encode(String(payload ?? ""));
+  return encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength);
+}
+
+/**
+ * Perform Perfetto UI's `PING` -> `PONG` `postMessage` handshake against a target `Window`
+ * (either an opened popup tab or an embedded `<iframe src="https://ui.perfetto.dev">` window)
+ * and push the resolved `ArrayBuffer` trace payload directly without cross-origin/mixed-content HTTP fetches.
+ *
+ * @param {object} hostGlobals - Global environment object (`globalThis`).
+ * @param {function(): (object|null)} resolveTargetWindow - Accessor returning target `Window` or `null`.
+ * @param {{buffer?: ArrayBuffer|Uint8Array|string, loadBuffer?: function(): Promise<ArrayBuffer|Uint8Array|string>, title?: string, fileName?: string}} [options]
+ * @returns {Promise<boolean>} True if `PONG` succeeded and the trace buffer was posted.
+ */
+function pushPerfettoBufferViaPostMessage(hostGlobals, resolveTargetWindow, options = {}) {
+  const title = String(options.title || "Firmware Perfetto Trace");
+  const fileName = String(options.fileName || "trace.perfetto.json");
+
+  const bufferPromise =
+    typeof options.loadBuffer === "function"
+      ? Promise.resolve()
+          .then(() => options.loadBuffer())
+          .then(toTraceArrayBuffer)
+      : Promise.resolve(toTraceArrayBuffer(options.buffer ?? ""));
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let pingHandle = null;
+    let timeoutHandle = null;
+
+    const cleanup = () => {
+      if (pingHandle !== null) {
+        hostGlobals.clearInterval(pingHandle);
+        pingHandle = null;
+      }
+      if (timeoutHandle !== null) {
+        hostGlobals.clearTimeout(timeoutHandle);
+        timeoutHandle = null;
+      }
+      if (typeof hostGlobals.removeEventListener === "function") {
+        hostGlobals.removeEventListener("message", onMessage);
+      }
+    };
+
+    const sendPing = () => {
+      const targetWin = resolveTargetWindow();
+      if (!targetWin) {
+        return true;
+      }
+      if (targetWin.closed) {
+        settled = true;
+        cleanup();
+        resolve(false);
+        return false;
+      }
+      if (typeof targetWin.postMessage === "function") {
+        targetWin.postMessage("PING", PERFETTO_UI_ORIGIN);
+      }
+      return true;
+    };
+
+    const onMessage = (evt) => {
+      if (settled || evt.origin !== PERFETTO_UI_ORIGIN || evt.data !== "PONG") {
+        return;
+      }
+      const targetWin = resolveTargetWindow();
+      if (!targetWin || targetWin.closed || (evt.source && evt.source !== targetWin)) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      bufferPromise.then(
+        (arrayBuffer) => {
+          const postWin = resolveTargetWindow();
+          if (!postWin || postWin.closed || typeof postWin.postMessage !== "function") {
+            resolve(false);
+            return;
+          }
+          postWin.postMessage(
+            {
+              perfetto: {
+                buffer: arrayBuffer,
+                title,
+                fileName,
+              },
+            },
+            PERFETTO_UI_ORIGIN,
+          );
+          resolve(true);
+        },
+        () => {
+          resolve(false);
+        },
+      );
+    };
+
+    if (typeof hostGlobals.addEventListener === "function") {
+      hostGlobals.addEventListener("message", onMessage);
+    }
+
+    pingHandle = hostGlobals.setInterval(() => {
+      sendPing();
+    }, PERFETTO_PING_INTERVAL_MS);
+
+    timeoutHandle = hostGlobals.setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(false);
+    }, PERFETTO_HANDSHAKE_TIMEOUT_MS);
+
+    sendPing();
+  });
+}
 
 /**
  * Create an in-memory key-value store matching the Web Storage API.
@@ -43,11 +176,12 @@ export function createMemoryStorage(initialEntries = {}) {
  * Resolve native `localStorage` when accessible, falling back to in-memory storage
  * in sandboxed webviews or headless environments.
  *
+ * @param {object} [hostGlobals] - Global environment object (`globalThis` default).
  * @returns {{getItem: function(string): string|null, setItem: function(string, string): void, removeItem: function(string): void}}
  */
-function resolveBrowserStorage() {
+function resolveBrowserStorage(hostGlobals = globalThis) {
   const fallback = createMemoryStorage();
-  const rawStorage = globalThis.document ? globalThis.localStorage : null;
+  const rawStorage = hostGlobals.document ? hostGlobals.localStorage : null;
   if (!rawStorage) {
     return fallback;
   }
@@ -77,12 +211,13 @@ function resolveBrowserStorage() {
 }
 
 /**
- * Create the production browser `RuntimeContext` backed by `globalThis`.
+ * Create the production browser `RuntimeContext` backed by `globalThis` (or injected `hostGlobals`).
  *
+ * @param {object} [hostGlobals] - Global environment object (`globalThis` default).
  * @returns {object} Explicit runtime capability object.
  */
-export function createBrowserRuntimeContext() {
-  const storage = resolveBrowserStorage();
+export function createBrowserRuntimeContext(hostGlobals = globalThis) {
+  const storage = resolveBrowserStorage(hostGlobals);
 
   const ctx = {
     /**
@@ -405,6 +540,46 @@ export function createBrowserRuntimeContext() {
       if (typeof globalThis.open === "function") {
         globalThis.open(url, target, "noopener,noreferrer");
       }
+    },
+
+    /**
+     * Open a Perfetto JSON trace directly inside `https://ui.perfetto.dev` via `PING`/`PONG` `postMessage`.
+     * Opens the `ui.perfetto.dev` popup synchronously before awaiting `loadBuffer()` so transient user
+     * activation is preserved; returns `false` immediately if popup creation is blocked (`null`).
+     *
+     * @param {{buffer?: ArrayBuffer|Uint8Array|string, loadBuffer?: function(): Promise<ArrayBuffer|Uint8Array|string>, title?: string, fileName?: string}} [options]
+     * @returns {Promise<boolean>} True if pushed over `postMessage`.
+     */
+    openPerfettoTrace(options = {}) {
+      if (typeof hostGlobals.open !== "function") {
+        return Promise.resolve(false);
+      }
+
+      const win = hostGlobals.open(PERFETTO_UI_ORIGIN);
+      if (!win) {
+        return Promise.resolve(false);
+      }
+
+      return pushPerfettoBufferViaPostMessage(hostGlobals, () => win, options);
+    },
+
+    /**
+     * Stream a Perfetto JSON trace `ArrayBuffer` into an embedded `<iframe src="https://ui.perfetto.dev">`
+     * via `PING`/`PONG` `postMessage`, avoiding `https -> http` Mixed-Content fetches in Safari/WebKit.
+     *
+     * @param {HTMLIFrameElement|{contentWindow?: object|null}} iframeEl - Target `<iframe>` element.
+     * @param {{buffer?: ArrayBuffer|Uint8Array|string, loadBuffer?: function(): Promise<ArrayBuffer|Uint8Array|string>, title?: string, fileName?: string}} [options]
+     * @returns {Promise<boolean>} True if pushed over `postMessage`.
+     */
+    streamPerfettoToIframe(iframeEl, options = {}) {
+      if (!iframeEl || typeof iframeEl !== "object") {
+        return Promise.resolve(false);
+      }
+      return pushPerfettoBufferViaPostMessage(
+        hostGlobals,
+        () => iframeEl.contentWindow ?? null,
+        options,
+      );
     },
 
     /**
@@ -1216,6 +1391,8 @@ export function createMockRuntimeContext(overrides = {}) {
   const parentMessages = [];
   const downloads = [];
   const openedUrls = [];
+  const openedPerfettoTraces = [];
+  const streamedPerfettoFrames = [];
   const historyEntries = [];
   let copiedText = "";
   let clockMs = overrides.initialTimeMs ?? 1000;
@@ -1489,6 +1666,45 @@ export function createMockRuntimeContext(overrides = {}) {
       openedUrls.push({ url, target });
     },
 
+    async openPerfettoTrace(options = {}) {
+      if (typeof overrides.onOpenPerfettoTraceStart === "function") {
+        overrides.onOpenPerfettoTraceStart(options);
+      }
+      if (overrides.perfettoOpenResult === false) {
+        return false;
+      }
+      const rawPayload =
+        typeof options.loadBuffer === "function"
+          ? await options.loadBuffer()
+          : (options.buffer ?? "");
+      const arrayBuffer = toTraceArrayBuffer(rawPayload);
+      openedPerfettoTraces.push({
+        title: String(options.title || "Firmware Perfetto Trace"),
+        fileName: String(options.fileName || "trace.perfetto.json"),
+        byteLength: arrayBuffer.byteLength,
+        buffer: arrayBuffer,
+      });
+      return true;
+    },
+
+    async streamPerfettoToIframe(iframeEl, options = {}) {
+      if (!iframeEl || overrides.perfettoIframeResult === false) {
+        return false;
+      }
+      const rawPayload =
+        typeof options.loadBuffer === "function"
+          ? await options.loadBuffer()
+          : (options.buffer ?? "");
+      const arrayBuffer = toTraceArrayBuffer(rawPayload);
+      streamedPerfettoFrames.push({
+        title: String(options.title || "Firmware Perfetto Trace"),
+        fileName: String(options.fileName || "trace.perfetto.json"),
+        byteLength: arrayBuffer.byteLength,
+        buffer: arrayBuffer,
+      });
+      return true;
+    },
+
     postParentMessage(message, targetOrigin = "*") {
       parentMessages.push({ message, targetOrigin });
     },
@@ -1552,6 +1768,8 @@ export function createMockRuntimeContext(overrides = {}) {
     parentMessages,
     downloads,
     openedUrls,
+    openedPerfettoTraces,
+    streamedPerfettoFrames,
     historyEntries,
     rafQueue,
   };

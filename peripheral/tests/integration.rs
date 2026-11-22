@@ -1030,6 +1030,9 @@ fn test_macro_init_max17048() {
         let mut reads = std::collections::VecDeque::new();
         reads.push_back(vec![0x00, 0x10]); // VRESET matching (val & 0x00F0) == 0x0010
         reads.push_back(vec![0x00, 0x00]); // STATUS register with RI clear (0x0000)
+        reads.push_back(vec![0x00, 0x00]); // MODE register in Active Mode
+        reads.push_back(vec![0x00, 0x00]); // HIBRT register already disabled
+        reads.push_back(vec![0x97, 0x1C]); // CONFIG register with SLEEP clear
         let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
         let mut i2c = ProbeableMockI2c { reads, writes };
 
@@ -1054,6 +1057,86 @@ fn test_macro_init_max17048() {
             errors.errors[0],
             model::types::PeripheralError::DeviceNotFound(0x55)
         );
+    });
+}
+
+#[test]
+fn test_worm_velvety_helminth_401_max17048_exits_hibernate_and_rounds_soc() {
+    run_test!(async {
+        use model::interfaces::FuelGauge;
+
+        // 1. Battery-backed MAX17048 trapped in Hibernate Mode (`RI = 0`, `MODE.HibStat = 0x1000`,
+        // `HIBRT = 0x8030`, `CONFIG.SLEEP = 0x0080`): `init()` MUST disable `HIBRT` (`0x0A -> 0x0000`),
+        // clear `CONFIG.SLEEP`, and issue `MODE = 0x4000` (`Quick-Start`) to clear hibernate drift.
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x00, 0xFF]); // STATUS (0x1A): RI == 0
+        reads.push_back(vec![0x10, 0x00]); // MODE (0x06): HibStat == 1
+        reads.push_back(vec![0x80, 0x30]); // HIBRT (0x0A): factory POR hibernate thresholds
+        reads.push_back(vec![0x95, 0xD6]); // CONFIG (0x0C): SLEEP bit (0x0080) set
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut gauge = peripheral::max17048::Max17048::new(&mut i2c);
+        gauge.init().await.expect("init hibernating MAX17048");
+
+        let recorded_writes = writes.lock().unwrap().clone();
+        assert!(
+            recorded_writes.contains(&vec![0x0A, 0x00, 0x00]),
+            "Expected HIBRT (0x0A) = 0x0000 to disable Hibernate Mode, got writes: {:?}",
+            recorded_writes
+        );
+        assert!(
+            recorded_writes.contains(&vec![0x0C, 0x95, 0x56]),
+            "Expected CONFIG.SLEEP (0x0080) cleared, got writes: {:?}",
+            recorded_writes
+        );
+        assert!(
+            recorded_writes.contains(&vec![0x06, 0x40, 0x00]),
+            "Expected MODE (0x06) = 0x4000 Quick-Start when waking from Hibernate, got writes: {:?}",
+            recorded_writes
+        );
+
+        // 2. Warm reboot when already in Active Mode (`RI = 0`, `HibStat = 0`, `HIBRT = 0`, `SLEEP = 0`):
+        // `init()` must NOT issue Quick-Start (`0x06 = 0x4000`), preserving continuous ModelGauge tracking.
+        let mut active_reads = std::collections::VecDeque::new();
+        active_reads.push_back(vec![0x00, 0x00]); // STATUS
+        active_reads.push_back(vec![0x00, 0x00]); // MODE
+        active_reads.push_back(vec![0x00, 0x00]); // HIBRT
+        active_reads.push_back(vec![0x97, 0x1C]); // CONFIG
+        let active_writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut active_i2c = ProbeableMockI2c {
+            reads: active_reads,
+            writes: active_writes.clone(),
+        };
+        let mut active_gauge = peripheral::max17048::Max17048::new(&mut active_i2c);
+        active_gauge.init().await.expect("init active MAX17048");
+        assert!(
+            !active_writes
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|w| w.len() == 3 && w[0] == 0x06),
+            "Active MAX17048 must not re-trigger Quick-Start on warm reboot"
+        );
+
+        // 3. 8.8 fixed-point `SOC` rounding & 100% clamping (`0x4F9B` = 79.61% -> 80%, not truncated 79%).
+        let mut soc_reads = std::collections::VecDeque::new();
+        soc_reads.push_back(vec![0x4F, 0x9B]); // 79.605% -> 80%
+        soc_reads.push_back(vec![0x4F, 0x40]); // 79.250% -> 79%
+        soc_reads.push_back(vec![0x63, 0x80]); // 99.500% -> 100%
+        soc_reads.push_back(vec![0x65, 0x20]); // 101.125% -> clamped 100%
+        let soc_writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut soc_i2c = ProbeableMockI2c {
+            reads: soc_reads,
+            writes: soc_writes,
+        };
+        let mut soc_gauge = peripheral::max17048::Max17048::new(&mut soc_i2c);
+        assert_eq!(soc_gauge.read_state_of_charge().await.unwrap(), 80);
+        assert_eq!(soc_gauge.read_state_of_charge().await.unwrap(), 79);
+        assert_eq!(soc_gauge.read_state_of_charge().await.unwrap(), 100);
+        assert_eq!(soc_gauge.read_state_of_charge().await.unwrap(), 100);
     });
 }
 

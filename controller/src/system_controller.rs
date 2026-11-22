@@ -400,6 +400,9 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
             },
 
             SystemCommand::Gesture(gesture) => {
+                platform::tracing::trace_sensor_report(
+                    &model::telemetry::TelemetryRecord::Gesture(gesture),
+                );
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 {
                     let gest_str = match gesture {
@@ -657,7 +660,9 @@ pub async fn handle_system_cli<
             let mut system_ctrl = resolver.resolve_system_ctrl(None);
             if let Ok(ref mut ctrl) = system_ctrl {
                 ctrl.record_activity()
-                    .map_err(|_| "Failed to record system activity")
+                    .map_err(|_| "Failed to record system activity")?;
+                let _ = core::writeln!(writer, "System activity recorded.");
+                Ok(())
             } else {
                 let _ = core::writeln!(
                     writer,

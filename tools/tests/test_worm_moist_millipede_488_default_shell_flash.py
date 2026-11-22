@@ -50,22 +50,24 @@ import json
 
 
 def test_session_remembers_shell_binary(tmp_path: Path):
-    """Verify load_last_session returns cat_detector_shell."""
+    """Verify load_last_session round-trips cat_detector_shell and any live session references a valid binary."""
+    packages = discover_target_packages(REPO_ROOT)
+    valid_bins = {b for pkg in packages for b in pkg.get("binaries", [])}
     live_session = load_last_session(REPO_ROOT)
-    if live_session is not None:
-        assert live_session.get("bin") == "cat_detector_shell", (
-            f"Expected session bin to be 'cat_detector_shell', got '{live_session.get('bin')}'"
+    if live_session is not None and live_session.get("bin"):
+        assert live_session.get("bin") in valid_bins, (
+            f"Expected session bin '{live_session.get('bin')}' to be one of {sorted(valid_bins)}"
         )
-    else:
-        sample_session = {
-            "package": "cat_detector",
-            "bin": "cat_detector_shell",
-            "release": True,
-            "target": "thumbv6m-none-eabi",
-        }
-        target_dir = tmp_path / "target"
-        target_dir.mkdir(parents=True, exist_ok=True)
-        (target_dir / "host_session.json").write_text(json.dumps(sample_session), encoding="utf-8")
-        session = load_last_session(tmp_path)
-        assert session is not None
-        assert session.get("bin") == "cat_detector_shell"
+
+    sample_session = {
+        "package": "cat_detector",
+        "bin": "cat_detector_shell",
+        "release": True,
+        "target": "thumbv6m-none-eabi",
+    }
+    target_dir = tmp_path / "target"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    (target_dir / "host_session.json").write_text(json.dumps(sample_session), encoding="utf-8")
+    session = load_last_session(tmp_path)
+    assert session is not None
+    assert session.get("bin") == "cat_detector_shell"

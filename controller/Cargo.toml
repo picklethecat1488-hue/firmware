@@ -50,9 +50,31 @@ code_gen = { path = "../tools/code_gen" }
 core1 = ["peripheral/core1"]
 motor-core = ["core1", "peripheral/motor-core"]
 sensors-core = ["core1", "peripheral/sensors-core"]
-tracing = [
-    "platform/tracing",
-    "peripheral/tracing",
+trace-perf = [
+    "platform/trace-perf",
+    "peripheral/trace-perf",
     "dep:tracing-defmt",
     "dep:defmt",
+]
+trace-sensors = [
+    "platform/trace-sensors",
+    "peripheral/trace-sensors",
+    "dep:defmt",
+]
+trace-sensor-spans = [
+    "platform/trace-sensor-spans",
+    "peripheral/trace-sensor-spans",
+    "dep:tracing-defmt",
+    "dep:defmt",
+]
+trace-audio = [
+    "platform/trace-audio",
+    "peripheral/trace-audio",
+    "dep:tracing-defmt",
+    "dep:defmt",
+]
+tracing = [
+    "trace-perf",
+    "trace-sensors",
+    "trace-sensor-spans",
 ]

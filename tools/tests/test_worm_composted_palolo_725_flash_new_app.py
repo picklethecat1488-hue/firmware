@@ -64,6 +64,13 @@ def test_api_sync_endpoint_updates_config():
             release=None,
             speed=None,
             chip=None,
+            enable_debug_server=None,
+            halt_on_reset=None,
+            gdb_core0_port=None,
+            gdb_core1_port=None,
+            rtt_bridge_port=None,
+            probe_selector=None,
+            trace_mode=None,
         )
         runner.sync_async.assert_called_once()
         handler._send_json.assert_called_once()

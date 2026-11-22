@@ -89,8 +89,8 @@ def test_worm_bristly_glowworm_390_server_api_processes_manual_attachments() -> 
         worm_id = res_data.get("worm_id")
         assert worm_id
 
-        # 1 system log + 2 manual attachments = 3 total attachments
-        assert res_data.get("attachments_count") == 3
+        # 1 system log + 1 host_daemon log + 2 manual attachments = 4 total attachments
+        assert res_data.get("attachments_count") == 4
 
         worm_att_dir = repo_root / "attachments" / worm_id
         assert worm_att_dir.exists(), f"Attachment directory {worm_att_dir} does not exist"

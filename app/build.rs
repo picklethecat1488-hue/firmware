@@ -14,7 +14,16 @@ const LOG_LEVEL: &str = "trace";
 /// 4. Generate the active spawning macros and dynamic `get_shell_pointers` implementation.
 /// 5. Write the resulting code to `generated_app.rs` in `OUT_DIR`.
 fn main() {
-    if std::env::var("CARGO_FEATURE_TRACING").is_ok() {
+    if [
+        "CARGO_FEATURE_TRACING",
+        "CARGO_FEATURE_TRACE_PERF",
+        "CARGO_FEATURE_TRACE_SENSORS",
+        "CARGO_FEATURE_TRACE_SENSOR_SPANS",
+        "CARGO_FEATURE_TRACE_AUDIO",
+    ]
+    .iter()
+    .any(|var| std::env::var(var).is_ok())
+    {
         println!("cargo:rustc-env=DEFMT_LOG={}", LOG_LEVEL);
     }
 

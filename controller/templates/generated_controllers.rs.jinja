@@ -30,13 +30,20 @@ macro_rules! run_{{ ctrl.name|lower }}_task {
         #[allow(non_snake_case)]
         mod $task_module {
             use super::*;
-            #[cfg(feature = "tracing")]
+            {% if ctrl.is_sensor_domain() %}
+            #[cfg(feature = "trace-sensor-spans")]
+            {% else %}
+            #[cfg(feature = "trace-perf")]
+            {% endif %}
             use $crate::tracing::tracing_defmt;
 
             {% for attr in ctrl.attributes_slice() %}
                 {{ attr|safe }}
             {% endfor %}
             #[ $crate::tracing::instrument(
+                {% if ctrl.is_sensor_domain() %}
+                domain = "sensor",
+                {% endif %}
                 name = stringify!($task_module),
                 level = "info",
                 skip(
@@ -90,13 +97,20 @@ macro_rules! run_{{ ctrl.name|lower }}_task {
         #[allow(non_snake_case)]
         mod $task_module {
             use super::*;
-            #[cfg(feature = "tracing")]
+            {% if ctrl.is_sensor_domain() %}
+            #[cfg(feature = "trace-sensor-spans")]
+            {% else %}
+            #[cfg(feature = "trace-perf")]
+            {% endif %}
             use $crate::tracing::tracing_defmt;
 
             {% for attr in ctrl.attributes_slice() %}
                 {{ attr|safe }}
             {% endfor %}
             #[ $crate::tracing::instrument(
+                {% if ctrl.is_sensor_domain() %}
+                domain = "sensor",
+                {% endif %}
                 name = stringify!($task_module),
                 level = "info",
                 skip(
@@ -247,9 +261,15 @@ macro_rules! append_group_arm {
                 subcommand: Option<{% if cmd.subcommand_type.contains("::") && !cmd.subcommand_type.contains("platform::") %}$crate::{% endif %}{{ cmd.subcommand_type|safe }}>,
                 {%- for arg in cmd.args_slice() %}
                 /// {{ arg.help }}
-                {%- for attr in arg.attributes_slice() %}
-                {{ attr|safe }}
-                {%- endfor %}
+                {%- match (arg.short_flag, arg.long_flag.as_deref()) %}
+                {%- when (Some(short), Some(long)) %}
+                #[arg(short = '{{ short }}', long = "{{ long }}")]
+                {%- when (Some(short), None) %}
+                #[arg(short = '{{ short }}')]
+                {%- when (None, Some(long)) %}
+                #[arg(long = "{{ long }}")]
+                {%- when (None, None) %}
+                {%- endmatch %}
                 {{ arg.name }}: {{ arg.rust_type()|safe }},
                 {%- endfor %}
             },
@@ -367,18 +387,32 @@ impl<'a, C: crate::shell_controller::ShellConfig> crate::shell_controller::Shell
         E: crate::embedded_io::Error,
     {
         if let Some(pending) = self.pending_command.take() {
-            match pending {
-                {%- for cmd in cli_commands %}
-                {%- if cmd.async_cli %}
-                crate::PendingCommand::{{ cmd.variant }} { subcommand, {%- for arg in cmd.args_slice() %}{{ arg.name }}, {% endfor %} } => {
-                    {%- if cmd.handler.contains("::") && !cmd.handler.starts_with("platform::") %}
-                    crate::{{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_deref(){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
-                    {%- else %}
-                    {{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_deref(){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
+            let exec_res: Result<(), &'static str> = async {
+                match pending {
+                    {%- for cmd in cli_commands %}
+                    {%- if cmd.async_cli %}
+                    crate::PendingCommand::{{ cmd.variant }} { subcommand, {%- for arg in cmd.args_slice() %}{{ arg.name }}, {% endfor %} } => {
+                        {%- if cmd.handler.contains("::") && !cmd.handler.starts_with("platform::") %}
+                        crate::{{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_deref(){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
+                        {%- else %}
+                        {{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_deref(){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
+                        {%- endif %}
+                    }
                     {%- endif %}
+                    {%- endfor %}
                 }
-                {%- endif %}
-                {%- endfor %}
+                Ok(())
+            }
+            .await;
+            match exec_res {
+                Ok(()) => {
+                    self.record_command_success();
+                    return Ok(());
+                }
+                Err(err) => {
+                    self.record_command_failure(err);
+                    return Err(err);
+                }
             }
         }
         Ok(())

@@ -7,7 +7,10 @@ import { fuzzyFilterAndRank, fuzzyScore } from "../../js/core/fuzzy_search.js";
 import { showConfirmModal } from "../../js/core/modal.js";
 import { AsymptoticProgressBar, performActionWithProgress } from "../../js/core/progress.js";
 import { setupPanelResizer } from "../../js/core/resizer.js";
-import { createMockRuntimeContext } from "../../js/core/runtime_context.js";
+import {
+  createBrowserRuntimeContext,
+  createMockRuntimeContext,
+} from "../../js/core/runtime_context.js";
 import { escapeHtml, sanitizeAuthor, sanitizeTextWithBlacklist } from "../../js/core/sanitize.js";
 import { copyToClipboard, showToast } from "../../js/core/toast.js";
 import { applyUiScale, initUiScaleControl } from "../../js/core/ui_scale.js";
@@ -122,6 +125,14 @@ describe("Shared Core Modules (Sanitize, ANSI, Fuzzy, UI Scale, Progress, DOM)",
     list.children[0].children[0].click();
     assert.deepEqual(clickedIds, ["pad-42"]);
 
+    // WebKit / WKWebView Text-node click target (nodeType === 3, no .closest() method)
+    list.dispatchEvent({
+      type: "click",
+      bubbles: true,
+      target: { nodeType: 3, parentElement: list.children[0] },
+    });
+    assert.deepEqual(clickedIds, ["pad-42", "pad-42"]);
+
     const pane = createEl(ctx, "div", { id: "left-pane" });
     pane.setBoundingClientRect({ left: 0, top: 0, width: 240, height: 600 });
     const handle = createEl(ctx, "div", { id: "left-resizer" });
@@ -144,5 +155,135 @@ describe("Shared Core Modules (Sanitize, ANSI, Fuzzy, UI Scale, Progress, DOM)",
     const confirmPromise = showConfirmModal(ctx, { title: "Discard?", message: "Sure?" });
     ctx.emitViewportEvent("keydown", { key: "Enter" });
     assert.equal(await confirmPromise, true);
+
+    const openedTrace = await ctx.openPerfettoTrace({
+      buffer: '{"traceEvents":[]}',
+      title: "Cat Detector Perf",
+      fileName: "cat_detector.perfetto.json",
+    });
+    assert.equal(openedTrace, true);
+    assert.equal(ctx.openedPerfettoTraces.length, 1);
+    assert.equal(ctx.openedPerfettoTraces[0].title, "Cat Detector Perf");
+    assert.equal(ctx.openedPerfettoTraces[0].fileName, "cat_detector.perfetto.json");
+    assert.ok(ctx.openedPerfettoTraces[0].byteLength > 0);
+
+    const mockIframe = createEl(ctx, "iframe", { id: "perfettoEmbedFrame" });
+    const streamedMockIframe = await ctx.streamPerfettoToIframe(mockIframe, {
+      loadBuffer: async () => '{"traceEvents":[{"name":"iframe_span"}]}',
+      title: "Embedded Perfetto Trace",
+      fileName: "embedded.perfetto.json",
+    });
+    assert.equal(streamedMockIframe, true);
+    assert.equal(ctx.streamedPerfettoFrames.length, 1);
+    assert.equal(ctx.streamedPerfettoFrames[0].title, "Embedded Perfetto Trace");
+    assert.equal(ctx.streamedPerfettoFrames[0].fileName, "embedded.perfetto.json");
+    assert.ok(ctx.streamedPerfettoFrames[0].byteLength > 0);
+
+    // WORM-SEGMENTED-COCOON-284: Browser runtime returns false when popup is blocked (null)
+    // and opens ui.perfetto.dev synchronously BEFORE awaiting loadBuffer().
+    const blockedBrowserCtx = createBrowserRuntimeContext({
+      open: () => null,
+    });
+    const blockedRes = await blockedBrowserCtx.openPerfettoTrace({
+      buffer: '{"traceEvents":[]}',
+    });
+    assert.equal(blockedRes, false);
+
+    const browserSeq = [];
+    let messageHandler = null;
+    const postedPayloads = [];
+    const popupBrowserCtx = createBrowserRuntimeContext({
+      open: (url) => {
+        browserSeq.push(`open:${url}`);
+        return {
+          closed: false,
+          postMessage(msg, origin) {
+            postedPayloads.push({ msg, origin });
+            if (msg === "PING" && messageHandler) {
+              messageHandler({ origin: "https://ui.perfetto.dev", data: "PONG" });
+            }
+          },
+        };
+      },
+      addEventListener: (evtType, fn) => {
+        if (evtType === "message") {
+          messageHandler = fn;
+        }
+      },
+      removeEventListener: () => {},
+      setInterval: () => 1,
+      clearInterval: () => {},
+      setTimeout: () => 2,
+      clearTimeout: () => {},
+    });
+    const streamed = await popupBrowserCtx.openPerfettoTrace({
+      loadBuffer: async () => {
+        browserSeq.push("loadBuffer");
+        return '{"traceEvents":[{"name":"sync_span"}]}';
+      },
+      title: "Live Perf Trace",
+      fileName: "live_perf.perfetto.json",
+    });
+    assert.equal(streamed, true);
+    assert.deepEqual(browserSeq, ["open:https://ui.perfetto.dev", "loadBuffer"]);
+    assert.ok(
+      postedPayloads.some(
+        (entry) =>
+          entry.origin === "https://ui.perfetto.dev" &&
+          entry.msg &&
+          entry.msg.perfetto &&
+          entry.msg.perfetto.title === "Live Perf Trace" &&
+          entry.msg.perfetto.buffer.byteLength > 0,
+      ),
+    );
+
+    // WORM-SEGMENTED-COCOON-284 (Safari mixed-content fix): streamPerfettoToIframe performs
+    // PING -> PONG handshake with iframeEl.contentWindow and posts { perfetto: { buffer } }.
+    let iframeMsgHandler = null;
+    const iframeMessages = [];
+    const iframeBrowserCtx = createBrowserRuntimeContext({
+      addEventListener: (evtType, fn) => {
+        if (evtType === "message") {
+          iframeMsgHandler = fn;
+        }
+      },
+      removeEventListener: () => {},
+      setInterval: () => 11,
+      clearInterval: () => {},
+      setTimeout: () => 12,
+      clearTimeout: () => {},
+    });
+    const fakeIframeWin = {
+      closed: false,
+      postMessage(msg, origin) {
+        iframeMessages.push({ msg, origin });
+        if (msg === "PING" && iframeMsgHandler) {
+          iframeMsgHandler({
+            origin: "https://ui.perfetto.dev",
+            source: fakeIframeWin,
+            data: "PONG",
+          });
+        }
+      },
+    };
+    const streamedToFrame = await iframeBrowserCtx.streamPerfettoToIframe(
+      { contentWindow: fakeIframeWin },
+      {
+        loadBuffer: async () => '{"traceEvents":[{"name":"safari_bridge_span"}]}',
+        title: "Safari Bridge Trace",
+        fileName: "safari_bridge.perfetto.json",
+      },
+    );
+    assert.equal(streamedToFrame, true);
+    assert.ok(
+      iframeMessages.some(
+        (entry) =>
+          entry.origin === "https://ui.perfetto.dev" &&
+          entry.msg &&
+          entry.msg.perfetto &&
+          entry.msg.perfetto.title === "Safari Bridge Trace" &&
+          entry.msg.perfetto.buffer.byteLength > 0,
+      ),
+    );
   });
 });

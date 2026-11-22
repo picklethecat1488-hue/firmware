@@ -1,22 +1,27 @@
-"""Host daemon package for firmware bringup, RTT logging, CLI, and FS workstation."""
+"""Host daemon package for target synchronization, RTT logging, CLI, and FS workstation."""
 
-from host_daemon.model.bringup import (
-    BringupConfig,
-    BringupStep,
-    BringupStepStatus,
-    BringupStepType,
-)
-from host_daemon.provider.bringup.bringup_manager import BringupManager
-from host_daemon.provider.daemon.runner import DaemonRunner
-from host_daemon.provider.daemon.server import HostDaemonRequestHandler, HostDaemonServer
+from typing import Any
 
 __all__ = [
-    "BringupConfig",
-    "BringupManager",
-    "BringupStep",
-    "BringupStepStatus",
-    "BringupStepType",
     "DaemonRunner",
     "HostDaemonRequestHandler",
     "HostDaemonServer",
+    "ManualPromptState",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily resolve heavy daemon runtime classes so lightweight CLI subcommands remain stdlib-only."""
+    if name == "ManualPromptState":
+        from host_daemon.model.manual_prompt import ManualPromptState
+
+        return ManualPromptState
+    if name == "DaemonRunner":
+        from host_daemon.provider.daemon.runner import DaemonRunner
+
+        return DaemonRunner
+    if name in ("HostDaemonRequestHandler", "HostDaemonServer"):
+        from host_daemon.provider.daemon import server as _srv
+
+        return getattr(_srv, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

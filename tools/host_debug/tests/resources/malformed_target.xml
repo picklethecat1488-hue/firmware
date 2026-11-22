@@ -1,0 +1,2 @@
+<!-- Fixture verifying malformed XML returns an empty expedited-register list without panicking. -->
+<target><unclosed>

@@ -14,21 +14,19 @@ import { extractOscCommand, isSelectionInside, renderTerminalHtml } from "./rtt_
 export const WORKSTATION_MODES = Object.freeze({
   CLI: "CLI",
   FS: "FS",
-  BRINGUP: "BRINGUP",
+  TEST: "TEST",
+  TRACE: "TRACE",
 });
 
 const FOLLOWUP_POLL_SHORT_MS = 100;
 const FOLLOWUP_POLL_LONG_MS = 300;
 const COPY_FEEDBACK_DURATION_MS = 1500;
-const PROMPT_PREFIX_RE = /^(?:shell>|fs>|bringup>|>)\s*/i;
-const BRINGUP_ACTIONS = new Set(["pass", "fail", "skip"]);
+const PROMPT_PREFIX_RE = /^(?:shell>|fs>|>)\s*/i;
 
 const DEFAULT_CLI_PLACEHOLDER =
   "Type shell command (e.g. 'motor speed 100', 'gpio status', 'battery status')...";
 const DEFAULT_FS_PLACEHOLDER =
   "Type FS command (e.g. 'ls', 'cat metadata', 'crash-log', 'format')...";
-const DEFAULT_BRINGUP_PLACEHOLDER =
-  "Type shell/override command for active bringup step...";
 const DEFAULT_DISABLED_PLACEHOLDER =
   "CLI disabled until target synchronization succeeds. Click ⚡ Sync.";
 
@@ -46,7 +44,6 @@ export class CliConsoleController {
     this.ctx = ctx;
     this.currentMode = String(options.initialMode || WORKSTATION_MODES.CLI).toUpperCase();
     this.onModeChange = options.onModeChange || null;
-    this.onBringupAction = options.onBringupAction || null;
 
     this.commandHistory = Array.isArray(options.initialHistory)
       ? [...options.initialHistory]
@@ -66,11 +63,13 @@ export class CliConsoleController {
     this._unsubscribers = [];
 
     this.modeSelect = resolveElement(ctx, options.modeSelect || "modeSelect");
+    this.modeTabGroup = resolveElement(ctx, options.modeTabGroup || "modeTabGroup");
     this.cliView = resolveElement(ctx, options.cliView || "cliView");
     this.fsView = resolveElement(ctx, options.fsView || "fsView");
-    this.bringupView = resolveElement(ctx, options.bringupView || "bringupView");
+    this.testView = resolveElement(ctx, options.testView || "testView");
+    this.traceView = resolveElement(ctx, options.traceView || "traceView");
     this.fsToolbar = resolveElement(ctx, options.fsToolbar || "fsToolbar");
-    this.bringupToolbar = resolveElement(ctx, options.bringupToolbar || "bringupToolbar");
+    this.footerBar = resolveElement(ctx, options.footerBar || "cliInputBar");
     this.promptLabel = resolveElement(ctx, options.promptLabel || "promptLabel");
     this.cmdInput = resolveElement(ctx, options.cmdInput || "cmdInput");
     this.submitBtn = resolveElement(ctx, options.submitBtn || "btnSubmitCmd");
@@ -98,6 +97,17 @@ export class CliConsoleController {
       this.modeSelect.addEventListener("change", onModeSelectChange);
       this._unsubscribers.push(() =>
         this.modeSelect.removeEventListener("change", onModeSelectChange),
+      );
+    }
+
+    if (this.modeTabGroup) {
+      this._unsubscribers.push(
+        bindDelegatedEvent(this.modeTabGroup, "click", "[data-mode]", (_evt, btn) => {
+          const nextMode = btn.getAttribute("data-mode");
+          if (nextMode) {
+            this.setMode(nextMode);
+          }
+        }),
       );
     }
 
@@ -373,35 +383,64 @@ export class CliConsoleController {
       this.modeSelect.value = mode;
     }
 
+    if (this.modeTabGroup) {
+      const buttons = this.modeTabGroup.querySelectorAll("[data-mode]");
+      for (const btn of buttons) {
+        if (String(btn.getAttribute("data-mode") || "").toUpperCase() === mode) {
+          btn.classList.add("active");
+        } else {
+          btn.classList.remove("active");
+        }
+      }
+    }
+
+    const doc = this.ctx.getDocument();
+    const footerEl = this.footerBar || (doc ? doc.querySelector(".cli-input-bar") : null);
+
     let nextPlaceholder = DEFAULT_CLI_PLACEHOLDER;
+    if (mode === WORKSTATION_MODES.TRACE) {
+      if (this.cliView) this.cliView.style.display = "none";
+      if (this.fsView) this.fsView.style.display = "none";
+      if (this.fsToolbar) this.fsToolbar.style.display = "none";
+      if (this.testView) this.testView.style.display = "none";
+      if (this.traceView) this.traceView.style.display = "flex";
+      if (footerEl) footerEl.style.display = "none";
+      if (this.panelTitle) {
+        this.panelTitle.textContent = "PERFETTO TRACE & SENSOR TELEMETRY WORKSTATION";
+      }
+      return;
+    }
+
+    if (this.traceView) this.traceView.style.display = "none";
+
+    if (mode === WORKSTATION_MODES.TEST) {
+      if (this.cliView) this.cliView.style.display = "none";
+      if (this.fsView) this.fsView.style.display = "none";
+      if (this.fsToolbar) this.fsToolbar.style.display = "none";
+      if (this.testView) this.testView.style.display = "flex";
+      if (footerEl) footerEl.style.display = "none";
+      if (this.panelTitle) {
+        this.panelTitle.textContent = "ON-DEVICE TEST RUNNER (device_tests)";
+      }
+      return;
+    }
+
+    if (this.testView) this.testView.style.display = "none";
+    if (footerEl) footerEl.style.display = "flex";
+
     if (mode === WORKSTATION_MODES.FS) {
       if (this.cliView) this.cliView.style.display = "none";
       if (this.fsView) this.fsView.style.display = "block";
-      if (this.bringupView) this.bringupView.style.display = "none";
       if (this.fsToolbar) this.fsToolbar.style.display = "flex";
-      if (this.bringupToolbar) this.bringupToolbar.style.display = "none";
       if (this.promptLabel) this.promptLabel.textContent = "fs> ";
       if (this.panelTitle) {
         this.panelTitle.textContent = "FILESYSTEM COMMAND WORKSTATION (host_fs)";
       }
       nextPlaceholder = DEFAULT_FS_PLACEHOLDER;
-    } else if (mode === WORKSTATION_MODES.BRINGUP) {
-      if (this.cliView) this.cliView.style.display = "none";
-      if (this.fsView) this.fsView.style.display = "none";
-      if (this.bringupView) this.bringupView.style.display = "flex";
-      if (this.fsToolbar) this.fsToolbar.style.display = "none";
-      if (this.bringupToolbar) this.bringupToolbar.style.display = "flex";
-      if (this.promptLabel) this.promptLabel.textContent = "bringup> ";
-      if (this.panelTitle) {
-        this.panelTitle.textContent = "BRINGUP VERIFICATION CHECKLIST";
-      }
-      nextPlaceholder = DEFAULT_BRINGUP_PLACEHOLDER;
     } else {
       if (this.cliView) this.cliView.style.display = "block";
       if (this.fsView) this.fsView.style.display = "none";
-      if (this.bringupView) this.bringupView.style.display = "none";
       if (this.fsToolbar) this.fsToolbar.style.display = "none";
-      if (this.bringupToolbar) this.bringupToolbar.style.display = "none";
       if (this.promptLabel) this.promptLabel.textContent = "shell> ";
       if (this.panelTitle) {
         this.panelTitle.textContent = "INTERACTIVE CLI CONSOLE (host_cli)";
@@ -430,6 +469,9 @@ export class CliConsoleController {
     this.currentMode = normalized;
     this._applyModeDom(normalized);
 
+    const modeCallbackPromise =
+      typeof this.onModeChange === "function" ? this.onModeChange(normalized) : null;
+
     if (options.notifyServer !== false) {
       try {
         await this.ctx.postJson("/api/mode", { mode: normalized });
@@ -439,8 +481,8 @@ export class CliConsoleController {
       }
     }
 
-    if (typeof this.onModeChange === "function") {
-      await this.onModeChange(normalized);
+    if (modeCallbackPromise) {
+      await modeCallbackPromise;
     }
   }
 
@@ -641,11 +683,6 @@ export class CliConsoleController {
   handleCommandClick(cmd) {
     const clean = String(cmd || "").trim();
     if (!clean) {
-      return;
-    }
-    const lower = clean.toLowerCase();
-    if (typeof this.onBringupAction === "function" && BRINGUP_ACTIONS.has(lower)) {
-      this.onBringupAction(lower);
       return;
     }
     if (this.cmdInput) {

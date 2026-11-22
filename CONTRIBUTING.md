@@ -11,6 +11,11 @@ To maintain testability, reliability, and modularity, follow these core principl
 ### 1. File Structure Standards
 *   **Separation of Source Files**: Avoid grouping multiple interfaces and implementations into a single `lib.rs`. Keep each module in its own Rust listing (e.g., `model/src/state_machine.rs`). Expose them cleanly in `lib.rs` (e.g., `pub mod state_machine;`).
 *   **Test Isolation**: Keep tests completely isolated from implementation code. Do not mix unit tests inside the main module source files. All unit tests must be separated from module code and stored in a `tests/` subfolder at the crate root level (e.g., `model/tests/state_machine_tests.rs` or `peripherals/tests/integration.rs`), `tools/tests/` for host Python tools, and `tools/tests/js/` (`*.test.mjs`) for JavaScript ES modules.
+*   **Test Resource Artifacts (`tools/tests/resources/`)**: Never embed multi-line dummy workspace files (`Cargo.toml`), sample `@device_test` suites, or mock subprocess scripts inline inside Python test listings. Store reusable test fixtures as standalone checked-in artifacts under `tools/tests/resources/`:
+    *   `tools/tests/resources/fake_workspace/` — Minimal multi-binary Cargo workspace manifests (`Cargo.toml`, `app/Cargo.toml`) copied into `tmp_path` via `_copy_resource_tree("fake_workspace", dest_dir)`.
+    *   `tools/tests/resources/suites/` — Standalone `@device_test` suite fixtures and non-decorated helper modules copied into temporary suite directories during discovery/execution tests.
+    *   `tools/tests/resources/mock_*.py` & `mock_*.sh` — Mock `host_cli`, `host_debug`, and `host_fs` scripts invoked via `_make_resource_launcher(dest_exe, "<script>", env_overrides={"XERXES_MOCK_*": ...})`, passing per-test temporary paths (such as `tmp_path` argv logs) through `XERXES_MOCK_*` environment variables.
+    *   When adding a new test resource, place the file in the appropriate `tools/tests/resources/` subdirectory with a concise module/header comment explaining the simulated behavior, keep all dynamic state in `tmp_path` or `XERXES_MOCK_*` environment variables so parallel `pytest -n auto` workers never collide, and invoke it via `_copy_resource_tree` or `_make_resource_launcher`. Resource directories (`**/tests/resources/`) are excluded by default from CLI searches (`.ignore`), `pytest` discovery (`norecursedirs`), and IDE search/indexing (`.vscode/settings.json`).
 *   **JavaScript Zero-Globals Architecture (`tools/js/`)**: All browser ES modules and static assets for `tools/forge.py` and `tools/host.py` live under the single canonical `tools/js/` directory, with zero inline JS or `on*` attributes in `.html.j2` templates and all browser globals isolated behind `tools/js/core/runtime_context.js` (see [docs/javascript_style_architecture.md](docs/javascript_style_architecture.md)).
 
 ### 2. Microcontroller Decoupling & Board Support Packages (BSPs)
@@ -31,7 +36,7 @@ To keep peripheral logic target-independent and clean, we decouple hardware impl
     *   `host/`: Common host-side developer tools utilities (e.g. ELF parsing, symbolication, GDB connections).
 *   **Peripheral Interfaces (`peripherals/`)**: Platform-independent implementations of hardware drivers over generic `embedded-hal` constraints.
 *   **Control Loop Coordinators (`controller/`)**: Project-agnostic domain orchestrators. Exposes CLI handlers that accept a reference to `ShellDeviceResolver` to lookup required peripherals on demand.
-*   **Projects (`projects/`)**: Configures microcontroller-specific packages (BSPs) to build driver setups and run application loops.
+*   **Board & Application Crates (`board/` & `app/`)**: Declaratively configure microcontroller-specific Board Support Packages (`board/board.toml`, `board/src/<board>.rs`) and application controller topologies + binaries (`app/app.toml`, `app/src/<app>.rs`, `app/src/<name>_shell.rs`, `app/src/<name>_app.rs`).
 
 ### 4. Platform-Specific Naming Conventions & CLI Routing
 *   **Peripherals & Controllers**: Do **not** prefix files or structs with MCU model numbers (e.g. do not name them `rp2040_sensor.rs`). Since they interact with generic drivers, they compile on any target.
@@ -252,17 +257,28 @@ To identify latencies, stuck buses, or slow I/O polling, any potentially blockin
         // ...
     }
     ```
-*   **Enabling Tracing (Compile Time)**:
-    Tracing is compiled out by default. To enable it on the target, compile/run with the `tracing` cargo feature:
+*   **Domain-Scoped Tracing Modes (`NONE`, `SENSOR`, `PERF`, and planned `AUDIO`)**:
+    Tracing is compiled out by default (`NONE`). Target selection in `python tools/host.py` (`🎯 Target Config` scrollable dropdown or `--trace-mode`) passes mode-specific Cargo feature flags and embeds `FirmwareTraceMode` into `.program_metadata`:
+    *   `NONE`: Standard build with zero runtime trace overhead.
+    *   `PERF` (`--features trace-perf`): Enables all non-sensor `#[tracing::instrument]` execution spans, `Core 0/1 CPU Usage (%)`, and non-sensor `TelemetryRecord` trace events (excluding `#[tracing::instrument(domain = "sensor")]` and sensor telemetry reports). Opens externally in **Perfetto UI** (`ui.perfetto.dev`).
+    *   `SENSOR` (`--features trace-sensors`): Enables real-time sensor telemetry reports and measured values only (`Proximity` mm + valid/invalid, `Thermal` mC, `Gesture` via `platform::tracing::trace_sensor_report`), with zero function-span overhead. Streams externally into **Rerun Viewer** (`rerun-sdk`).
+    *   `AUDIO` (`--features trace-audio`, `[PLANNED]`): Reserved for I2S / codec streaming into **Rerun Viewer**.
     ```bash
-    cargo build --package cat_detector --features tracing --target thumbv6m-none-eabi
+    # Launch workstation in PERF or SENSOR trace mode:
+    python tools/host.py --trace-mode PERF
+    python tools/host.py --trace-mode SENSOR
+
+    # Export buffered trace to .csv or Perfetto JSON (.perfetto.json) or open in Rerun from CLI:
+    python tools/host.py trace export --format csv --output recordings/traces/session.csv
+    python tools/host.py trace export --format perfetto --output recordings/traces/session.perfetto.json
+    python tools/host.py trace open-rerun
     ```
-*   **Reconstructing Spans & Perfetto Export (Host)**:
-    To capture and view the spans, run the host CLI tool with the `--trace <FILE>` option:
+*   **Standalone `host_cli` Span & CSV / Perfetto Export**:
+    You can also capture directly via `host_cli --trace <FILE>` (`.perfetto.json` or `.csv`):
     ```bash
-    cargo run -p host_cli -- --elf target/thumbv6m-none-eabi/debug/cat_detector --trace perfetto_trace.json
+    cargo host-cli --elf target/thumbv6m-none-eabi/debug/cat_detector_shell --trace recordings/traces/trace.perfetto.json
+    cargo host-cli --elf target/thumbv6m-none-eabi/debug/cat_detector_shell --trace recordings/traces/trace.csv
     ```
-    This generates a trace file in Chrome JSON format. Load this file in [ui.perfetto.dev](https://ui.perfetto.dev) to interactively inspect execution timelines, spans, and nested events.
 
 ---
 
@@ -284,11 +300,27 @@ To maintain code quality and style standards, run these checks before committing
     cargo clippy --package cat_detector --lib --bins --target thumbv6m-none-eabi -- -D warnings
     ```
 
-### Creating a New Project
-1.  Create a folder under `projects/` (e.g., `projects/my_project`).
-2.  Add a `Cargo.toml` and configure target settings in `.cargo/config.toml` and `memory.x`.
-3.  Implement target-specific pins, configure peripherals, and invoke your controllers.
-4.  Link the new project in the root [Cargo.toml](Cargo.toml) workspace members list.
+### Creating New Firmware Binaries & Board Targets
+All target binaries (`*_shell.rs`, `*_app.rs`) reside in the unified `app` crate (`package = "cat_detector"`) and share a declarative code-generation pipeline across `.cargo/config.toml`, `board/board.toml`, and `app/app.toml`:
+
+1. **Configure Target Linker & `.program_metadata` Layout (`.cargo/config.toml` & `platform/`)**:
+   - Register the target triple in [`.cargo/config.toml`](.cargo/config.toml) with `-Tlink.x`, `-Tdefmt.x`, and `-Tprogram_metadata.x` (e.g. `[target.thumbv6m-none-eabi]` for RP2040 and `[target.thumbv8m.main-none-eabihf]` for NXP MCX N947).
+   - Provide `memory.x` (including a dedicated 4 KB `PROGRAM_METADATA` flash region) and `program_metadata.x` under `platform/src/<mcu>/layouts/` and stage them in `build.rs` so `tools/host_fs board-type` can read board identity in O(1) at a fixed flash address.
+2. **Define the Board Support Package (`board/board.toml` & `board/src/<board>.rs`)**:
+   - Add `[boards.<board>]` in [`board/board.toml`](board/board.toml) specifying `chip`, `board_type`, `program_metadata_addr`, `flash_base`, `flash_size`, `sram_size`, stack bounds, pins, buses, and non-overlapping `storage` / `metadata` / `fs` / `telemetry` partitions.
+   - Generate `generated_<board>.rs` in [`board/build.rs`](board/build.rs) via `code_gen::generate_board_definitions(&content, "<board>")`.
+   - Create `board/src/<board>.rs` starting with `include!(concat!(env!("OUT_DIR"), "/generated_<board>.rs"));` immediately after module doc comments, and implement `Board::init` for both `target` (`no_std` ARM) and `host` (mock drivers for `cargo nextest`).
+3. **Declare Application Topology & Shell Config (`app/app.toml` & `app/src/<board>.rs`)**:
+   - Add `[apps.<board>]` in [`app/app.toml`](app/app.toml) declaring channels, controllers, partitions, and `shell_config`.
+   - Implement `<Board>ShellConfig` via `controller::impl_shell_config!`, `init_controllers(board, peripherals)`, `get_filesystem_config()`, and `declare_shell_pointers!`.
+4. **Create & Register the Binary Entrypoint (`app/Cargo.toml` & `app/src/<name>_shell.rs`)**:
+   - Register a unique `[[bin]]` entry in [`app/Cargo.toml`](app/Cargo.toml) (workspace binary names must be globally unique, enforced by `tools/build/build_firmware.sh`).
+   - Structure shell binaries cleanly after [`app/src/cat_detector_shell.rs`](app/src/cat_detector_shell.rs) and [`app/src/carrier_board_shell.rs`](app/src/carrier_board_shell.rs):
+     - Emit `.program_metadata` via `board::<board>::emit_project_metadata!();` (never hardcode flash addresses inline in binaries).
+     - Wire `#[panic_handler]` to `app::handle_panic(info)`.
+     - Declare CLI command dispatchers via `controller::declare_active_shell_commands!`.
+     - Use `#[embassy_executor::main] async fn main(spawner: Spawner)` to run `app::Board::init().await`, construct `CliBuilder` over `platform::rtt::RttTxWriter`, print the startup banner, call `core_monitor::init_core(...)`, bind `app::declare_shell_pointers!(...)`, and enter `platform::run_rtt_shell_loop!`.
+   - Declare `[package.metadata.binaries.<name>_shell]` (`board`, `chip`, `target`) in [`app/Cargo.toml`](app/Cargo.toml) so `tools/host.py` and `@device_test(target_binary="<name>_shell")` discover, compile, and flash it automatically without fallbacks.
 
 ### Running Tests
 Validate all logic (including host-compatible board mocks) on the host. We use `cargo-nextest` for faster, parallel, and clean test execution:
@@ -302,68 +334,78 @@ cargo test
 
 ### Debugging Workflows
 
-For interactive debugging of tests on the host and bare-metal binaries on the target device, configure VS Code as follows:
+For interactive symbolic debugging of Python `@device_test` & host suites, Rust host unit/integration tests, JavaScript `node --test` suites, and bare-metal target binaries, accept the workspace extension recommendations in [`.vscode/extensions.json`](.vscode/extensions.json) and use the configurations in [`.vscode/launch.json`](.vscode/launch.json) and [`.vscode/settings.json`](.vscode/settings.json):
 
-#### 1. Host Test Debugging
-For the most reliable breakpoint debugging experience using the VS Code **"Debug"** CodeLens buttons:
-1. Ensure the **CodeLLDB** extension is installed in VS Code.
-2. Ensure you do **not** override the test run command in `.vscode/settings.json`. By letting VS Code default to standard `cargo test` when debugging, CodeLLDB attaches directly to the test process, allowing your breakpoints to be hit out of the box.
-3. If you specifically want to debug a test under nextest using the terminal, install the `codelldb-launch` helper and run:
+#### 1. Python Host & On-Device `@device_test` Symbolic Debugging (`debugpy`)
+1. **VS Code Testing Sidebar & Editor Gutter**: `.vscode/settings.json` configures `python.testing.pytestArgs` (`-o addopts="-v --maxfail=1"`) across `tools/device_tests/suites`, `tools/tests`, and `tools/validation/tests` so clicking **Debug Test** next to any sync or `async def test_*` runs single-process under `debugpy` without `pytest-xdist` (`-n auto`) probe contention.
+2. **Run and Debug (`Cmd+Shift+D` / `Ctrl+Shift+D`)**:
+   - **`Python: Debug Current Test File (Pytest)`**: Debugs the currently open Python host or `@device_test` file with `justMyCode: false`.
+   - **`Python: Debug Device Test (-k Filter)`**: Prompts for a `-k` keyword filter (e.g. `tof_proximity`) and runs `tools/host.py test -k <expr>` with automatic child-process `debugpy` attachment (`subProcess: true`).
+   - **`Python: Debug Manual Bringup Suite (--manual)`**: Prompts for `cat_detector` or `carrier_board` and debugs interactive `--manual` bringup suites.
+   - **`Python: Attach to host.py test --debug (Port 5678)`**: Attaches to a terminal run started with:
+     ```bash
+     python tools/host.py test -k tof_proximity --debug
+     ```
+
+#### 2. Rust Host Unit & Integration Test Debugging (`CodeLLDB`)
+`[profile.test]` in `Cargo.toml` sets `opt-level = 0` and `debug = 2` so local variables are never optimized out when stepping through `<crate>/tests/*.rs`:
+1. Ensure the **CodeLLDB** (`vadimcn.vscode-lldb`) and **rust-analyzer** extensions are installed, and keep `rust-analyzer.cargo.target` unset on the host so inline **`Run Test | Debug`** CodeLens buttons appear above every `#[test]`.
+2. In **Run and Debug**, use **`Rust: Debug Tests in Current File (CodeLLDB)`**, **`Rust: Debug Single Test by Name (CodeLLDB)`**, or **`Rust: Debug Host Tool (host_cli / host_fs)`**.
+3. To debug a test under `cargo-nextest` from the terminal, install `codelldb-launch` and run:
    ```bash
    cargo install --locked --git https://github.com/vadimcn/codelldb codelldb-launch
    cargo nextest run --debugger codelldb-launch <test_name>
    ```
 
-#### 2. Target Device Debugging (probe-rs & Cortex-Debug)
-To flash and debug firmware binaries directly on the target RP2040 microcontroller, use the VS Code **Run and Debug** view (`Ctrl+Shift+D` / `Cmd+Shift+D`) and select one of the following configurations:
-*   **Cortex-Debug (Recommended - Highly Stable)**: Uses GDB connected to a J-Link server or OpenOCD in the background. It is highly robust at resolving source files on your local disk.
-    - **Debug App (Cortex-Debug J-Link)**: Debugs the main `cat_detector_app` using a J-Link probe.
-    - **Debug Shell (Cortex-Debug J-Link)**: Debugs the diagnostic `cat_detector_shell` bringup utility using a J-Link probe.
-    - **Debug App (Cortex-Debug Pico Probe)**: Debugs the main `cat_detector_app` using a Raspberry Pi Debug Probe (CMSIS-DAP over OpenOCD).
-    - **Debug Shell (Cortex-Debug Pico Probe)**: Debugs the diagnostic `cat_detector_shell` bringup utility using a Raspberry Pi Debug Probe (CMSIS-DAP over OpenOCD).
-*   **probe-rs-debug (Experimental)**: Uses the `Debugger for probe-rs` extension.
-    - **Debug Firmware (probe-rs)**: Flashes and debugs the main `cat_detector_app`.
-    - **Debug Shell (probe-rs)**: Flashes and debugs the diagnostic `cat_detector_shell` bringup utility.
-Code execution will automatically halt at the entry point (`main`), allowing you to step through hardware initialization.
+#### 3. JavaScript ES Module Test Debugging (`node --test`)
+Open any `tools/tests/js/*.test.mjs` test file or `tools/js/` ES module, set a breakpoint, and launch **`JS: Debug Current Test File (node --test)`**.
 
-#### 3. Log Output Streaming and Interactive Console (host_cli)
-We provide a host command-line utility, `host_cli`, to stream and decode plaintext `defmt` logs and run an interactive diagnostic command console via RTT.
-First, build the tool:
+#### 4. Target Device Symbolic Debugging (Primary: `tools/host.py` · Secondary: `probe-rs`)
+Target symbolic debugging runs natively on `probe-rs` across both Segger J-Link and CMSIS-DAP probes:
+*   **Primary Interface — `tools/host.py` (`tools/host_debug` Dual-Core GDB + Live RTT)**:
+    - Enable **Target GDB debug server (`host_debug`)** inside the **🎯 Target Config** modal in `host.py` (optionally enabling **Halt Core 0 at `Reset_Handler` after Sync / Reset** and custom **Core 0 / Core 1 GDB Ports** for multi-target benches), or start from the CLI via `python tools/host.py --debug-server` / `python tools/host.py debug start`.
+    - In VS Code **Run and Debug**, attach directly while `host.py` continues streaming `defmt` logs and `shell>` commands over the `:50000` RTT bridge — `host.py` automatically synchronizes `target/active_target.elf` (`python tools/host.py debug sync-symbols` / `python tools/host.py debug target-info --json`) for both **`debug`** and **`release`** executables across all targets:
+      - **Host Daemon: Attach Core 0 (GDB)**
+      - **Host Daemon: Attach Core 1 (GDB)**
+      - **Host Daemon: Attach Dual-Core (GDB)**
+    - Supports breaking at **`Reset_Handler`** (Core 0) and **`Core1_Reset_Handler`** (Core 1) and stepping to any Rust LOC in Flash or SRAM on either core in both `debug` and `release` profiles.
+*   **Secondary Interface — Standalone `probe-rs-debug` (`probe-rs.probe-rs-debug`)**:
+    - Stop any background `host.py` daemon first (`python tools/host.py stop` or task **`host: stop host.py daemon (release USB probe)`**) and launch **probe-rs (Secondary): Debug Shell (RP2040)**, **probe-rs (Secondary): Debug Firmware (RP2040)**, or **probe-rs (Secondary): Debug Carrier Board Shell (MCXN947)** (selecting `debug` or `release` profile).
+
+#### 5. Log Output Streaming and Interactive Console (`host_cli` / `cargo host-cli`)
+We provide a host command-line utility, `host_cli` (aliased as `cargo host-cli`), to stream and decode plaintext `defmt` logs, emit structured NDJSON events (`--json-events`), and run an interactive diagnostic command console via RTT.
+Build all host tools with:
 ```bash
-cargo build -p host_cli --release
+cargo build-host-tools
 ```
 
 *   **Default Run (Auto-detecting chip/channels and running logs + console)**:
     ```bash
-    cargo run -p host_cli -- --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
+    cargo host-cli --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
     ```
 *   **Via RTT (Specifying chip directly)**:
     ```bash
-    cargo run -p host_cli -- --chip rp2040 --elf target/thumbv6m-none-eabi/debug/cat_detector_app
+    cargo host-cli --chip rp2040 --elf target/thumbv6m-none-eabi/debug/cat_detector_app
     ```
-*   **Via RTT using `pico-debug` (Bypassing multidrop scan)**:
+*   **Concurrent Connection to an Active `host_debug` GDB Session (`--gdb-bridge`)**:
+    When `host_debug` is active (via `python tools/host.py --debug-server` or `cargo host-debug`), attach `host_cli` to its non-halting `:50000` RTT memory bridge:
     ```bash
-    cargo run -p host_cli -- --chip Cortex-M0+ --elf target/thumbv6m-none-eabi/debug/cat_detector_app
-    ```
-*   **Concurrent Connection to an Active VS Code Debug Session (OpenOCD GDB)**:
-    Because active debug sessions lock the physical USB debug probe, standard USB attachment will fail due to hardware resource conflicts. However, our custom OpenOCD configurations allow multiple connections. You can attach `host_cli` directly to the active VS Code debug session's TCP GDB port (defaulting to port `50000`):
-    ```bash
-    cargo run -p host_cli -- -o localhost:50000 --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
+    cargo host-cli --gdb-bridge 127.0.0.1:50000 --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
     ```
     This lets you stream system logs and interact with the CLI console concurrently while debugging, setting breakpoints, and stepping through code in VS Code.
 
     > [!NOTE]
     > If the debugger or connection drops, `host_cli` automatically attempts to reconnect in the background. On reconnection, it will attach directly to the running state without resetting the target CPU.
 
-#### 4. Flashing the Interactive Bringup Shell
+#### 6. Flashing the Interactive Bringup Shell
 To build and flash the interactive bringup shell onto the target:
 ```bash
 # Flash the shell binary directly to the microcontroller
 probe-rs download target/thumbv6m-none-eabi/debug/cat_detector_shell --chip RP2040
 ```
-Once flashed, connect to the target using `host_cli` (as documented in Section 3) to interact with the diagnostic console.
+Once flashed, connect to the target using `host_cli` (as documented in Section 5) to interact with the diagnostic console.
 
-#### 5. Host Flash Filesystem Tool (`host_fs`)
+#### 7. Host Flash Filesystem Tool (`host_fs`)
 We provide a host command-line utility, `host_fs`, to inspect, query, and decode flash memory contents from the microcontroller's sequential-storage partition.
 First, build the tool:
 ```bash
@@ -407,7 +449,7 @@ cargo build -p host_fs --release
       cargo run -p host_fs -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector_app
       ```
 
-#### 6. Raw Flash Extraction Fallback
+#### 8. Raw Flash Extraction Fallback
 If you prefer to extract the raw binary flash memory partition manually from the target Pico using `probe-rs`:
 ```bash
 probe-rs read b8 0x101C0000 262144 -f binary -o flash_dump.bin --chip RP2040
@@ -421,7 +463,7 @@ We provide unified scripts and cargo aliases to make checking and verifying loca
 #### 1. Complete Pre-Commit Verification
 To verify code formatting, static tracing assertions, clippy rules, host unit/integration tests, and build checks before submitting code:
 ```bash
-./tools/verify.sh
+./tools/verify.py
 ```
 This script executes formatting/tracing checks in parallel, runs target compilation checks, and compiles host tools in debug mode (reusing the test compiler cache) to complete all verification checks in under 30 seconds.
 
@@ -432,7 +474,7 @@ tools/anvil provision                # Rent Vast.ai Ubuntu instance and configur
 tools/anvil bootstrap                # Install build tools, Rust, Miniforge, and Conda on remote VM
 tools/anvil status                   # Check instance health, IP/port, GPU, and lock state
 tools/anvil sync                     # Sync repository to cloud container (/workspace/firmware)
-tools/anvil verify                   # Run ./tools/verify.sh remotely
+tools/anvil verify                   # Run ./tools/verify.py remotely
 tools/anvil pytest [args...]         # Run pytest remotely on anvil
 tools/anvil cargo [args...]          # Run cargo checks/tests remotely on anvil
 tools/anvil cli <command...>         # Reverse proxy host CLI command to local host.py daemon
@@ -472,23 +514,10 @@ When introducing or modifying telemetry records, filesystem files, or crash logs
    cargo run -p host_fs -- --dump <flash_dump.bin> crash-log --elf target/thumbv6m-none-eabi/debug/cat_detector_app
    ```
    Verify that all frames resolve demangled function names, filenames, and correct source line numbers.
-4. **Rerun Telemetry Visualization**: Plot the exported telemetry CSV in Rerun:
-   - Ensure the Rerun Python SDK is installed:
-     ```bash
-     pip install rerun-sdk
-     ```
-   - Start the Rerun Viewer:
-     ```bash
-     rerun
-     ```
-   - Stream the CSV into the running viewer:
-     ```bash
-     python tools/helpers/rerun-loader-csv telemetry.csv
-     ```
-   *(Optional)* Symlink `tools/helpers/rerun-loader-csv` into your system `PATH` (e.g., `/usr/local/bin/rerun-loader-csv` or `~/.local/bin/rerun-loader-csv`) to enable direct drag-and-drop or CLI loading via:
-     ```bash
-     rerun telemetry.csv
-     ```
+4. **Live Trace Workstation, Perfetto UI & Rerun Telemetry Visualization**:
+   - Select **`PERF`** or **`SENSOR`** under **`PERFETTO / DEFMT TRACING MODE`** in `python tools/host.py` (`🎯 Target Config`) and click **⚡ Flash & Connect**, then open the **`TRACE`** header tab.
+   - Use the hovering bottom trackbar above the slice/sample inspector to pause/resume (`Space`), clear, filter tracks, or zoom/pan (`W`/`+`, `S`/`-`, `A`/`←`, `D`/`→`, `F` to fit, or mouse scroll wheel).
+   - Export directly to `.csv` or `.perfetto.json`, click **🚀 Open in Perfetto** (in `PERF` mode), or click **🚀 Open in Rerun** (in `SENSOR` / `AUDIO` modes, or run `python tools/host.py trace open-rerun`) to stream scalar time-series directly into Rerun via `rerun-sdk`.
 
 ---
 
@@ -524,12 +553,10 @@ python tools/host.py stop
    - Direct host interaction with target sequential-storage flash partitions (`host_fs`).
    - Quick action triggers and manual commands: `ls`, `cat metadata`, `crash-log`, `export-telemetry`, and `format`.
    - Intelligent probe arbitration: automatically pauses background RTT streaming during filesystem flash accesses and cleanly restores streaming upon completion.
-3. **Bringup Verification Checklist Mode (`bringup>`)**:
-   - Automated and interactive bringup assistant supporting YAML checklist specifications (such as `app/cat_detector_bringup.yaml` and `app/carrier_board_bringup.yaml`).
-   - Multi-script selector allowing on-the-fly checklist switching between target designs.
-   - Comprehensive step support: `shell_command`, `host_command`, `hardware_check` (with test point voltage tables and control pin assignments), `interactive`, and `manual` procedures.
-   - Automated regex output matching, interactive user prompts (`Pass`, `Fail`, `Skip`), and real-time execution log console.
-   - Export structured Markdown verification reports (`bringup_report.md`).
+3. **Bringup & On-Device Suite Mode (`bringup>` / `host.py test`)**:
+   - Automated and interactive hardware-in-the-loop pytest suites (`tools/device_tests/suites/test_cat_detector_bringup.py` and `tools/device_tests/suites/test_carrier_board_bringup.py`) built on top of `host.py`.
+   - Automatic board identity discovery via `python tools/host.py fs board-type` (reading `.program_metadata` and `metadata` partitions in O(1) without scanning flash) with glob-based `@device_test(boards=...)` filtering and automatic `target_binary` flashing.
+   - Multi-scenario support (`smoke`, `integration`, `bringup`) executed in strict top-to-bottom source-line order, plus interactive benchtop prompts (`Pass`, `Fail`, `Skip`) and Markdown/JUnit verification reports.
 
 ### 3. Integrated Hardware Controls & Diagnostic Reporting
 
@@ -558,14 +585,22 @@ python tools/host.py fs ls
 python tools/host.py fs cat metadata
 python tools/host.py fs crash-log
 
-# Hardware bringup operations
-python tools/host.py bringup --list
-python tools/host.py bringup --script app/cat_detector_bringup.yaml --status
-python tools/host.py bringup --script app/cat_detector_bringup.yaml --run
-python tools/host.py bringup --script app/carrier_board_bringup.yaml --step
-python tools/host.py bringup --reset
+# On-device pytest suites, stress testing, & interactive symbolic debugging
+python tools/host.py fs board-type
+python tools/host.py test --list
+python tools/host.py test --scenario smoke --board "rp2040*"
+python tools/host.py test --scenario integration
+python tools/host.py test -k "tof_proximity or battery"
+python tools/host.py test --stress-runs 10
+python tools/host.py test -k tof_proximity --debug
+python tools/host.py test tools/device_tests/suites/test_cat_detector_bringup.py --manual
+python tools/host.py test --script tools/device_tests/suites/test_carrier_board_bringup.py --manual
 
-# Flash & debug probe controls
+# Target GDB debug server, worm defect reporting, & daemon lifecycle controls
+python tools/host.py debug status
+python tools/host.py debug start --gdb-core0-port 3333 --gdb-core1-port 3334 --halt-on-reset
+python tools/host.py debug stop
+python tools/host.py bug "Motor stall under load" --severity HIGH --attach-crash-log
 python tools/host.py sync
 python tools/host.py flash
 python tools/host.py reset
@@ -689,7 +724,7 @@ The workstation employs a dual-layer storage architecture combining ACID transac
 
 When contributing changes, developers must adhere to the following workflow invariants:
 - **Single-Bug Focus**: Investigate, reproduce, and resolve ONE worm at a time. Write a minimal failing test before editing code, apply the targeted fix, verify regression tests pass, and resolve the worm atomically.
-- **Pre-Commit Script Execution**: Always execute `./tools/verify.sh` from the repository root before committing. All tests, linters, and MCU target builds must pass with `Verification PASSED`.
+- **Pre-Commit Script Execution**: Always execute `./tools/verify.py` from the repository root before committing. All tests, linters, and MCU target builds must pass with `Verification PASSED`.
 - **User-Managed Pull Requests**: Autonomous PR creation (`gh pr create`) and merging (`gh pr merge`) are strictly prohibited; peer review and PR operations are executed manually by project maintainers.
 
 ---

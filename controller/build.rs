@@ -77,6 +77,10 @@ impl Controller {
         self.impl_phantom.as_deref().unwrap_or("")
     }
 
+    fn is_sensor_domain(&self) -> bool {
+        matches!(self.name.as_str(), "Sensor" | "Thermal")
+    }
+
     fn default_capacity_suffix(&self) -> String {
         if let Some(ref cap) = self.receiver_capacity {
             if cap.starts_with('$') {
@@ -137,7 +141,16 @@ struct CliSkeletonsTestTemplate {
 }
 
 fn main() {
-    if std::env::var("CARGO_FEATURE_TRACING").is_ok() {
+    if [
+        "CARGO_FEATURE_TRACING",
+        "CARGO_FEATURE_TRACE_PERF",
+        "CARGO_FEATURE_TRACE_SENSORS",
+        "CARGO_FEATURE_TRACE_SENSOR_SPANS",
+        "CARGO_FEATURE_TRACE_AUDIO",
+    ]
+    .iter()
+    .any(|var| std::env::var(var).is_ok())
+    {
         println!("cargo:rustc-env=DEFMT_LOG={}", LOG_LEVEL);
     }
 

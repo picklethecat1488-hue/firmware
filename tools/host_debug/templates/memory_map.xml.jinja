@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<!DOCTYPE memory-map PUBLIC "+//IDN gnu.org//DTD GDB Memory Map V1.0//EN" "http://sourceware.org/gdb/gdb-memory-map.dtd">
+<memory-map>
+{% for region in regions %}  <memory type="{{ region.kind.as_xml_type() }}" start="{{ region.start_hex() }}" length="{{ region.length_hex() }}"/>
+{% endfor %}</memory-map>

@@ -13,6 +13,7 @@
       font-size: calc(80% * var(--ui-scale, 1));
     }
     :root {
+      color-scheme: dark;
       --xerxes-bg: #04090c;
       --xerxes-panel: #08161d;
       --xerxes-panel-hover: #0e242f;
@@ -31,6 +32,29 @@
       --xerxes-text-muted: #7aa5b0;
       --xerxes-text-dim: #3a626c;
       --font-mono: "Share Tech Mono", ui-monospace, "SF Mono", "Courier New", monospace;
+    }
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: #0c3c47 #04090c;
+    }
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #04090c;
+      border-left: 1px solid #0a1c24;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #0c3c47;
+      border: 1px solid #148094;
+      border-radius: 2px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #125564;
+    }
+    ::-webkit-scrollbar-corner {
+      background: #04090c;
     }
     html {
       height: 100%;
@@ -69,12 +93,16 @@
       gap: 8px;
     }
     .badge {
+      display: inline-block;
       font-size: 8.5px;
+      line-height: 1.25;
       padding: 2px 6px;
       border-radius: 2px;
       background: rgba(0, 240, 255, 0.15);
       border: 1px solid var(--xerxes-cyan-dim);
       color: var(--xerxes-cyan);
+      white-space: nowrap;
+      vertical-align: middle;
     }
     .badge-cyan {
       background: rgba(0, 240, 255, 0.2);
@@ -90,6 +118,167 @@
       background: rgba(255, 176, 0, 0.15);
       border-color: var(--xerxes-amber);
       color: var(--xerxes-amber);
+    }
+    .test-badge-red {
+      background: rgba(255, 42, 75, 0.18);
+      border-color: var(--xerxes-red);
+      color: var(--xerxes-red);
+    }
+    .test-badge-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px;
+    }
+    .left-panel-tabs {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .left-panel-tab {
+      background: rgba(4, 9, 12, 0.7);
+      border: 1px solid var(--xerxes-border-mid);
+      color: var(--xerxes-text-muted);
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      font-weight: bold;
+      padding: 3px 8px;
+      border-radius: 2px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .left-panel-tab:hover {
+      border-color: var(--xerxes-cyan);
+      color: var(--xerxes-cyan);
+    }
+    .left-panel-tab.active {
+      background: rgba(0, 240, 255, 0.18);
+      border-color: var(--xerxes-cyan);
+      color: var(--xerxes-cyan);
+      box-shadow: inset 0 0 6px rgba(0, 240, 255, 0.25);
+    }
+    .test-sidebar-view {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      overflow: hidden;
+      gap: 6px;
+      padding: 6px 8px;
+    }
+    .test-mode-container {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      overflow: hidden;
+      gap: 10px;
+      padding: 10px 12px;
+    }
+    .test-stack-list {
+      flex: 1;
+      min-height: 150px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      border: 1px solid var(--xerxes-border-mid);
+      border-radius: 3px;
+      background: rgba(4, 9, 12, 0.65);
+    }
+    .test-stack-node {
+      background: var(--xerxes-panel, #08161d);
+      border: 1px solid var(--xerxes-border-mid, #0b5966);
+      border-left: 4px solid transparent;
+      border-radius: 3px;
+      padding: 8px 10px;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      position: relative;
+    }
+    .test-stack-node:hover {
+      background: var(--xerxes-panel-hover, #0e242f);
+      border-color: var(--xerxes-teal, #14d9c4);
+    }
+    .test-stack-node.selected {
+      background: linear-gradient(90deg, rgba(0, 240, 255, 0.16) 0%, rgba(20, 217, 196, 0.10) 50%, rgba(8, 22, 29, 0.90) 100%) !important;
+      border-left: 4px solid var(--xerxes-teal, #14d9c4) !important;
+      border-top: 1px solid rgba(0, 240, 255, 0.25) !important;
+      border-bottom: 1px solid rgba(0, 240, 255, 0.25) !important;
+      box-shadow: inset 3px 0 0 var(--xerxes-teal, #14d9c4), 0 0 8px rgba(20, 217, 196, 0.25) !important;
+    }
+    .test-stack-node.running {
+      background: linear-gradient(90deg, rgba(0, 240, 255, 0.24) 0%, rgba(8, 22, 29, 0.88) 100%) !important;
+      border-left: 4px solid var(--xerxes-cyan, #00f0ff) !important;
+      box-shadow: inset 3px 0 0 var(--xerxes-cyan, #00f0ff), 0 0 12px rgba(0, 240, 255, 0.3) !important;
+    }
+    .test-stack-node.passed {
+      border-left: 4px solid var(--xerxes-green, #00ff66);
+    }
+    .test-stack-node.failed {
+      border-left: 4px solid var(--xerxes-red, #ff2a4b);
+      background: linear-gradient(90deg, rgba(255, 42, 75, 0.12) 0%, var(--xerxes-panel, #08161d) 60%);
+    }
+    .test-stack-node.skipped {
+      border-left: 4px solid var(--xerxes-amber, #ffb000);
+    }
+    .test-node-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 9px;
+      min-width: 0;
+    }
+    .test-node-order {
+      color: var(--xerxes-amber, #ffb000);
+      font-weight: bold;
+      font-size: 8.5px;
+      flex-shrink: 0;
+    }
+    .test-node-title {
+      color: var(--xerxes-cyan, #00f0ff);
+      font-weight: bold;
+      font-size: 9.5px;
+      word-break: break-word;
+      line-height: 1.3;
+    }
+    .test-stack-node.selected .test-node-title,
+    .test-stack-node.running .test-node-title {
+      color: #ffffff;
+      text-shadow: 0 0 6px rgba(0, 240, 255, 0.5);
+    }
+    .test-node-subject {
+      font-size: 8.5px;
+      color: var(--xerxes-text-light, #e0f8ff);
+      opacity: 0.85;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .test-node-detail {
+      font-size: 8px;
+      line-height: 1.35;
+      padding: 4px 6px;
+      border-radius: 2px;
+      background: rgba(4, 9, 12, 0.65);
+      border: 1px solid var(--xerxes-border-dark);
+      word-break: break-word;
+      white-space: normal;
+    }
+    .test-run-one-btn {
+      padding: 2px 7px;
+      font-size: 8.5px;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
     }
     .select-dropdown {
       background: var(--xerxes-panel);
@@ -605,6 +794,68 @@
       border-color: var(--xerxes-cyan);
       box-shadow: 0 0 10px rgba(0, 240, 255, 0.15);
     }
+    .test-progress-card {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 14px 16px;
+      border-color: var(--xerxes-border-mid);
+    }
+    .test-telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .test-telemetry-tile {
+      background: rgba(0, 240, 255, 0.03);
+      border: 1px solid var(--xerxes-border-dark);
+      border-radius: 2px;
+      padding: 7px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+    .test-telemetry-label {
+      font-size: 7.5px;
+      color: var(--xerxes-text-dim);
+      font-weight: bold;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+    }
+    .test-telemetry-value {
+      font-size: 9px;
+      color: var(--xerxes-text-light);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .test-run-feed {
+      flex: 1;
+      min-height: 80px;
+      overflow-y: auto;
+      background: rgba(2, 12, 18, 0.65);
+      border: 1px solid var(--xerxes-border-dark);
+      border-radius: 2px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: 8.5px;
+    }
+    .test-run-feed-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 4px 6px;
+      border-bottom: 1px solid rgba(11, 89, 102, 0.25);
+    }
+    .test-run-feed-row:last-child {
+      border-bottom: none;
+    }
     .bringup-table {
       width: 100%;
       border-collapse: collapse;
@@ -613,8 +864,10 @@
     }
     .bringup-table th, .bringup-table td {
       border: 1px solid var(--xerxes-border-mid);
-      padding: 4px 6px;
+      padding: 6px 8px;
       text-align: left;
+      vertical-align: middle;
+      line-height: 1.4;
     }
     .bringup-table th {
       background: var(--xerxes-header-bg);
@@ -636,6 +889,279 @@
       background: rgba(0, 240, 255, 0.08) !important;
       color: var(--xerxes-cyan) !important;
     }
+
+    /* Segmented Header Mode Tabs & Trace Badge */
+    .badge-purple {
+      background: rgba(214, 143, 240, 0.2);
+      border-color: #d68ff0;
+      color: #d68ff0;
+    }
+    .mode-tab-group {
+      display: inline-flex;
+      border: 1px solid var(--xerxes-border-mid);
+      border-radius: 2px;
+      overflow: hidden;
+      background: #040b0e;
+    }
+    .mode-tab-btn {
+      background: transparent;
+      border: none;
+      border-right: 1px solid var(--xerxes-border-mid);
+      color: var(--xerxes-text-muted);
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      font-weight: bold;
+      padding: 3px 8px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .mode-tab-btn:last-child {
+      border-right: none;
+    }
+    .mode-tab-btn:hover {
+      color: var(--xerxes-cyan);
+      background: rgba(0, 240, 255, 0.08);
+    }
+    .mode-tab-btn.active {
+      background: rgba(0, 240, 255, 0.22);
+      color: var(--xerxes-cyan);
+      box-shadow: inset 0 -2px 0 var(--xerxes-cyan);
+    }
+
+    /* Target Config Scrollable Trace Mode Dropdown */
+    .trace-dropdown-wrap {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .trace-dropdown-trigger {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px 10px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      background: #040d12;
+      border: 1px solid var(--xerxes-border-mid);
+      color: var(--xerxes-cyan);
+      border-radius: 2px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      text-align: left;
+    }
+    .trace-dropdown-trigger:hover {
+      border-color: var(--xerxes-cyan);
+    }
+    .trace-dropdown-menu {
+      max-height: 150px;
+      overflow-y: auto;
+      background: #030b10;
+      border: 1px solid var(--xerxes-cyan);
+      border-radius: 2px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.85);
+      display: none;
+      flex-direction: column;
+    }
+    .trace-dropdown-menu.open {
+      display: flex;
+    }
+    .trace-dropdown-item {
+      padding: 7px 10px;
+      border-bottom: 1px solid rgba(11, 89, 102, 0.35);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      background: transparent;
+      text-align: left;
+    }
+    .trace-dropdown-item:last-child {
+      border-bottom: none;
+    }
+    .trace-dropdown-item:hover:not(.disabled) {
+      background: rgba(0, 240, 255, 0.14);
+    }
+    .trace-dropdown-item.selected {
+      background: rgba(0, 240, 255, 0.2);
+      border-left: 3px solid var(--xerxes-cyan);
+    }
+    .trace-dropdown-item.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .trace-flags-preview {
+      font-size: 8.5px;
+      color: var(--xerxes-mint);
+      background: rgba(0, 255, 180, 0.06);
+      border: 1px solid rgba(0, 255, 180, 0.22);
+      border-radius: 2px;
+      padding: 4px 8px;
+      font-family: var(--font-mono);
+    }
+
+    /* TRACE Workstation View & Hovering Bottom Trackbar */
+    .trace-mode-container {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+    .trace-export-bar {
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--xerxes-border-mid);
+      background: rgba(6, 18, 24, 0.92);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn-perfetto {
+      background: rgba(214, 143, 240, 0.2);
+      border-color: #d68ff0;
+      color: #d68ff0;
+    }
+    .btn-perfetto:hover {
+      background: rgba(214, 143, 240, 0.35);
+      border-color: #f0b8ff;
+      color: #ffffff;
+    }
+    .btn-rerun {
+      background: rgba(20, 217, 196, 0.2);
+      border-color: var(--xerxes-teal);
+      color: var(--xerxes-mint);
+    }
+    .btn-rerun:hover {
+      background: rgba(20, 217, 196, 0.36);
+      border-color: var(--xerxes-mint);
+      color: #ffffff;
+    }
+    .trace-disabled-banner {
+      padding: 8px 12px;
+      background: rgba(255, 176, 0, 0.12);
+      border-bottom: 1px solid var(--xerxes-amber);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 9px;
+      color: var(--xerxes-amber);
+    }
+    .trace-timeline-wrapper {
+      flex: 1;
+      min-height: 180px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: #03090d;
+    }
+    .trace-canvas-scroller {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-bottom: 54px;
+      position: relative;
+    }
+    #traceTimelineCanvas {
+      display: block;
+      width: 100%;
+      cursor: grab;
+    }
+    #traceTimelineCanvas:active {
+      cursor: grabbing;
+    }
+    .trace-bottom-trackbar {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 8px;
+      z-index: 25;
+      background: rgba(6, 18, 25, 0.94);
+      backdrop-filter: blur(6px);
+      border: 1px solid var(--xerxes-cyan-dim);
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.8), 0 0 10px rgba(0, 240, 255, 0.15);
+      border-radius: 3px;
+      padding: 5px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .trace-trackbar-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .trace-inspector-split {
+      height: 185px;
+      min-height: 130px;
+      border-top: 1px solid var(--xerxes-border-mid);
+      background: #061218;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      overflow: hidden;
+    }
+    .trace-slice-card {
+      border-right: 1px solid var(--xerxes-border-mid);
+      padding: 8px 10px;
+      overflow-y: auto;
+      font-size: 8.5px;
+      line-height: 1.5;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .trace-kv-row {
+      display: grid;
+      grid-template-columns: 88px 1fr;
+      gap: 6px;
+      color: var(--xerxes-text-muted);
+    }
+    .trace-kv-val {
+      color: var(--xerxes-text-light);
+      word-break: break-word;
+    }
+    .trace-events-table-wrap {
+      overflow-y: auto;
+      overflow-x: auto;
+    }
+    .trace-events-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8.5px;
+    }
+    .trace-events-table th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #091d26;
+      color: var(--xerxes-text-muted);
+      text-align: left;
+      padding: 4px 8px;
+      border-bottom: 1px solid var(--xerxes-border-mid);
+      font-weight: bold;
+    }
+    .trace-events-table td {
+      padding: 3px 8px;
+      border-bottom: 1px solid rgba(11, 89, 102, 0.25);
+      color: var(--xerxes-text-light);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .trace-events-table tr:hover td {
+      background: rgba(0, 240, 255, 0.1);
+    }
+    .trace-events-table tr.selected td {
+      background: rgba(0, 240, 255, 0.2);
+      color: #ffffff;
+    }
   </style>
 </head>
 <body>
@@ -645,18 +1171,27 @@
       <span class="badge" id="targetBadge">{{ runner.target }}</span>
       <span class="badge" id="binBadge">{{ runner.bin_name }}</span>
       <span class="badge badge-green" id="statusBadge">ONLINE</span>
+      <span class="badge badge-cyan" id="debugServerBadge" style="display: {% if runner.debug_server_active | default(false) %}inline-block{% else %}none{% endif %};" title="probe-rs Target GDB Debug Server">GDB :{{ runner.gdb_core0_port | default(3333) }}/:{{ runner.gdb_core1_port | default(3334) }}</span>
+      <span class="badge {% if (active_trace_mode | default('NONE')) == 'PERF' %}badge-purple{% else %}badge-green{% endif %}" id="traceModeBadge" style="display: {% if (active_trace_mode | default('NONE')) != 'NONE' %}inline-block{% else %}none{% endif %};" title="Active Firmware Trace Mode">TRACE: {{ active_trace_mode | default('NONE') }}</span>
     </div>
 
-    <div style="display: flex; align-items: center; gap: 8px;">
+    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
       <button class="btn btn-cyan" id="btnSync">⚡ Sync</button>
       <button class="btn btn-amber" id="btnReset">⚡ Reset</button>
       <button class="btn btn-cyan" id="btnTargetConfig" title="Target Application Configuration">🎯 Target Config</button>
       <button class="btn btn-red" id="btnTargetBug" title="Report defect discovered on target">🐞 Target Bug</button>
-      <label for="modeSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">ACTIVE MODE:</label>
-      <select id="modeSelect" class="select-dropdown">
+      <span style="font-size: 8.5px; color: var(--xerxes-text-muted);">MODE:</span>
+      <div class="mode-tab-group" id="modeTabGroup">
+        <button type="button" class="mode-tab-btn {% if runner.active_mode == 'CLI' %}active{% endif %}" data-mode="CLI">CLI</button>
+        <button type="button" class="mode-tab-btn {% if runner.active_mode == 'FS' %}active{% endif %}" data-mode="FS">FS</button>
+        <button type="button" class="mode-tab-btn {% if runner.active_mode == 'TEST' %}active{% endif %}" data-mode="TEST">TEST</button>
+        <button type="button" class="mode-tab-btn {% if runner.active_mode == 'TRACE' %}active{% endif %}" data-mode="TRACE">TRACE</button>
+      </div>
+      <select id="modeSelect" class="select-dropdown" style="display: none;" aria-label="Active Mode">
         <option value="CLI" {% if runner.active_mode == 'CLI' %}selected{% endif %}>CLI (RTT Console)</option>
         <option value="FS" {% if runner.active_mode == 'FS' %}selected{% endif %}>FS (Filesystem)</option>
-        <option value="BRINGUP" {% if runner.active_mode == 'BRINGUP' %}selected{% endif %}>BRINGUP (Checklist)</option>
+        <option value="TEST" {% if runner.active_mode == 'TEST' %}selected{% endif %}>TEST (Device Suites)</option>
+        <option value="TRACE" {% if runner.active_mode == 'TRACE' %}selected{% endif %}>TRACE (Perfetto / Rerun)</option>
       </select>
       <label for="uiScaleSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">SCALE:</label>
       <select id="uiScaleSelect" class="select-dropdown" title="UI Scale (Shortcuts: Cmd/Ctrl +/- or 0 to reset)" style="padding: 2px 4px; font-size: 8.5px; height: 22px;">
@@ -685,6 +1220,7 @@
         <div class="sync-info-row"><span>Package:</span><strong id="syncInfoPackage">{{ runner.package }} ({{ runner.bin_name }})</strong></div>
         <div class="sync-info-row"><span>Profile:</span><strong id="syncInfoProfile">{{ 'release' if runner.release else 'debug' }}</strong></div>
         <div class="sync-info-row"><span>Speed:</span><strong id="syncInfoSpeed">{{ runner.speed }} kHz</strong></div>
+        <div class="sync-info-row"><span>Trace Mode:</span><strong id="syncInfoTraceMode">{{ active_trace_mode | default('NONE') }}</strong></div>
       </div>
       <div class="sync-status-indicator">
         <span class="sync-status-dot pulse" id="syncStatusDot"></span>
@@ -782,6 +1318,10 @@
               <input type="checkbox" id="attachSystemLogs" checked>
               <span>Attach recent system logs (defmt / RTT output from session)</span>
             </label>
+            <label id="attachTestExecLogsRow" style="display:none; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="attachTestExecutionLogs" checked>
+              <span>Attach test execution logs (pytest output from Test Mode)</span>
+            </label>
             <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
               <input type="checkbox" id="attachCrashLog">
               <span>Fetch &amp; attach target crash log (host_fs crash-log)</span>
@@ -838,7 +1378,7 @@
         <span class="sync-modal-title" style="color: var(--xerxes-cyan);">⚡ TARGET CONFIGURATION // PACKAGE SELECTION MATRIX</span>
         <button class="btn" id="btnCloseTargetConfigModal" style="padding: 2px 6px; font-size: 8.5px;">✕</button>
       </div>
-      <div style="display:flex; flex-direction:column; gap:12px; padding:16px;">
+      <div style="display:flex; flex-direction:column; gap:12px; padding:16px; max-height:74vh; overflow-y:auto;">
         <div style="font-size: 9.5px; color: var(--xerxes-text-dim); line-height: 1.4;">
           Configure target application package, binary artifact, build profile, and probe parameters. Target ARM architecture is automatically inferred based on MCU hardware mappings.
         </div>
@@ -894,6 +1434,23 @@
           <input type="hidden" id="cfgTargetArchInput" value="{{ runner.target }}">
         </div>
 
+        <!-- Perfetto / defmt Tracing Mode (Scrollable Dropdown Panel) -->
+        <div id="cfgTraceModeSection" style="background:#05141c; border:1px solid #0b5966; padding:8px 12px; border-radius:3px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:8.5px; color:var(--xerxes-text-muted); font-weight:bold;">PERFETTO / DEFMT TRACING MODE</span>
+            <span style="font-size:8px; color:var(--xerxes-text-dim);">Scrollable mode selector</span>
+          </div>
+          <div class="trace-dropdown-wrap" id="cfgTraceModeDropdown">
+            <button type="button" class="trace-dropdown-trigger" id="cfgTraceModeTrigger">
+              <span id="cfgTraceModeTriggerLabel">{{ active_trace_mode | default('NONE') }}</span>
+              <span style="font-size:9px; color:var(--xerxes-cyan);">▾</span>
+            </button>
+            <div class="trace-dropdown-menu" id="cfgTraceModeMenu"></div>
+            <input type="hidden" id="cfgTraceModeInput" value="{{ active_trace_mode | default('NONE') }}">
+          </div>
+          <div id="cfgTraceModeFlags" class="trace-flags-preview">Cargo Flags: (none — standard build)</div>
+        </div>
+
         <!-- Logging Preference -->
         <div style="background:#05141c; border:1px solid #0b5966; padding:8px 12px; border-radius:3px; display:flex; flex-direction:column; gap:4px;">
           <span style="font-size:8.5px; color:var(--xerxes-text-muted); font-weight:bold;">LOGGING PREFERENCE</span>
@@ -901,6 +1458,29 @@
             <input type="checkbox" id="cfgShowLogsCheckbox" {% if runner.show_system_logs | default(false) %}checked{% endif %} style="accent-color:var(--xerxes-cyan); cursor:pointer;">
             <span>Show system logs on startup (defmt / RTT monitor)</span>
           </label>
+        </div>
+
+        <!-- Target Debug Server (probe-rs GDB RSP + :50000 RTT Bridge) -->
+        <div style="background:#05141c; border:1px solid #0b5966; padding:8px 12px; border-radius:3px; display:flex; flex-direction:column; gap:6px;">
+          <span style="font-size:8.5px; color:var(--xerxes-text-muted); font-weight:bold;">TARGET DEBUG SERVER (probe-rs GDB)</span>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:10px; color:var(--xerxes-text-bright);">
+            <input type="checkbox" id="cfgDebugServerCheckbox" {% if runner.enable_debug_server | default(false) %}checked{% endif %} style="accent-color:var(--xerxes-cyan); cursor:pointer;">
+            <span>Enable target GDB debug server on Sync (host_debug)</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:10px; color:var(--xerxes-text-bright);">
+            <input type="checkbox" id="cfgHaltOnResetCheckbox" {% if runner.halt_on_reset | default(false) %}checked{% endif %} style="accent-color:var(--xerxes-cyan); cursor:pointer;">
+            <span>Halt Core 0 at Reset_Handler after Sync / Reset</span>
+          </label>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 2px;">
+            <div>
+              <label for="cfgGdbCore0Port" style="font-size:8px; color:var(--xerxes-text-muted); display:block; margin-bottom:2px; font-weight:bold;">CORE 0 GDB PORT</label>
+              <input type="number" id="cfgGdbCore0Port" class="quake-input" min="1" max="65535" value="{{ runner.gdb_core0_port | default(3333) }}" style="width:100%; box-sizing:border-box; padding:4px 6px; font-size:10.5px; background:#040d12; border:1px solid #0b5966; color:#00f0ff;">
+            </div>
+            <div>
+              <label for="cfgGdbCore1Port" style="font-size:8px; color:var(--xerxes-text-muted); display:block; margin-bottom:2px; font-weight:bold;">CORE 1 GDB PORT</label>
+              <input type="number" id="cfgGdbCore1Port" class="quake-input" min="1" max="65535" value="{{ runner.gdb_core1_port | default(3334) }}" style="width:100%; box-sizing:border-box; padding:4px 6px; font-size:10.5px; background:#040d12; border:1px solid #0b5966; color:#00f0ff;">
+            </div>
+          </div>
         </div>
 
         <div id="cfgStatusMsg" style="display:none; font-size:9.5px; padding:6px 10px; border-radius:2px;"></div>
@@ -913,18 +1493,82 @@
   </div>
 
   <main class="workspace-body">
-    <!-- Left Panel: System / Target Logging -->
+    <!-- Left Panel: Tabbed Test Suite & System / Target Logging -->
     <div class="panel-container log-panel" id="logPanel" style="display: none;">
-      <div class="panel-header">
-        <span>SYSTEM LOGGING MONITOR (defmt / RTT)</span>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <button class="btn btn-copy" id="btnCopyLog" title="Copy log output">📋 Copy</button>
-          <button class="btn btn-copy" id="btnCollapseLog" title="Show logging monitor">▶ Show</button>
-          <span id="logAutoScrollBadge" style="font-size: 8px; color: var(--xerxes-text-dim); cursor: pointer;">AUTO-SCROLL: ON</span>
+      <div class="panel-header" style="gap: 8px; flex-wrap: wrap;">
+        <div class="left-panel-tabs">
+          <button type="button" class="left-panel-tab {% if runner.active_mode == 'TEST' %}active{% endif %}" id="btnLeftTabTests" style="display: {% if runner.active_mode == 'TEST' %}inline-flex{% else %}none{% endif %};">🧪 TEST SUITE</button>
+          <button type="button" class="left-panel-tab" id="btnLeftTabTestLog" style="display: {% if runner.active_mode == 'TEST' %}inline-flex{% else %}none{% endif %};">📋 TEST EXECUTION LOG</button>
+          <button type="button" class="left-panel-tab {% if runner.active_mode != 'TEST' %}active{% endif %}" id="btnLeftTabLogs">📜 SYSTEM LOGS (defmt / RTT)</button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span id="leftPanelTestTools" style="display: {% if runner.active_mode == 'TEST' %}inline-flex{% else %}none{% endif %}; align-items: center; gap: 6px;">
+            <span id="testDetectedBoardBadge" class="badge badge-amber">BOARD: NOT SCANNED</span>
+            <button type="button" class="btn btn-cyan" id="btnTestScan" style="padding: 2px 6px;">🔄 Scan</button>
+          </span>
+          <span id="leftPanelTestLogTools" style="display: none; align-items: center; gap: 6px;">
+            <button type="button" class="btn btn-copy" id="btnCopyTestLog" title="Copy test execution log">📋 Copy</button>
+          </span>
+          <span id="leftPanelLogTools" style="display: {% if runner.active_mode == 'TEST' %}none{% else %}inline-flex{% endif %}; align-items: center; gap: 6px;">
+            <button class="btn btn-copy" id="btnCopyLog" title="Copy log output">📋 Copy</button>
+            <span id="logAutoScrollBadge" style="font-size: 8px; color: var(--xerxes-text-dim); cursor: pointer;">AUTO-SCROLL: ON</span>
+          </span>
+          <button class="btn btn-copy" id="btnCollapseLog" title="Toggle left panel">◀ Hide</button>
         </div>
       </div>
-      <div class="panel-content" id="logView">
+
+      <div class="panel-content" id="logView" style="display: {% if runner.active_mode == 'TEST' %}none{% else %}block{% endif %};">
         <div class="log-line log-line-info">&gt; Host daemon online. Attached to {{ runner.package }}.</div>
+      </div>
+
+      <div class="panel-content" id="testConsoleOutput" style="display: none;">
+        <span class="term-dim">&gt; Select tests in TEST SUITE and click ▶ Run Selected or ▶ Run Filtered to stream pytest output here.</span>
+      </div>
+
+      <div id="testSidebarView" class="test-sidebar-view" style="display: {% if runner.active_mode == 'TEST' %}flex{% else %}none{% endif %};">
+        <div class="bringup-toolbar" style="padding: 6px 8px; border: 1px solid var(--xerxes-border-mid); border-radius: 2px; gap: 6px;">
+          <select id="testFilterProject" class="select-dropdown" title="Filter by @device_test(project=...)">
+            <option value="all" selected>All Projects</option>
+          </select>
+          <select id="testFilterScenario" class="select-dropdown" title="Filter by @device_test(scenarios=...)">
+            <option value="all" selected>All Scenarios</option>
+            <option value="default">Smoke + Integration</option>
+            <option value="smoke">Smoke</option>
+            <option value="integration">Integration</option>
+            <option value="bringup">Bringup</option>
+          </select>
+          <select id="testFilterBinary" class="select-dropdown" title="Filter by @device_test(target_binary=...)">
+            <option value="all" selected>All Binaries</option>
+          </select>
+          <select id="testFilterManual" class="select-dropdown" title="Filter by manual vs automated tests">
+            <option value="all" selected>All Modes</option>
+            <option value="automated">Automated Only</option>
+            <option value="manual">Manual Only</option>
+          </select>
+          <input type="text" id="testFilterBoard" class="cmd-input" value="auto" placeholder="Board glob (auto, rp2040*)" style="width: 110px; flex: none; padding: 3px 6px; font-size: 8.5px;" title="Filter by board_type glob pattern or 'auto'">
+          <input type="text" id="testFilterSearch" class="cmd-input" placeholder="Search tests..." style="min-width: 120px; flex: 1; padding: 3px 6px; font-size: 8.5px;">
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; padding: 4px 8px; background: rgba(4, 9, 12, 0.7); border: 1px solid var(--xerxes-border-mid); border-radius: 2px;">
+          <div style="display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 8.5px; color: var(--xerxes-cyan); font-weight: bold; cursor: pointer;" title="Select all filtered tests">
+              <input type="checkbox" id="testSelectAllCb">
+              <span>ALL</span>
+            </label>
+            <span id="testSummaryStats" style="font-size: 8.5px; color: var(--xerxes-text-muted);">0 Shown | 0 Selected | 0 Passed • 0 Failed • 0 Skipped [IDLE]</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 8.5px; color: var(--xerxes-text-muted); cursor: pointer;">
+              <input type="checkbox" id="testEnableManualCb" checked>
+              <span>Prompt Manual</span>
+            </label>
+            <button type="button" class="btn btn-cyan" id="btnTestRunSelected">▶ Run Selected (0)</button>
+            <button type="button" class="btn btn-cyan" id="btnTestRunFiltered">▶ Run Filtered (0)</button>
+            <button type="button" class="btn btn-red" id="btnTestCancel" disabled>⏹ Stop</button>
+          </div>
+        </div>
+
+        <div id="testStackList" class="test-stack-list"></div>
       </div>
     </div>
 
@@ -953,20 +1597,13 @@
         <button class="btn" data-fs-cmd="format">format</button>
       </div>
 
-      <!-- Optional Bringup Action Toolbar -->
-      <div id="bringupToolbar" class="bringup-toolbar" style="display: {% if runner.active_mode == 'BRINGUP' %}flex{% else %}none{% endif %};">
-        <label for="bringupScriptSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">SCRIPT:</label>
-        <select id="bringupScriptSelect" class="select-dropdown">
-          <option value="">Loading bringup scripts...</option>
-        </select>
-        <button class="btn btn-cyan" id="btnBringupStep" title="Execute current checklist step">▶ Step</button>
-        <button class="btn btn-cyan" id="btnBringupRun" title="Auto-run remaining checklist steps">⚡ Run All</button>
-        <button class="btn btn-amber" id="btnBringupReset" title="Reset checklist to step 1">↺ Reset</button>
-        <button class="btn" id="btnBringupReport" title="Export markdown verification report">📄 Report</button>
-        <span id="bringupSummaryBadge" class="badge" style="margin-left: auto;">CHECKLIST: IDLE</span>
+      <!-- Active Manual Test Prompt Banner (populated from pytest /api/manual_prompt heartbeats) -->
+      <div id="manualPromptBanner" class="bringup-toolbar" style="display: none; border-color: var(--xerxes-amber); gap: 8px; cursor: pointer;">
+        <span class="badge badge-amber">MANUAL TEST</span>
+        <span id="manualPromptSummary" style="font-size: 8.5px; color: var(--xerxes-text-light);"></span>
       </div>
 
-      <div class="panel-content" id="cliView" style="display: {% if runner.active_mode in ('FS', 'BRINGUP') %}none{% else %}block{% endif %};">
+      <div class="panel-content" id="cliView" style="display: {% if runner.active_mode in ('FS', 'TEST', 'TRACE') %}none{% else %}block{% endif %};">
         <div class="log-line log-line-info">&gt; Interactive CLI workstation ready. Type commands below.</div>
       </div>
 
@@ -974,46 +1611,166 @@
         <div class="log-line log-line-info">&gt; Filesystem (host_fs) workstation ready. Type FS commands below (e.g. 'ls', 'cat metadata', 'format').</div>
       </div>
 
-      <div class="panel-content bringup-panel-content" id="bringupView" style="display: {% if runner.active_mode == 'BRINGUP' %}flex{% else %}none{% endif %}; flex-direction: row; padding: 0; overflow: hidden; height: 100%;">
-        <!-- Left: Step list -->
-        <div class="bringup-sidebar">
-          <div class="bringup-sidebar-header">CHECKLIST STEPS</div>
-          <ul class="bringup-step-list" id="bringupStepList">
-            <li class="log-line log-line-info" style="padding: 8px;">Loading checklist steps...</li>
-          </ul>
+      <!-- Trace & Telemetry Timeline Workstation (PERF -> Perfetto, SENSOR / AUDIO -> Rerun) -->
+      <div id="traceView" class="trace-mode-container" style="display: {% if runner.active_mode == 'TRACE' %}flex{% else %}none{% endif %};">
+        <div class="trace-export-bar">
+          <div style="display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 240px;">
+            <span style="font-size: 8.5px; color: var(--xerxes-text-muted); font-weight: bold;">EXPORT PATH:</span>
+            <input type="text" id="traceExportPath" class="cmd-input" style="max-width: 300px; padding: 3px 7px; font-size: 8.5px;" placeholder="recordings/traces/session">
+            <button type="button" class="btn btn-cyan" id="btnExportTraceCsv" title="Write .csv trace to disk on host">💾 Export .CSV</button>
+            <button type="button" class="btn btn-cyan" id="btnExportTracePerfetto" title="Write Perfetto .perfetto.json trace to disk on host">💾 Export Perfetto (.json)</button>
+          </div>
+          <div style="display: inline-flex; align-items: center; gap: 6px;">
+            <button type="button" class="btn {% if (active_trace_mode | default('NONE')) in ('SENSOR', 'AUDIO') %}btn-rerun{% else %}btn-perfetto{% endif %}" id="btnOpenExternalViewer">
+              {% if (active_trace_mode | default('NONE')) in ('SENSOR', 'AUDIO') %}🚀 Open in Rerun{% else %}🚀 Open in Perfetto{% endif %}
+            </button>
+          </div>
         </div>
-        <!-- Right: Active Step Details, Prompt Card & Live CLI Output -->
-        <div class="bringup-main-area">
-          <div class="bringup-card bringup-prompt-card" id="bringupPromptCard">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <span id="bringupCardTitle" style="font-weight: bold; color: var(--xerxes-cyan); font-size: 10px;">NO SCRIPT LOADED</span>
-              <span id="bringupCardType" class="badge">TYPE: --</span>
+
+        <div id="traceDisabledBanner" class="trace-disabled-banner" style="display: {% if (active_trace_mode | default('NONE')) == 'NONE' %}flex{% else %}none{% endif %};">
+          <span>⚠ Firmware tracing is currently set to <strong>NONE</strong>. Select <strong>SENSOR</strong> (Rerun) or <strong>PERF</strong> (Perfetto) in Target Config and re-flash to stream live trace frames.</span>
+          <button type="button" class="btn btn-amber" id="btnTraceConfigureShortcut">🎯 Configure Trace Mode</button>
+        </div>
+
+        <div class="trace-timeline-wrapper" id="traceTimelineWrapper">
+          <div class="trace-canvas-scroller" id="traceCanvasScroller">
+            <canvas id="traceTimelineCanvas" width="960" height="320"></canvas>
+          </div>
+
+          <!-- Separate Hovering Bottom Trackbar (Playback Status + Zoom/Fit + Filter) -->
+          <div class="trace-bottom-trackbar" id="traceBottomTrackbar">
+            <div class="trace-trackbar-group">
+              <span class="badge badge-green" id="traceRecordingBadge">● RECORDING LIVE • 0 events</span>
+              <button type="button" class="btn btn-amber" id="btnTracePauseResume" title="Pause or Resume live capture [Space]">⏸ Pause [Space]</button>
+              <button type="button" class="btn" id="btnTraceClear" title="Purge buffered trace events">🗑 Clear</button>
             </div>
-            <div id="bringupCardDesc" style="font-size: 8.5px; color: var(--xerxes-text-light); margin-bottom: 8px;">Select a bringup script above to begin verification.</div>
-            <div id="bringupCardDetails" style="font-size: 8px; color: var(--xerxes-text-muted);"></div>
-            <div id="bringupPromptActionArea" style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--xerxes-border-mid); display: none;">
-              <div style="font-size: 8.5px; color: var(--xerxes-amber); font-weight: bold; margin-bottom: 6px;" id="bringupPromptText">ACTION REQUIRED: Verify step outcome</div>
-              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <input type="text" id="bringupPromptNotes" class="cmd-input" placeholder="Notes/observations (optional)..." style="flex: 1; min-width: 160px; height: 22px; font-size: 8.5px;">
-                <button class="btn btn-cyan" id="btnBringupPass" data-bringup-action="pass">✔ Pass</button>
-                <button class="btn btn-red" id="btnBringupFail" data-bringup-action="fail">✘ Fail</button>
-                <button class="btn btn-amber" id="btnBringupSkip" data-bringup-action="skip">⏭ Skip</button>
-              </div>
+            <div class="trace-trackbar-group">
+              <button type="button" class="btn" id="btnTraceZoomOut" title="Zoom out timeline [S or -]">🔍 − [S/-]</button>
+              <span class="badge badge-cyan" id="traceViewportBadge">0.000s – 2.000s (2.00s)</span>
+              <button type="button" class="btn" id="btnTraceZoomIn" title="Zoom in timeline [W or +]">🔍 + [W/+]</button>
+              <button type="button" class="btn btn-cyan" id="btnTraceFit" title="Fit full capture range [F or 0]">⤢ Fit [F]</button>
+            </div>
+            <div class="trace-trackbar-group">
+              <input type="text" id="traceFilterInput" class="cmd-input" style="width: 185px; padding: 3px 7px; font-size: 8.5px;" placeholder="Filter track, span, sensor...">
             </div>
           </div>
-          <div class="panel-header" style="background: var(--xerxes-header-bg); border-top: 1px solid var(--xerxes-border-mid); padding: 4px 8px;">
-            <span style="font-size: 8.5px; color: var(--xerxes-cyan);">LIVE BRINGUP LOGS &amp; CLI OUTPUT</span>
-            <button class="btn btn-copy" id="btnCopyBringupLog">📋 Copy Log</button>
+        </div>
+
+        <div class="trace-inspector-split">
+          <div class="trace-slice-card" id="traceSliceInspector">
+            <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(11, 89, 102, 0.4); padding-bottom: 4px; margin-bottom: 2px;">
+              <strong style="color: var(--xerxes-cyan); font-size: 9px;">🔎 SELECTED SLICE / SAMPLE</strong>
+              <span class="badge" id="traceSliceBadge">NONE</span>
+            </div>
+            <div id="traceSliceDetails" style="color: var(--xerxes-text-dim);">
+              Click any span bar, sensor sample point, or event row to inspect timing and measured values.
+            </div>
           </div>
-          <div class="panel-content" id="bringupConsoleOutput" style="flex: 1; overflow-y: auto; background: var(--xerxes-bg); border: 1px solid var(--xerxes-border-mid); padding: 6px; font-size: 8.5px; font-family: var(--font-mono);">
-            <div class="log-line log-line-info">&gt; Bringup workstation initialized.</div>
+          <div class="trace-events-table-wrap">
+            <table class="trace-events-table">
+              <thead>
+                <tr>
+                  <th>TIMESTAMP (µs)</th>
+                  <th>TRACK</th>
+                  <th>TYPE</th>
+                  <th>SPAN / SENSOR EVENT</th>
+                  <th>DURATION / VALUE</th>
+                </tr>
+              </thead>
+              <tbody id="traceEventsTableBody"></tbody>
+            </table>
           </div>
+        </div>
+      </div>
+
+      <!-- On-Device Test Runner Right-Panel Stage (Progress/Status & Manual Prompt) -->
+      <div id="testView" class="test-mode-container" style="display: {% if runner.active_mode == 'TEST' %}flex{% else %}none{% endif %};">
+        <!-- Interactive Test Progress & Target Lifecycle Status Card (shown when manual prompt is inactive) -->
+        <div id="testProgressCard" class="bringup-card test-progress-card" style="display: flex;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div style="display: inline-flex; align-items: center; gap: 8px;">
+              <span class="sync-status-dot" id="testProgressDot"></span>
+              <strong style="font-size: 10px; color: var(--xerxes-cyan); letter-spacing: 0.6px;">⚡ TEST EXECUTION &amp; TARGET STATUS</strong>
+            </div>
+            <div style="display: inline-flex; align-items: center; gap: 8px;">
+              <span id="testPhaseBadge" class="badge">READY</span>
+              <strong id="testProgressPct" style="font-size: 10.5px; color: var(--xerxes-cyan);">0%</strong>
+            </div>
+          </div>
+
+          <div class="sync-progress-container" style="margin: 0; height: 8px;">
+            <div class="sync-progress-bar" id="testProgressBar" style="width: 0%;"></div>
+          </div>
+
+          <div style="background: rgba(0, 240, 255, 0.04); border: 1px solid var(--xerxes-border-dark); border-radius: 2px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px;">
+            <div id="testActivityHeadline" style="font-size: 9.5px; font-weight: bold; color: var(--xerxes-cyan);">Ready to execute on-device @device_test suites</div>
+            <div id="testActivityDetail" style="font-size: 8.5px; color: var(--xerxes-text-muted);">Select tests in the left-panel TEST SUITE tab and click ▶ Run Selected or ▶ Run Filtered.</div>
+          </div>
+
+          <div class="test-telemetry-grid">
+            <div class="test-telemetry-tile">
+              <span class="test-telemetry-label">Target Binary &amp; Mode</span>
+              <span class="test-telemetry-value" id="testTelemetryMode">{{ runner.bin_name }} • MODE: {{ runner.active_mode }}</span>
+            </div>
+            <div class="test-telemetry-tile">
+              <span class="test-telemetry-label">Flash &amp; Probe State</span>
+              <span class="test-telemetry-value" id="testTelemetryFlash">Idle • Probe Standby</span>
+            </div>
+            <div class="test-telemetry-tile">
+              <span class="test-telemetry-label">Reboots &amp; Active Command</span>
+              <span class="test-telemetry-value" id="testTelemetryReboots">0 Reboots • No command dispatched</span>
+            </div>
+            <div class="test-telemetry-tile">
+              <span class="test-telemetry-label">Suite Progress</span>
+              <span class="test-telemetry-value" id="testTelemetryCounts">0 / 0 Completed • 0 Pass • 0 Fail • 0 Skip</span>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 4px;">
+            <span class="test-telemetry-label">Live Test Run Queue</span>
+            <div id="testRunFeedList" class="test-run-feed">
+              <span style="color: var(--xerxes-text-dim);">No active or recent test run in this session.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Interactive Manual Operator Prompt Card (YES/NO, Measured Value, Cancel with Comment) -->
+        <div id="testManualPromptCard" class="bringup-card bringup-prompt-card" style="display: none; flex-direction: column; gap: 12px; padding: 14px 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span class="badge badge-amber">⚡ MANUAL BENCHTOP PROMPT</span>
+            <strong id="testManualTitle" style="font-size: 10.5px; color: var(--xerxes-cyan);"></strong>
+          </div>
+          <div style="font-size: 10px; line-height: 1.5; color: var(--xerxes-text-muted); background: rgba(0, 240, 255, 0.04); border: 1px solid var(--xerxes-border-dark); padding: 8px 10px; border-radius: 2px;">
+            <strong style="color: var(--xerxes-cyan);">Procedure:</strong>
+            <span id="testManualProcedure" style="color: var(--xerxes-text-light);"></span>
+          </div>
+          <div style="font-size: 10.5px; line-height: 1.5; color: var(--xerxes-amber); font-weight: bold;">
+            <span>Prompt:</span> <span id="testManualPromptText" style="color: var(--xerxes-text-light);"></span>
+          </div>
+
+          <div id="testManualYesNoRow" style="display: flex; align-items: center; gap: 10px;">
+            <button type="button" class="btn btn-cyan" id="btnManualYes" style="padding: 6px 16px; font-size: 9.5px;">✓ YES</button>
+            <button type="button" class="btn btn-red" id="btnManualNo" style="padding: 6px 16px; font-size: 9.5px;">✕ NO</button>
+          </div>
+
+          <div id="testManualMeasurementRow" style="display: none; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <label for="testManualValueInput" style="font-size: 9px; color: var(--xerxes-text-muted);">MEASURED VALUE:</label>
+            <input type="text" id="testManualValueInput" class="cmd-input" placeholder="e.g. 5.01" style="max-width: 180px; flex: none; padding: 6px 8px; font-size: 10px;">
+            <span id="testManualUnitLabel" style="font-size: 10px; color: var(--xerxes-cyan); font-weight: bold;"></span>
+            <button type="button" class="btn btn-cyan" id="btnManualSubmitValue" style="padding: 6px 12px;">Submit Measurement</button>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--xerxes-border-dark); padding-top: 8px;">
+            <input type="text" id="testManualCommentInput" class="cmd-input" placeholder="Required comment to cancel this manual test..." style="font-size: 9px; padding: 5px 8px;">
+            <button type="button" class="btn btn-amber" id="btnManualCancel" style="padding: 5px 10px;">Cancel Test</button>
+          </div>
+          <div id="testManualErrorMsg" style="display: none; font-size: 9px; color: var(--xerxes-red);"></div>
         </div>
       </div>
     </div>
   </main>
 
-  <footer class="cli-input-bar">
+  <footer class="cli-input-bar" id="cliInputBar" style="display: {% if runner.active_mode in ('TEST', 'TRACE') %}none{% else %}flex{% endif %};">
     <div id="cliFuzzyHistory" class="cli-fuzzy-history" style="display:none;">
       <div class="fuzzy-header">
         <span class="fuzzy-prompt">(reverse-i-search)`':</span>
@@ -1029,14 +1786,22 @@
 
   <script id="app-boot-config" type="application/json">
     {{ {
-      "package": runner.package | default("cat_detector"),
-      "binName": runner.bin_name | default("cat_detector_shell"),
-      "target": runner.target | default("thumbv6m-none-eabi"),
+      "package": runner.package | default(none),
+      "binName": runner.bin_name | default(none),
+      "target": runner.target | default(none),
       "activeMode": runner.active_mode | default("CLI"),
       "release": runner.release | default(false),
       "speed": runner.speed | default(1000),
       "chip": runner.chip | default(none),
       "showSystemLogs": runner.show_system_logs | default(false),
+      "enableDebugServer": runner.enable_debug_server | default(false),
+      "haltOnReset": runner.halt_on_reset | default(false),
+      "gdbCore0Port": runner.gdb_core0_port | default(3333),
+      "gdbCore1Port": runner.gdb_core1_port | default(3334),
+      "debugServerActive": runner.debug_server_active | default(false),
+      "traceMode": active_trace_mode | default("NONE"),
+      "externalViewer": active_external_viewer | default("NONE"),
+      "traceModes": trace_modes | default([]),
       "packageSelectionMode": package_selection_mode | default(false),
       "targetPackages": target_packages | default([]),
       "lastSession": last_session | default(none)
