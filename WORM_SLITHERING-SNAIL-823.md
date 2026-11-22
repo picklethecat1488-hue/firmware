@@ -177,3 +177,4 @@ This should log when any API is invoked, as well as when target state changes. T
 #### Review Tasks & Functional Checklist
 
 - [ ] Verify GDB restart, XIP hardware breakpoint insertion, and continue over gdb-proxy with zero warnings | `python tools/host.py --bin cat_detector_shell --debug-server && arm-none-eabi-gdb --nx --batch -ex 'set sysroot /' -ex 'source .vscode/cortex_debug_init.gdb' -ex 'target extended-remote | python3 -u tools/host.py debug gdb-proxy --core 0' -ex 'break app/src/cat_detector_shell.rs:61' -ex 'monitor reset halt' -ex 'maintenance flush register-cache' -ex 'continue' -ex 'detach' target/active_target.elf` <!-- id:96622b5b -->
+- [ ] Inspect API, state, debug, and trace entries in target/host_daemon.log | `python tools/host.py logs --stream daemon --lines 30` <!-- id:9d3ed243 -->
