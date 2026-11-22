@@ -261,9 +261,15 @@ macro_rules! append_group_arm {
                 subcommand: Option<{% if cmd.subcommand_type.contains("::") && !cmd.subcommand_type.contains("platform::") %}$crate::{% endif %}{{ cmd.subcommand_type|safe }}>,
                 {%- for arg in cmd.args_slice() %}
                 /// {{ arg.help }}
-                {%- for attr in arg.attributes_slice() %}
-                {{ attr|safe }}
-                {%- endfor %}
+                {%- match (arg.short_flag, arg.long_flag.as_deref()) %}
+                {%- when (Some(short), Some(long)) %}
+                #[arg(short = '{{ short }}', long = "{{ long }}")]
+                {%- when (Some(short), None) %}
+                #[arg(short = '{{ short }}')]
+                {%- when (None, Some(long)) %}
+                #[arg(long = "{{ long }}")]
+                {%- when (None, None) %}
+                {%- endmatch %}
                 {{ arg.name }}: {{ arg.rust_type()|safe }},
                 {%- endfor %}
             },

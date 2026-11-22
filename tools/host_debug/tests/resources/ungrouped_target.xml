@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!-- Fixture verifying fallback to the first <feature> element when <reg> tags omit group="general". -->
+<target version="1.0">
+  <feature name="primary">
+    <reg name="a0" bitsize="32" regnum="10"/>
+  </feature>
+  <feature name="aux">
+    <reg name="f0" bitsize="32" regnum="40"/>
+  </feature>
+</target>
