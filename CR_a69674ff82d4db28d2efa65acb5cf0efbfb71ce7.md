@@ -6,9 +6,9 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Review Date** | `2026-11-19 01:34:23 UTC` |
+| **Review Date** | `2026-11-22 02:54:26 UTC` |
 | **Revisions** | `a69674ff82d4db28d2efa65acb5cf0efbfb71ce7` |
-| **Overall Verdict** | **`IN_REVIEW`** |
+| **Overall Verdict** | **`CHANGES_REQUESTED`** |
 | **Review Progress** | `0/12 files reviewed (0%)` |
 | **Total Comments** | `2 findings` |
 
@@ -27,6 +27,7 @@
 #### **[MUST FIX]** [tools/host_debug/src/arch.rs:L166](file:///Users/<username>/gh/firmware/tools/host_debug/src/arch.rs#L166)
 <!-- comment-uuid: b2677f4b-0044-48b8-8c32-c7658c9aff1b -->
 <!-- comment-commit: a69674ff82d4db28d2efa65acb5cf0efbfb71ce7 -->
+<!-- comment-status: RESOLVED -->
 
 ```
 while let Some(lt_pos) = cursor.find('<') {
@@ -34,11 +35,14 @@ while let Some(lt_pos) = cursor.find('<') {
 
 > **Reviewer (Reviewer)**: I’d rather load this into a DOM structure and search by tag/attr that way
 
+> **Resolution**: Loaded target.xml into roxmltree::Document DOM (allow_dtd: true) and queried <feature>/<reg> elements and group/regnum attributes directly.
+
 ### [`tools/repro_gdb_break_and_step.py`](file:///Users/<username>/gh/firmware/tools/repro_gdb_break_and_step.py) — ⏳ `PENDING`
 
 #### **[MUST FIX]** [tools/repro_gdb_break_and_step.py:L1](file:///Users/<username>/gh/firmware/tools/repro_gdb_break_and_step.py#L1)
 <!-- comment-uuid: ee532629-4cff-4685-8aba-e5bf04d912f9 -->
 <!-- comment-commit: a69674ff82d4db28d2efa65acb5cf0efbfb71ce7 -->
+<!-- comment-status: RESOLVED -->
 
 ```python
 #!/usr/bin/env python3
@@ -46,7 +50,9 @@ while let Some(lt_pos) = cursor.find('<') {
 
 > **Reviewer (Reviewer)**: move this to tools/scripts/...
 
+> **Resolution**: Moved repro_gdb_break_and_step.py to tools/scripts/repro_gdb_break_and_step.py and updated REPO_ROOT and docs.
+
 ## Action Items Checklist
 
-- [ ] **[MUST FIX]** [`tools/host_debug/src/arch.rs:L166`](file:///Users/<username>/gh/firmware/tools/host_debug/src/arch.rs#L166): I’d rather load this into a DOM structure and search by tag/attr that way <!-- uuid:b2677f4b-0044-48b8-8c32-c7658c9aff1b -->
-- [ ] **[MUST FIX]** [`tools/repro_gdb_break_and_step.py:L1`](file:///Users/<username>/gh/firmware/tools/repro_gdb_break_and_step.py#L1): move this to tools/scripts/... <!-- uuid:ee532629-4cff-4685-8aba-e5bf04d912f9 -->
+- [x] **[MUST FIX]** [`tools/host_debug/src/arch.rs:L166`](file:///Users/<username>/gh/firmware/tools/host_debug/src/arch.rs#L166): I’d rather load this into a DOM structure and search by tag/attr that way <!-- uuid:b2677f4b-0044-48b8-8c32-c7658c9aff1b -->
+- [x] **[MUST FIX]** [`tools/repro_gdb_break_and_step.py:L1`](file:///Users/<username>/gh/firmware/tools/repro_gdb_break_and_step.py#L1): move this to tools/scripts/... <!-- uuid:ee532629-4cff-4685-8aba-e5bf04d912f9 -->

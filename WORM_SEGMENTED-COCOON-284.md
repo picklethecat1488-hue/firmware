@@ -1,12 +1,13 @@
-# 🔴 `[WORM-SEGMENTED-COCOON-284]` “Open in perfetto” did not work
+# 🟢 `[WORM-SEGMENTED-COCOON-284]` “Open in perfetto” did not work
 
 - **UUID**: `b33f3c4c-516e-41de-a3ef-8622377ff9f6`
 - **ID**: `WORM-SEGMENTED-COCOON-284`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-21 23:54:29 UTC`
+- **Resolved**: `2026-11-22 17:37:55 UTC`
 - **Rejected**: `2026-11-22 02:52:20 UTC`
 
 #### Description
@@ -96,7 +97,7 @@ I didn’t see a “perfetto.ui” tab open in my browser when I clicked “Open
 
 #### Resolution Notes
 
-Added POST /api/trace/open_perfetto and 'host.py trace open-perfetto' launching https://ui.perfetto.dev/#!/?url=... in the OS default browser with full CORS/Private Network headers; updated TraceViewerController and openPerfettoTrace (cross-patched to hardware) so pywebview/popup-blocked sessions delegate to /api/trace/open_perfetto while browser tabs open ui.perfetto.dev synchronously before fetching the trace.
+Served buffered Perfetto JSON over a dedicated localhost:9001 HTTP bridge matching ui.perfetto.dev CSP connect-src rules (404ing /status RPC probes with full CORS/PNA headers) and foregrounded the macOS system browser via /usr/bin/open when launched from pywebview or CLI.
 
 #### Rejection Feedback
 
